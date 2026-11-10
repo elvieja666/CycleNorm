@@ -37,6 +37,7 @@ struct Analysis
     std::vector<float>  peaks;  // pico (todos los canales) de cada onda: bounds[k] .. bounds[k+1]
     std::vector<size_t> halfBounds; // inicio de cada semiciclo: cruce ascendente, descendente, ascendente...
     std::vector<float>  halfPeaks;  // pico de cada semiciclo: halfBounds[k] .. halfBounds[k+1]
+    std::vector<float>  f0;         // la nota (fundamental, Hz) en cada muestra
     float preRollPeak = 0.0f;   // pico antes del primer cruce
     float tailPeak    = 0.0f;   // pico después del último cruce
 
@@ -85,6 +86,86 @@ struct Biquad
     }
 };
 
+// Seguimiento de la nota (fundamental) a lo largo del archivo, con YIN sobre una versión
+// submuestreada. Devuelve f0 en Hz para cada muestra (0 si no hay nada que medir).
+inline std::vector<float> trackF0 (const std::vector<double>& lp, double fs)
+{
+    const size_t n = lp.size();
+    std::vector<float> out (n, 0.0f);
+    const size_t D = (size_t) std::max (1.0, std::floor (fs / 2000.0));
+    const double fsD = fs / (double) D;
+    std::vector<double> x (n / D);
+    for (size_t i = 0; i < x.size(); ++i) x[i] = lp[i * D];
+    const size_t tauMin = (size_t) std::max (2.0, fsD / 300.0), tauMax = (size_t) (fsD / 20.0) + 2;
+    const size_t W = tauMax, hop = (size_t) std::max (1.0, fsD * 0.005);
+    if (x.size() < W + tauMax + 2) return out;
+
+    struct Frame { double centre; double f0; double energy; };
+    std::vector<Frame> frames;
+    std::vector<double> d (tauMax + 1), cm (tauMax + 1);
+    double maxE = 0;
+    for (size_t p = 0; p + W + tauMax < x.size(); p += hop)
+    {
+        double e = 0;
+        for (size_t j = 0; j < W; ++j) e += x[p + j] * x[p + j];
+        maxE = std::max (maxE, e);
+        d[0] = 0; cm[0] = 1;
+        double run = 0;
+        for (size_t t = 1; t <= tauMax; ++t)
+        {
+            double acc = 0;
+            for (size_t j = 0; j < W; ++j) { const double df = x[p + j] - x[p + j + t]; acc += df * df; }
+            d[t] = acc; run += acc;
+            cm[t] = run > 0 ? acc * (double) t / run : 1.0;
+        }
+        size_t best = 0;
+        for (size_t t = tauMin; t <= tauMax; ++t)
+            if (cm[t] < 0.12) { while (t + 1 <= tauMax && cm[t + 1] < cm[t]) ++t; best = t; break; }
+        if (best == 0)
+        {
+            double mn = 1e300;
+            for (size_t t = tauMin; t <= tauMax; ++t) if (cm[t] < mn) { mn = cm[t]; best = t; }
+            if (mn > 0.5) best = 0; // no hay una nota clara
+        }
+        double tau = (double) best;
+        if (best > tauMin && best < tauMax) // interpolación parabólica
+        {
+            const double a = cm[best - 1], b = cm[best], c = cm[best + 1], den = a - 2 * b + c;
+            if (std::abs (den) > 1e-12) tau += 0.5 * (a - c) / den;
+        }
+        frames.push_back ({ ((double) p + (double) (W + tauMax) * 0.5) * (double) D, best ? fsD / tau : 0.0, e });
+    }
+    // sin energía o sin nota: se completa con la nota de al lado
+    for (auto& f : frames) if (f.energy < maxE * 1e-5) f.f0 = 0;
+    double lastF = 0;
+    for (auto& f : frames) { if (f.f0 > 0) lastF = f.f0; else f.f0 = lastF; }
+    lastF = 0;
+    for (size_t i = frames.size(); i-- > 0;) { if (frames[i].f0 > 0) lastF = frames[i].f0; else frames[i].f0 = lastF; }
+    if (frames.empty() || frames.front().f0 <= 0) return out;
+    // mediana de 7 cuadros: saca saltos sueltos (errores de octava)
+    {
+        std::vector<double> med (frames.size());
+        for (size_t i = 0; i < frames.size(); ++i)
+        {
+            std::vector<double> w;
+            for (size_t j = (i >= 3 ? i - 3 : 0); j <= std::min (frames.size() - 1, i + 3); ++j) w.push_back (frames[j].f0);
+            std::nth_element (w.begin(), w.begin() + (long) w.size() / 2, w.end());
+            med[i] = w[w.size() / 2];
+        }
+        for (size_t i = 0; i < frames.size(); ++i) frames[i].f0 = med[i];
+    }
+    size_t fi = 0;
+    for (size_t i = 0; i < n; ++i)
+    {
+        while (fi + 1 < frames.size() && frames[fi + 1].centre <= (double) i) ++fi;
+        if ((double) i <= frames.front().centre) { out[i] = (float) frames.front().f0; continue; }
+        if (fi + 1 >= frames.size()) { out[i] = (float) frames.back().f0; continue; }
+        const double t = ((double) i - frames[fi].centre) / (frames[fi + 1].centre - frames[fi].centre);
+        out[i] = (float) (frames[fi].f0 + (frames[fi + 1].f0 - frames[fi].f0) * t);
+    }
+    return out;
+}
+
 inline double toDb (double lin)  { return lin > 1e-12 ? 20.0 * std::log10 (lin) : -240.0; }
 inline double toLin (double db)  { return std::pow (10.0, db / 20.0); }
 } // namespace detail
@@ -115,11 +196,48 @@ inline Analysis analyse (const Channels& in, double sampleRate)
 
     // Para detectar las ondas: sin DC y sin agudos (para que los armónicos de un 808 saturado
     // no agreguen cruces falsos).
-    std::vector<double> det = raw;
-    Biquad::highpass (sampleRate, 10.0).runZeroPhase (det);
+    std::vector<double> hp = raw;
+    Biquad::highpass (sampleRate, 10.0).runZeroPhase (hp);
+    std::vector<double> det = hp;
     const double lpHz = std::min (250.0, sampleRate * 0.4);
     Biquad::lowpass (sampleRate, lpHz).runZeroPhase (det);
     Biquad::lowpass (sampleRate, lpHz).runZeroPhase (det);
+
+    // Solo la fundamental: se mide la nota en cada momento (sigue el glide) y se filtra justo
+    // arriba de ella (1,4 veces la fundamental). Así los armónicos fuertes (un 808 con mucho
+    // 2º y 3º) no agregan cruces: los rulos de los armónicos quedan adentro del semiciclo de la
+    // fundamental y reciben la misma ganancia, en vez de normalizarse como si fueran semiciclos.
+    a.f0 = trackF0 (det, sampleRate);
+    if (! a.f0.empty() && a.f0[0] > 0.0f)
+    {
+        std::vector<double> cuts;
+        for (double c = 25.0; c < 600.0; c *= 1.25) cuts.push_back (c);
+        std::vector<double> mix (n, 0.0), tmp;
+        std::vector<int>   lo (n);
+        std::vector<float> w (n);
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double c = std::clamp (1.4 * (double) a.f0[i], cuts.front(), cuts.back() * 0.999);
+            const double pos = std::log (c / cuts.front()) / std::log (1.25);
+            lo[i] = (int) std::floor (pos);
+            w[i] = (float) (pos - lo[i]);
+        }
+        for (size_t k = 0; k < cuts.size(); ++k)
+        {
+            bool used = false;
+            for (size_t i = 0; i < n && ! used; ++i) used = (lo[i] == (int) k || lo[i] + 1 == (int) k);
+            if (! used || cuts[k] >= sampleRate * 0.45) continue;
+            tmp = hp;
+            Biquad::lowpass (sampleRate, cuts[k]).runZeroPhase (tmp);
+            Biquad::lowpass (sampleRate, cuts[k]).runZeroPhase (tmp);
+            for (size_t i = 0; i < n; ++i)
+            {
+                if (lo[i] == (int) k)          mix[i] += (1.0 - w[i]) * tmp[i];
+                else if (lo[i] + 1 == (int) k) mix[i] += w[i] * tmp[i];
+            }
+        }
+        det.swap (mix);
+    }
 
     // Envolvente (pico con caída lenta) para la histéresis relativa.
     std::vector<double> env (n);
@@ -235,16 +353,11 @@ inline Analysis analyse (const Channels& in, double sampleRate)
             nb.push_back (hb[k]); nr.push_back (rising[k]);
             if (k + 1 >= hb.size()) break;
             const size_t s0 = hb[k], s1 = hb[k + 1];
-            // largo esperado de un semiciclo: mediana de los últimos (hasta 6) tramos
-            std::vector<size_t> prev;
-            for (size_t j = nb.size() - 1; j > 0 && prev.size() < 6; --j)
-            {
-                const size_t len = nb[j] - nb[j - 1];
-                prev.push_back (nr[j] != nr[j - 1] ? len : len / 2); // si faltaba el cruce del medio, era una onda entera
-            }
-            if (prev.size() < 2) continue;
-            std::nth_element (prev.begin(), prev.begin() + (long) prev.size() / 2, prev.end());
-            const double E = (double) prev[prev.size() / 2];
+            // largo esperado de un semiciclo, según la nota medida en ese punto
+            const size_t midS = s0 + (s1 - s0) / 2;
+            const double f0Here = a.f0.empty() ? 0.0 : (double) a.f0[std::min (midS, n - 1)];
+            if (f0Here <= 0.0) continue;
+            const double E = sampleRate / (2.0 * f0Here);
             if ((double) (s1 - s0) <= 1.5 * E) continue;
 
             std::vector<size_t> ins; std::vector<char> insR;
@@ -252,7 +365,7 @@ inline Analysis analyse (const Channels& in, double sampleRate)
             size_t last = s0;
             for (size_t i = s0 + 1; i < s1; ++i)
             {
-                if ((double) (i - last) < 0.3 * E) continue;
+                if ((double) (i - last) < 0.6 * E) continue; // más cerca: es un rulo de un armónico, no un semiciclo
                 if ((double) (s1 - i) < 0.1 * E) break;
                 const bool up = raw[i - 1] < 0.0 && raw[i] >= 0.0;
                 const bool down = raw[i - 1] >= 0.0 && raw[i] < 0.0;
@@ -278,6 +391,12 @@ inline Analysis analyse (const Channels& in, double sampleRate)
                 if (k + 1 >= nb.size() || k == 0) continue;
                 const size_t s0 = nb[k], s1 = nb[k + 1];
                 const double E = (double) (nb[k] - nb[k - 1]); // largo del tramo anterior
+                // un golpe nuevo es mucho más fuerte que el tramo anterior entero (un rulo de armónico
+                // al principio de un semiciclo normal no: ese semiciclo es parecido al anterior)
+                double prevPeak = 0, segPeak = 0;
+                for (size_t i = nb[k - 1]; i < s0; ++i) prevPeak = std::max (prevPeak, std::abs (raw[i]));
+                for (size_t i = s0; i < s1; ++i) segPeak = std::max (segPeak, std::abs (raw[i]));
+                if (segPeak < 3.0 * prevPeak) continue;
                 const size_t minPre = (size_t) std::max (8.0, 0.2 * E);
                 // se compara con el pico de la cola hasta 1 ms antes (un golpe sube en unas muestras,
                 // pero no de una: comparar con la muestra anterior no lo vería)

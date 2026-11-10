@@ -99,6 +99,31 @@ int main()
         std::printf ("sin pozo antes del golpe: peor ventana %.1f dB  %s\n", worst, ok ? "OK" : "FALLA");
         fails += ! ok;
     }
+    // 808 con armónicos fuertes (2º y 3º casi tan fuertes como la fundamental): la onda cruza el 0
+    // varias veces por período. Tiene que contar solo las ondas de la fundamental, sin tramos chicos.
+    {
+        const double fs = 44100, f = 33.0;
+        const size_t n = (size_t) (fs * 2.0);
+        Channels in (1, std::vector<float> (n));
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double t = i / fs, env = std::exp (-t / 0.5), w = 2 * M_PI * f * t;
+            in[0][i] = (float) (env * (0.5 * std::sin (w) + 0.45 * std::sin (2 * w + 1.0) + 0.4 * std::sin (3 * w + 2.0) + 0.15 * std::sin (5 * w)));
+        }
+        auto a = analyse (in, fs);
+        size_t tiny = 0;
+        const auto& B = a.halfBounds;
+        for (size_t k = 0; k + 1 < B.size(); ++k) if ((double) (B[k + 1] - B[k]) < 0.3 * fs / (2 * f)) ++tiny;
+        // cada onda tiene que durar un período de la fundamental (±10 %)
+        size_t wrong = 0;
+        for (size_t k = 0; k + 1 < a.bounds.size(); ++k)
+            if (std::abs ((double) (a.bounds[k + 1] - a.bounds[k]) - fs / f) > 0.1 * fs / f) ++wrong;
+        const bool ok = a.numCycles() > 55 && wrong == 0 && tiny == 0;
+        std::printf ("armonicos fuertes: %zu ondas, %zu de largo incorrecto, %zu tramos chicos  %s\n", a.numCycles(), wrong, tiny, ok ? "OK" : "FALLA");
+        fails += ! ok;
+        Settings z = s; z.autoTarget = false; z.targetDb = 0;
+        fails += check ("armonicos fuertes, picos", in, fs, z, 0.3, 1.5);
+    }
     // semiciclos: un 808 asimétrico (el negativo más chico), los dos semiciclos tienen que quedar iguales
     {
         auto in = make808 (44100, 2.0, 140, 45, 0.08, 0.35, 2.0, 0.0, -100, false, -1, 0.6);
