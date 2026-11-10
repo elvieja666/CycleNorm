@@ -117,6 +117,17 @@ public:
         formatBox.setWantsKeyboardFocus (false);
         addAndMakeVisible (formatBox);
 
+        modeBox.addItem ("Semiciclo", 1);
+        modeBox.addItem ("Onda entera", 2);
+        modeBox.setSelectedId (props->getIntValue ("mode", 1), juce::dontSendNotification);
+        modeBox.onChange = [this] { props->setValue ("mode", modeBox.getSelectedId()); updateMarkers(); settingsChanged(); };
+        modeBox.setWantsKeyboardFocus (false);
+        addAndMakeVisible (modeBox);
+        modeLabel.setText ("Modo", juce::dontSendNotification);
+        modeLabel.setFont (juce::FontOptions (13.0f));
+        modeLabel.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
+        addAndMakeVisible (modeLabel);
+
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
         setupSlider (target, targetLabel, "Target", -30, 6, 0.1, " dB", props->getDoubleValue ("target", -1.0));
         setupSlider (skip, skipLabel, "Skip (ondas)", 0, 64, 1, "", props->getDoubleValue ("skip", 2.0));
@@ -181,7 +192,7 @@ public:
         g.drawText ("CycleNorm", titleArea, juce::Justification::centredLeft);
         g.setColour (juce::Colour (0xff8a919c));
         g.setFont (juce::FontOptions (12.0f));
-        g.drawText (u8 ("normaliza onda por onda · espacio = play · A = original/procesado"),
+        g.drawText (u8 ("normaliza semiciclo por semiciclo · espacio = play · A = original/procesado"),
                     titleArea.withTrimmedLeft (110), juce::Justification::centredLeft);
     }
 
@@ -208,7 +219,12 @@ public:
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 4;
+        const int colW = c.getWidth() / 5;
+        {
+            auto col = c.removeFromLeft (colW).reduced (6, 0);
+            modeLabel.setBounds (col.removeFromTop (20));
+            modeBox.setBounds (col.removeFromTop (28));
+        }
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -299,9 +315,9 @@ private:
 
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
     juce::ToggleButton autoTarget;
-    juce::ComboBox formatBox;
+    juce::ComboBox formatBox, modeBox;
     juce::Slider amount, target, skip, threshold;
-    juce::Label amountLabel, targetLabel, skipLabel, thresholdLabel, info;
+    juce::Label amountLabel, targetLabel, skipLabel, thresholdLabel, modeLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -330,6 +346,7 @@ private:
     cyclenorm::Settings readSettings() const
     {
         cyclenorm::Settings s;
+        s.halfCycles = modeBox.getSelectedId() != 2;
         s.amount = amount.getValue() / 100.0;
         s.autoTarget = autoTarget.getToggleState();
         s.targetDb = target.getValue();
@@ -480,10 +497,16 @@ private:
         source.setNextReadPosition (0);
         transport.setSource (&source, 0, nullptr, it.sampleRate, 2);
         source.setLooping (loopButton.getToggleState());
-        wave.setData (it.original, it.processed, it.analysis.bounds, it.sampleRate, true);
+        wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
         if (wasPlaying) transport.start();
         updateInfo();
         updateButtons();
+    }
+
+    void updateMarkers()
+    {
+        if (juce::isPositiveAndBelow (current, (int) items.size()))
+            wave.setMarkers (cyclenorm::segmentBounds (items[(size_t) current]->analysis, readSettings()));
     }
 
     void togglePlay()
@@ -531,7 +554,7 @@ private:
             target.setValue (juce::jlimit (-30.0, 6.0, it.targetUsedDb), juce::dontSendNotification);
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::String t;
-        t << (int) it.analysis.numCycles() << u8 (" ondas · objetivo ") << juce::String (it.targetUsedDb, 1)
+        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · objetivo ") << juce::String (it.targetUsedDb, 1)
           << u8 (" dB · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
         if (it.outPeak > 1.0f && ! exportsFloat (it))
         {

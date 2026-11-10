@@ -2,8 +2,8 @@
 //
 // 1) analyse(): detecta cada ciclo (de cruce por cero ascendente a cruce por cero
 //    ascendente) y mide su pico. Se hace una vez por archivo.
-// 2) render(): con los ajustes (Amount, Target, Skip, Threshold) calcula una ganancia
-//    por ciclo y la aplica. Es rápido, se puede repetir cada vez que se mueve una perilla.
+// 2) render(): con los ajustes (Modo, Amount, Target, Skip, Threshold) calcula una ganancia
+//    por semiciclo (o por onda entera) y la aplica. Es rápido, se puede repetir cada vez que se mueve una perilla.
 #pragma once
 
 #include <algorithm>
@@ -21,6 +21,7 @@ struct Settings
     double amount      = 1.0;    // 0 = original, 1 = todas las ondas al mismo pico
     bool   autoTarget  = true;   // true: el nivel objetivo es el pico de la primera onda normalizada
     double targetDb    = -1.0;   // nivel objetivo en dBFS (si autoTarget = false)
+    bool   halfCycles  = true;   // true: cada semiciclo (positivo y negativo) por separado; false: la onda entera
     int    skipCycles  = 0;      // ondas del principio que no se tocan (el ataque)
     double thresholdDb = -200.0; // ondas con pico por debajo de esto mantienen la ganancia anterior (-200 = apagado)
     double maxBoostDb  = 60.0;   // límite de subida, para no llevar el silencio digital a 0 dB
@@ -32,6 +33,8 @@ struct Analysis
     size_t numSamples = 0;
     std::vector<size_t> bounds; // inicio de cada onda (cruce por cero ascendente)
     std::vector<float>  peaks;  // pico (todos los canales) de cada onda: bounds[k] .. bounds[k+1]
+    std::vector<size_t> halfBounds; // inicio de cada semiciclo: cruce ascendente, descendente, ascendente...
+    std::vector<float>  halfPeaks;  // pico de cada semiciclo: halfBounds[k] .. halfBounds[k+1]
     float preRollPeak = 0.0f;   // pico antes del primer cruce
     float tailPeak    = 0.0f;   // pico después del último cruce
 
@@ -103,12 +106,15 @@ inline Analysis analyse (const Channels& in, double sampleRate)
         if (e > bestE) { bestE = e; best = c; }
     }
 
-    // Sin DC (para buscar el cruce real en el audio) ...
-    std::vector<double> raw (in[best].begin(), in[best].end());
-    Biquad::highpass (sampleRate, 10.0).runZeroPhase (raw);
+    // El audio tal cual: ahí se busca el cruce real (donde la onda vale 0, así el cambio de
+    // ganancia no hace click). Sin sacarle el DC: un 808 asimétrico tiene DC propio y sus
+    // semiciclos empiezan y terminan donde el audio cruza el 0, no donde cruza su promedio.
+    const std::vector<double> raw (in[best].begin(), in[best].end());
 
-    // ... y además sin agudos (para que los armónicos de un 808 saturado no agreguen cruces).
+    // Para detectar las ondas: sin DC y sin agudos (para que los armónicos de un 808 saturado
+    // no agreguen cruces falsos).
     std::vector<double> det = raw;
+    Biquad::highpass (sampleRate, 10.0).runZeroPhase (det);
     const double lpHz = std::min (250.0, sampleRate * 0.4);
     Biquad::lowpass (sampleRate, lpHz).runZeroPhase (det);
     Biquad::lowpass (sampleRate, lpHz).runZeroPhase (det);
@@ -160,6 +166,9 @@ inline Analysis analyse (const Channels& in, double sampleRate)
                 if (d < bestDist) { bestDist = d; pick = z; }
             }
         }
+        // sin un cruce real cerca (pasa en el arranque de un golpe nuevo) no se corta acá:
+        // esa onda se une con la siguiente, así no hay un cambio de ganancia donde la onda no vale 0
+        if (bestDist == (size_t) -1) continue;
         if (b.empty() || pick > b.back() + minPeriod / 2)
             b.push_back (pick);
     }
@@ -176,28 +185,71 @@ inline Analysis analyse (const Channels& in, double sampleRate)
     a.peaks.resize (b.size() - 1);
     for (size_t k = 0; k + 1 < b.size(); ++k) a.peaks[k] = peakOf (b[k], b[k + 1]);
     a.tailPeak = peakOf (b.back(), n);
+
+    // Semiciclos: dentro de cada onda, el cruce descendente (de + a -). Primero en la señal
+    // filtrada (el más cercano a la mitad de la onda), después el cruce real del audio más cercano.
+    auto& hb = a.halfBounds;
+    hb.reserve (b.size() * 2);
+    for (size_t k = 0; k + 1 < b.size(); ++k)
+    {
+        const size_t s0 = b[k], s1 = b[k + 1], len = s1 - s0, midIdx = s0 + len / 2;
+        hb.push_back (s0);
+        if (len < 4) continue;
+        size_t m = midIdx; size_t bestD = (size_t) -1;
+        for (size_t i = s0 + std::max<size_t> (1, len / 8); i < s1 - len / 8; ++i)
+            if (det[i - 1] >= 0.0 && det[i] < 0.0)
+            {
+                const size_t d = i > midIdx ? i - midIdx : midIdx - i;
+                if (d < bestD) { bestD = d; m = i; }
+            }
+        const size_t win = std::max<size_t> (1, len / 4);
+        size_t pick = m; bestD = (size_t) -1;
+        for (size_t i = std::max (s0 + 1, m > win ? m - win : 1); i <= std::min (s1 - 1, m + win); ++i)
+            if (raw[i - 1] >= 0.0 && raw[i] < 0.0)
+            {
+                const size_t z = std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i;
+                const size_t d = z > m ? z - m : m - z;
+                if (d < bestD) { bestD = d; pick = z; }
+            }
+        if (bestD != (size_t) -1 && pick > s0 && pick < s1) hb.push_back (pick); // si no hay cruce real, la onda queda entera
+    }
+    hb.push_back (b.back());
+    a.halfPeaks.resize (hb.size() - 1);
+    for (size_t k = 0; k + 1 < hb.size(); ++k) a.halfPeaks[k] = peakOf (hb[k], hb[k + 1]);
     return a;
 }
 
-// Ganancia (dB) de cada onda según los ajustes.
+// Los tramos que se normalizan según el modo: ondas enteras o semiciclos.
+inline const std::vector<size_t>& segmentBounds (const Analysis& a, const Settings& s) { return s.halfCycles ? a.halfBounds : a.bounds; }
+inline const std::vector<float>&  segmentPeaks  (const Analysis& a, const Settings& s) { return s.halfCycles ? a.halfPeaks  : a.peaks; }
+
+// Ganancia (dB) de cada tramo (onda o semiciclo) según los ajustes.
 inline std::vector<double> cycleGainsDb (const Analysis& a, const Settings& s, double* targetUsedDb = nullptr)
 {
     using namespace detail;
-    const size_t K = a.numCycles();
+    const auto& peaks = segmentPeaks (a, s);
+    const size_t K = peaks.size();
     std::vector<double> g (K, 0.0);
     if (K == 0) { if (targetUsedDb) *targetUsedDb = 0; return g; }
 
-    const size_t skip = (size_t) std::max (0, s.skipCycles);
+    // Skip se cuenta siempre en ondas enteras (en semiciclos son el doble de tramos)
+    const size_t skip = (size_t) std::max (0, s.skipCycles) * (s.halfCycles ? 2u : 1u);
     const double thr = s.thresholdDb;
 
     double target = s.targetDb;
     if (s.autoTarget)
     {
         // el pico de la primera onda que se normaliza (la que sigue a las salteadas)
+        const size_t first = std::min (skip, K - 1);
+        const size_t span = s.halfCycles ? 2 : 1; // en semiciclos: el mayor de los dos de esa onda
         target = -240.0;
-        for (size_t k = std::min (skip, K - 1); k < K; ++k)
-            if (toDb (a.peaks[k]) > thr) { target = toDb (a.peaks[k]); break; }
-        if (target <= -240.0) target = toDb (a.peaks[std::min (skip, K - 1)]);
+        for (size_t k = first; k < K; k += span)
+        {
+            float p = 0;
+            for (size_t j = k; j < std::min (K, k + span); ++j) p = std::max (p, peaks[j]);
+            if (toDb (p) > thr) { target = toDb (p); break; }
+        }
+        if (target <= -240.0) target = toDb (peaks[first]);
     }
     if (targetUsedDb) *targetUsedDb = target;
 
@@ -205,49 +257,55 @@ inline std::vector<double> cycleGainsDb (const Analysis& a, const Settings& s, d
     for (size_t k = 0; k < K; ++k)
     {
         if (k < skip) { g[k] = 0.0; last = 0.0; continue; }
-        const double pDb = toDb (a.peaks[k]);
-        if (a.peaks[k] <= 1e-9f || pDb < thr)
-        {
+        const double pDb = toDb (peaks[k]);
+        if (peaks[k] <= 1e-9f || pDb < thr)
             g[k] = (k == skip) ? 0.0 : last; // por debajo del umbral: sigue con la última ganancia
-        }
         else
-        {
             g[k] = std::clamp (s.amount * (target - pDb), -s.maxBoostDb, s.maxBoostDb);
-        }
         last = g[k];
     }
     return g;
 }
 
-// Curva de ganancia (lineal, una por muestra). Entre ondas hay una rampa corta, centrada en el cruce.
+// Curva de ganancia (lineal, una por muestra). Entre tramos hay una rampa corta, centrada en el cruce.
 inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, double* targetUsedDb = nullptr)
 {
     using namespace detail;
     const size_t n = a.numSamples;
     std::vector<float> curve (n, 1.0f);
-    const size_t K = a.numCycles();
+    const auto& b = segmentBounds (a, s);
+    const size_t K = segmentPeaks (a, s).size();
     if (K == 0) return curve;
 
-    const auto g = cycleGainsDb (a, s, targetUsedDb);
-    const auto& b = a.bounds;
+    double target = 0.0;
+    const auto g = cycleGainsDb (a, s, &target);
+    if (targetUsedDb) *targetUsedDb = target;
 
-    // tramo antes del primer cruce: misma ganancia que la primera onda
-    const float g0 = (float) toLin (g.front());
-    for (size_t i = 0; i < b.front(); ++i) curve[i] = g0;
+    // Los pedazos antes del primer cruce y después del último (onda incompleta) se normalizan
+    // con su propio pico, sin pasarse nunca del objetivo. Antes del primero, si hay Skip, no se toca.
+    auto ownGain = [&] (float peak, double fallback) {
+        const double pDb = toDb (peak);
+        if (peak <= 1e-9f || pDb < s.thresholdDb) return fallback;
+        return std::min (fallback, std::clamp (s.amount * (target - pDb), -s.maxBoostDb, s.maxBoostDb));
+    };
+    const double gPre  = s.skipCycles > 0 ? 0.0 : ownGain (a.preRollPeak, g.front());
+    const double gTail = ownGain (a.tailPeak, s.maxBoostDb);
+    const double gPost = (toDb (a.tailPeak) < s.thresholdDb || a.tailPeak <= 1e-9f) ? g.back() : gTail;
+
+    for (size_t i = 0; i < b.front(); ++i) curve[i] = (float) toLin (gPre);
     for (size_t k = 0; k < K; ++k)
     {
         const float gl = (float) toLin (g[k]);
         for (size_t i = b[k]; i < b[k + 1]; ++i) curve[i] = gl;
     }
-    const float gEnd = (float) toLin (g.back());
-    for (size_t i = b.back(); i < n; ++i) curve[i] = gEnd;
+    for (size_t i = b.back(); i < n; ++i) curve[i] = (float) toLin (gPost);
 
-    // rampas: 1 ms como máximo, o el 6% de la onda más corta de las dos
+    // rampas: 1 ms como máximo, o el 6% del tramo más corto de los dos
     const size_t maxRamp = (size_t) std::max (1.0, a.sampleRate * 0.001);
     for (size_t k = 0; k < b.size(); ++k)
     {
-        const double before = k == 0 ? g.front() : g[k - 1];
-        const double after  = k < K ? g[k] : g.back();
+        const double before = k == 0 ? gPre : g[k - 1];
+        const double after  = k < K ? g[k] : gPost;
         if (std::abs (after - before) < 1e-6) continue;
         const size_t lenPrev = k > 0 ? b[k] - b[k - 1] : maxRamp * 20;
         const size_t lenNext = k + 1 < b.size() ? b[k + 1] - b[k] : maxRamp * 20;

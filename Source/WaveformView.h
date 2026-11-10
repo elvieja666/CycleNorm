@@ -33,6 +33,7 @@ public:
     void setProcessed (BufferPtr processed) { proc = std::move (processed); dirty = true; repaint(); }
     void clear() { setData (nullptr, nullptr, {}, 44100.0, true); }
     void refresh() { dirty = true; repaint(); }
+    void setMarkers (std::vector<size_t> cycleBounds) { bounds = std::move (cycleBounds); dirty = true; repaint(); }
 
     void paint (juce::Graphics& g) override
     {
@@ -126,7 +127,7 @@ private:
         g.setColour (juce::Colour (0xff2c3138));
         g.drawHorizontalLine ((int) mid, (float) r.getX(), (float) r.getRight());
 
-        // marcas de cada onda, si entran (al menos 5 píxeles por onda)
+        // marcas de cada tramo (onda o semiciclo), si entran (al menos 5 píxeles por tramo)
         if (! bounds.empty() && viewLen > 0)
         {
             auto first = std::lower_bound (bounds.begin(), bounds.end(), (size_t) juce::jmax (0.0, viewStart));
