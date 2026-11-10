@@ -118,7 +118,7 @@ public:
 
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
-        setupSlider (skip, skipLabel, "Skip (ondas)", 0, 256, 1, "", props->getDoubleValue ("skip", 2.0));
+        skipCycles = juce::jlimit (0, kMaxSkip, props->getIntValue ("skip", 2)); // se cambia arrastrando la línea en el visor
         setupSlider (ramp, rampLabel, "Rampa", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
@@ -134,12 +134,13 @@ public:
         wave.isPlaying = [this] { return transport.isPlaying(); };
         wave.isPlayingProcessed = [this] { return abButton.getToggleState(); };
         wave.onSeek = [this] (double s) { transport.setPosition (s); wave.repaint(); };
-        wave.maxSkip = (int) skip.getMaximum();
+        wave.maxSkip = kMaxSkip;
         wave.onSkipDragged = [this] (int n)
         {
-            if ((int) skip.getValue() == n) { wave.refresh(); return; }
-            skip.setValue (n, juce::sendNotificationSync); // mueve la barra y reprocesa
-            updateSkipView();                               // la línea sigue al mouse enseguida
+            if (skipCycles == n) { wave.refresh(); return; }
+            skipCycles = n;
+            settingsChanged();  // reprocesa
+            updateSkipView();   // la línea sigue al mouse enseguida
         };
         addAndMakeVisible (wave);
 
@@ -208,7 +209,7 @@ public:
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 3;
+        const int colW = c.getWidth() / 2;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -217,7 +218,6 @@ public:
             s.setBounds (col.removeFromTop (28));
         };
         place (amountLabel, amount, nullptr);
-        place (skipLabel, skip, nullptr);
         place (rampLabel, ramp, nullptr);
         r.removeFromBottom (8);
 
@@ -298,8 +298,10 @@ private:
 
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
     juce::ComboBox formatBox;
-    juce::Slider amount, skip, ramp;
-    juce::Label amountLabel, skipLabel, rampLabel, info;
+    juce::Slider amount, ramp;
+    static constexpr int kMaxSkip = 256;
+    int skipCycles = 2;
+    juce::Label amountLabel, rampLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -333,7 +335,7 @@ private:
         s.ramp = ramp.getValue() / 100.0;
         s.autoTarget = false;
         s.targetDb = 0.0; // el objetivo es siempre 0 dBFS
-        s.skipCycles = (int) skip.getValue();
+        s.skipCycles = skipCycles;
         s.thresholdDb = -200.0; // sin umbral: se normaliza todo, también la cola y el ruido
         return s;
     }
@@ -341,7 +343,7 @@ private:
     void saveSettings()
     {
         props->setValue ("amount", amount.getValue());
-        props->setValue ("skip", skip.getValue());
+        props->setValue ("skip", skipCycles);
         props->setValue ("ramp", ramp.getValue());
         props->saveIfNeeded();
     }
@@ -547,7 +549,7 @@ private:
         auto& it = *items[(size_t) current];
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::String t;
-        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · todo a 0 dBFS · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
+        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · Skip: ") << skipCycles << u8 (" ondas · todo a 0 dBFS · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
             t << u8 ("  ·  ¡SATURA! El ataque original pasa de 0 dBFS: exportá en 32 bit float");
