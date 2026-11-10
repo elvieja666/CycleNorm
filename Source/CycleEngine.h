@@ -25,6 +25,8 @@ struct Settings
     int    skipCycles  = 0;      // ondas del principio que no se tocan (el ataque)
     double thresholdDb = -200.0; // ondas con pico por debajo de esto mantienen la ganancia anterior (-200 = apagado)
     double maxBoostDb  = 60.0;   // límite de subida, para no llevar el silencio digital a 0 dB
+    double ramp        = 0.0;    // 0 = rampa mínima en cada cambio de ganancia (1 ms como mucho, o el 6% del tramo)
+                                 // 1 = la rampa cubre el 40% de cada tramo a cada lado del cruce
 };
 
 struct Analysis
@@ -393,8 +395,11 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
     }
     for (size_t i = b.back(); i < n; ++i) curve[i] = (float) toLin (gPost);
 
-    // rampas: 1 ms como máximo, o el 6% del tramo más corto de los dos
+    // Rampas, centradas en cada cruce. Con Rampa en 0: 1 ms como máximo, o el 6% del tramo más corto
+    // de los dos. Con Rampa en 1: el 40% del tramo más corto a cada lado (sin llegar al pico, que en
+    // una onda redonda está en la mitad). Dos rampas vecinas nunca se pisan (40% + 40% < 100%).
     const size_t maxRamp = (size_t) std::max (1.0, a.sampleRate * 0.001);
+    const double r = std::clamp (s.ramp, 0.0, 1.0);
     for (size_t k = 0; k < b.size(); ++k)
     {
         const double before = k == 0 ? gPre : g[k - 1];
@@ -402,7 +407,10 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
         if (std::abs (after - before) < 1e-6) continue;
         const size_t lenPrev = k > 0 ? b[k] - b[k - 1] : maxRamp * 20;
         const size_t lenNext = k + 1 < b.size() ? b[k + 1] - b[k] : maxRamp * 20;
-        const size_t half = std::max<size_t> (1, std::min (maxRamp, (size_t) (0.06 * (double) std::min (lenPrev, lenNext))) / 2);
+        const double shortest = (double) std::min (lenPrev, lenNext);
+        const double halfMin = std::max (1.0, std::min ((double) maxRamp, 0.06 * shortest) / 2.0);
+        const double halfMax = std::max (halfMin, 0.40 * shortest);
+        const size_t half = (size_t) std::max (1.0, std::round (halfMin + (halfMax - halfMin) * r));
         const size_t from = b[k] > half ? b[k] - half : 0;
         const size_t to   = std::min (n, b[k] + half);
         for (size_t i = from; i < to; ++i)
@@ -415,9 +423,36 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
     return curve;
 }
 
+// Dónde termina lo salteado con Skip (de ahí en adelante se normaliza).
+inline size_t skipEndSample (const Analysis& a, const Settings& s)
+{
+    if (s.skipCycles <= 0) return 0;
+    const auto& B = segmentBounds (a, s);
+    const size_t idx = (size_t) s.skipCycles * (s.halfCycles ? 2u : 1u);
+    return idx < B.size() ? B[idx] : a.numSamples;
+}
+
+// Seguro: con rampas largas, la ganancia de un tramo vecino (más alta) puede meterse en el borde
+// de un tramo y pasarlo del objetivo. Acá se baja la ganancia justo en esas muestras para que
+// ninguna pase del objetivo. absPeakAt(i) = el mayor valor absoluto de la muestra i entre canales.
+template <typename AbsPeakAt>
+inline void limitCurve (std::vector<float>& curve, size_t from, double targetDb, AbsPeakAt absPeakAt)
+{
+    const float lim = (float) detail::toLin (targetDb);
+    for (size_t i = from; i < curve.size(); ++i)
+    {
+        const float m = absPeakAt (i);
+        if (m * curve[i] > lim) curve[i] = lim / m;
+    }
+}
+
 inline Channels render (const Channels& in, const Analysis& a, const Settings& s, double* targetUsedDb = nullptr)
 {
-    const auto curve = gainCurve (a, s, targetUsedDb);
+    double target = 0.0;
+    auto curve = gainCurve (a, s, &target);
+    if (targetUsedDb) *targetUsedDb = target;
+    limitCurve (curve, skipEndSample (a, s), target, [&] (size_t i) {
+        float m = 0; for (auto& ch : in) m = std::max (m, std::abs (ch[i])); return m; });
     Channels out = in;
     for (auto& ch : out)
         for (size_t i = 0; i < ch.size() && i < curve.size(); ++i) ch[i] *= curve[i];

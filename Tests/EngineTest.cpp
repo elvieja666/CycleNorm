@@ -128,6 +128,11 @@ int main()
         fails += ! ok;
         fails += check ("asimetrico, onda entera", in, 44100, w, 0.3, 1.05);
     }
+    {   // rampa al máximo: ningún punto pasa del objetivo y los semiciclos siguen llegando
+        Settings r = s; r.ramp = 1.0; r.autoTarget = false; r.targetDb = 0.0;
+        fails += check ("rampa 100% (asimetrico)", make808 (44100, 2.0, 140, 45, 0.08, 0.35, 2.5, 0.0, -100, false, -1, 0.6), 44100, r, 0.5, 1.5);
+        fails += check ("rampa 50% (dos golpes)", make808 (44100, 2.0, 150, 42, 0.08, 0.2, 3.0, 0.0, -90, false, 1.0), 44100, [&] { Settings q = r; q.ramp = 0.5; return q; }(), 0.5, 1.5);
+    }
     Settings t = s; t.thresholdDb = -40;
     fails += check ("umbral -40 dB", make808 (44100, 3.0, 140, 45, 0.08, 0.35, 1.0, 0.0, -100, false), 44100, t, 0.3, 1.05);
     Settings m = s; m.autoTarget = false; m.targetDb = -6;

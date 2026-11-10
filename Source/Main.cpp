@@ -119,6 +119,7 @@ public:
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
         setupSlider (skip, skipLabel, "Skip (ondas)", 0, 256, 1, "", props->getDoubleValue ("skip", 2.0));
+        setupSlider (ramp, rampLabel, "Rampa", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -207,7 +208,7 @@ public:
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 2;
+        const int colW = c.getWidth() / 3;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -217,6 +218,7 @@ public:
         };
         place (amountLabel, amount, nullptr);
         place (skipLabel, skip, nullptr);
+        place (rampLabel, ramp, nullptr);
         r.removeFromBottom (8);
 
         list.setBounds (r.removeFromLeft (230));
@@ -296,8 +298,8 @@ private:
 
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
     juce::ComboBox formatBox;
-    juce::Slider amount, skip;
-    juce::Label amountLabel, skipLabel, info;
+    juce::Slider amount, skip, ramp;
+    juce::Label amountLabel, skipLabel, rampLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -328,6 +330,7 @@ private:
         cyclenorm::Settings s;
         s.halfCycles = true; // siempre semiciclo por semiciclo
         s.amount = amount.getValue() / 100.0;
+        s.ramp = ramp.getValue() / 100.0;
         s.autoTarget = false;
         s.targetDb = 0.0; // el objetivo es siempre 0 dBFS
         s.skipCycles = (int) skip.getValue();
@@ -339,6 +342,7 @@ private:
     {
         props->setValue ("amount", amount.getValue());
         props->setValue ("skip", skip.getValue());
+        props->setValue ("ramp", ramp.getValue());
         props->saveIfNeeded();
     }
 
@@ -436,7 +440,13 @@ private:
     void processItem (Item& it) const
     {
         const auto s = readSettings();
-        const auto curve = cyclenorm::gainCurve (it.analysis, s, &it.targetUsedDb);
+        auto curve = cyclenorm::gainCurve (it.analysis, s, &it.targetUsedDb);
+        const auto& src = *it.original;
+        cyclenorm::limitCurve (curve, cyclenorm::skipEndSample (it.analysis, s), it.targetUsedDb, [&] (size_t i) {
+            float m = 0;
+            for (int ch = 0; ch < src.getNumChannels(); ++ch) m = juce::jmax (m, std::abs (src.getSample (ch, (int) i)));
+            return m;
+        });
         auto out = std::make_shared<juce::AudioBuffer<float>> (*it.original);
         float peak = 0.0f;
         for (int ch = 0; ch < out->getNumChannels(); ++ch)
@@ -486,14 +496,7 @@ private:
     void updateSkipView()
     {
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
-        const auto st = readSettings();
-        const auto& B = cyclenorm::segmentBounds (items[(size_t) current]->analysis, st);
-        const size_t idx = (size_t) st.skipCycles * (st.halfCycles ? 2u : 1u);
-        size_t end = 0;
-        if (st.skipCycles > 0)
-            end = B.empty() ? (size_t) items[(size_t) current]->original->getNumSamples()
-                            : (idx < B.size() ? B[idx] : (size_t) items[(size_t) current]->original->getNumSamples());
-        wave.setSkipEnd (end);
+        wave.setSkipEnd (cyclenorm::skipEndSample (items[(size_t) current]->analysis, readSettings()));
     }
 
     void togglePlay()
