@@ -23,6 +23,7 @@ struct Settings
     double targetDb    = -1.0;   // nivel objetivo en dBFS (si autoTarget = false)
     bool   halfCycles  = true;   // true: cada semiciclo (positivo y negativo) por separado; false: la onda entera
     int    skipCycles  = 0;      // ondas del principio que no se tocan (el ataque)
+    int    skipHalves  = -1;     // si es 0 o más: semiciclos que no se tocan (manda sobre skipCycles)
     double thresholdDb = -200.0; // ondas con pico por debajo de esto mantienen la ganancia anterior (-200 = apagado)
     double maxBoostDb  = 60.0;   // límite de subida, para no llevar el silencio digital a 0 dB
     double ramp        = 0.0;    // 0 = rampa mínima en cada cambio de ganancia (1 ms como mucho, o el 6% del tramo)
@@ -88,7 +89,9 @@ struct Biquad
 
 // Seguimiento de la nota (fundamental) a lo largo del archivo, con YIN sobre una versión
 // submuestreada. Devuelve f0 en Hz para cada muestra (0 si no hay nada que medir).
-inline std::vector<float> trackF0 (const std::vector<double>& lp, double fs)
+// winSec = 0: ventana de un período de la nota más grave (20 Hz), estable. winSec > 0: ventana
+// corta, para seguir el glide rápido del ataque.
+inline std::vector<float> trackF0 (const std::vector<double>& lp, double fs, double winSec = 0.0, double hopSec = 0.005)
 {
     const size_t n = lp.size();
     std::vector<float> out (n, 0.0f);
@@ -97,7 +100,7 @@ inline std::vector<float> trackF0 (const std::vector<double>& lp, double fs)
     std::vector<double> x (n / D);
     for (size_t i = 0; i < x.size(); ++i) x[i] = lp[i * D];
     const size_t tauMin = (size_t) std::max (2.0, fsD / 300.0), tauMax = (size_t) (fsD / 20.0) + 2;
-    const size_t W = tauMax, hop = (size_t) std::max (1.0, fsD * 0.005);
+    const size_t W = winSec > 0 ? (size_t) std::max (8.0, fsD * winSec) : tauMax, hop = (size_t) std::max (1.0, fsD * hopSec);
     if (x.size() < W + tauMax + 2) return out;
 
     struct Frame { double centre; double f0; double energy; };
@@ -133,7 +136,8 @@ inline std::vector<float> trackF0 (const std::vector<double>& lp, double fs)
             const double a = cm[best - 1], b = cm[best], c = cm[best + 1], den = a - 2 * b + c;
             if (std::abs (den) > 1e-12) tau += 0.5 * (a - c) / den;
         }
-        frames.push_back ({ ((double) p + (double) (W + tauMax) * 0.5) * (double) D, best ? fsD / tau : 0.0, e });
+        // centro: el medio de la ventana más medio período (lo que de verdad se compara)
+        frames.push_back ({ ((double) p + (double) W * 0.5 + tau * 0.5) * (double) D, best ? fsD / tau : 0.0, e });
     }
     // sin energía o sin nota: se completa con la nota de al lado
     for (auto& f : frames) if (f.energy < maxE * 1e-5) f.f0 = 0;
@@ -208,6 +212,7 @@ inline Analysis analyse (const Channels& in, double sampleRate)
     // 2º y 3º) no agregan cruces: los rulos de los armónicos quedan adentro del semiciclo de la
     // fundamental y reciben la misma ganancia, en vez de normalizarse como si fueran semiciclos.
     a.f0 = trackF0 (det, sampleRate);
+    const std::vector<double> det250 = det; // la versión abierta (hasta 250 Hz), para los ataques
     if (! a.f0.empty() && a.f0[0] > 0.0f)
     {
         std::vector<double> cuts;
@@ -215,6 +220,7 @@ inline Analysis analyse (const Channels& in, double sampleRate)
         std::vector<double> mix (n, 0.0), tmp;
         std::vector<int>   lo (n);
         std::vector<float> w (n);
+
         for (size_t i = 0; i < n; ++i)
         {
             const double c = std::clamp (1.4 * (double) a.f0[i], cuts.front(), cuts.back() * 0.999);
@@ -291,6 +297,80 @@ inline Analysis analyse (const Channels& in, double sampleRate)
         if (bestDist == (size_t) -1) continue;
         if (b.empty() || pick > b.back() + minPeriod / 2)
             b.push_back (pick);
+    }
+
+    // Ataques: al arrancar un golpe la nota baja rápido (el glide) y el medidor de nota, que mira
+    // ventanas de ~100 ms, todavía ve la nota grave, así que el filtro de la nota se pierde las
+    // primeras ondas (más rápidas). En el hueco entre el arranque del golpe y el primer corte que
+    // encontró, se buscan las ondas con el filtro abierto (250 Hz). Solo en ese hueco: en el resto
+    // siguen mandando los cruces de la fundamental.
+    {
+        const size_t hop = (size_t) std::max (1.0, sampleRate * 0.005), win = 2 * hop;
+        std::vector<double> rms;
+        double maxR = 0;
+        for (size_t p = 0; p + win <= n; p += hop)
+        {
+            double e = 0;
+            for (size_t j = p; j < p + win; ++j) e += hp[j] * hp[j];
+            rms.push_back (std::sqrt (e / (double) win));
+            maxR = std::max (maxR, rms.back());
+        }
+        std::vector<size_t> onsets;
+        bool sounding = false;
+        for (size_t f = 0; f < rms.size(); ++f)
+        {
+            const double before = f >= 6 ? *std::max_element (rms.begin() + (long) f - 6, rms.begin() + (long) f) : 0.0;
+            const bool loud = rms[f] > maxR * 0.01;
+            if ((loud && ! sounding) || (sounding && rms[f] > 4.0 * before && rms[f] > maxR * 0.05))
+                onsets.push_back (f * hop);
+            if (loud) sounding = true;
+            else if (rms[f] < maxR * 0.003) sounding = false;
+        }
+        std::vector<size_t> extra;
+        for (size_t o : onsets)
+        {
+            const auto firstAfter = std::lower_bound (b.begin(), b.end(), o);
+            const size_t gapEnd = firstAfter == b.end() ? n : *firstAfter;
+            const size_t gapStart = (firstAfter == b.begin()) ? o : std::max (o, *(firstAfter - 1) + minPeriod);
+            if (gapEnd <= gapStart + 2 * minPeriod) continue;
+            double mx = 0;
+            for (size_t i = gapStart; i < gapEnd; ++i) mx = std::max (mx, std::abs (det250[i]));
+            const double h = 0.05 * mx;
+            bool arm = false;
+            size_t last = gapStart;
+            std::vector<size_t> found;
+            for (size_t i = std::max<size_t> (gapStart, 1); i + minPeriod < gapEnd; ++i)
+            {
+                if (det250[i] < -h) arm = true;
+                if (arm && det250[i - 1] < 0.0 && det250[i] >= 0.0 && (found.empty() || i - last >= minPeriod))
+                {
+                    found.push_back (i); last = i; arm = false;
+                }
+            }
+            for (size_t k = 0; k < found.size(); ++k)
+            {
+                const size_t c = found[k];
+                const size_t gapL = k > 0 ? c - found[k - 1] : (k + 1 < found.size() ? found[k + 1] - c : gapEnd - c);
+                const size_t wnd = std::max<size_t> (1, gapL / 4);
+                size_t pick = 0, bestD = (size_t) -1;
+                for (size_t i = std::max<size_t> (1, c > wnd ? c - wnd : 1); i <= std::min (n - 1, c + wnd); ++i)
+                    if (raw[i - 1] < 0.0 && raw[i] >= 0.0)
+                    {
+                        const size_t z = std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i;
+                        const size_t d = z > c ? z - c : c - z;
+                        if (d < bestD) { bestD = d; pick = z; }
+                    }
+                if (bestD != (size_t) -1 && pick + minPeriod < gapEnd && pick >= gapStart) extra.push_back (pick);
+            }
+        }
+        if (! extra.empty())
+        {
+            b.insert (b.end(), extra.begin(), extra.end());
+            std::sort (b.begin(), b.end());
+            std::vector<size_t> clean;
+            for (size_t v : b) if (clean.empty() || v >= clean.back() + minPeriod / 2) clean.push_back (v);
+            b.swap (clean);
+        }
     }
 
     auto peakOf = [&] (size_t from, size_t to) {
@@ -434,6 +514,13 @@ inline Analysis analyse (const Channels& in, double sampleRate)
 }
 
 // Los tramos que se normalizan según el modo: ondas enteras o semiciclos.
+// Cuántos tramos (semiciclos u ondas) del principio no se tocan.
+inline size_t skipSegments (const Settings& s)
+{
+    if (s.skipHalves >= 0) return (size_t) s.skipHalves;
+    return (size_t) std::max (0, s.skipCycles) * (s.halfCycles ? 2u : 1u);
+}
+
 inline const std::vector<size_t>& segmentBounds (const Analysis& a, const Settings& s) { return s.halfCycles ? a.halfBounds : a.bounds; }
 inline const std::vector<float>&  segmentPeaks  (const Analysis& a, const Settings& s) { return s.halfCycles ? a.halfPeaks  : a.peaks; }
 
@@ -447,7 +534,7 @@ inline std::vector<double> cycleGainsDb (const Analysis& a, const Settings& s, d
     if (K == 0) { if (targetUsedDb) *targetUsedDb = 0; return g; }
 
     // Skip se cuenta siempre en ondas enteras (en semiciclos son el doble de tramos)
-    const size_t skip = (size_t) std::max (0, s.skipCycles) * (s.halfCycles ? 2u : 1u);
+    const size_t skip = skipSegments (s);
     const double thr = s.thresholdDb;
 
     double target = s.targetDb;
@@ -502,7 +589,7 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
         if (peak <= 1e-9f || pDb < s.thresholdDb) return fallback;
         return std::min (fallback, std::clamp (s.amount * (target - pDb), -s.maxBoostDb, s.maxBoostDb));
     };
-    const double gPre  = s.skipCycles > 0 ? 0.0 : ownGain (a.preRollPeak, g.front());
+    const double gPre  = skipSegments (s) > 0 ? 0.0 : ownGain (a.preRollPeak, g.front());
     const double gTail = ownGain (a.tailPeak, s.maxBoostDb);
     const double gPost = (toDb (a.tailPeak) < s.thresholdDb || a.tailPeak <= 1e-9f) ? g.back() : gTail;
 
@@ -545,9 +632,9 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
 // Dónde termina lo salteado con Skip (de ahí en adelante se normaliza).
 inline size_t skipEndSample (const Analysis& a, const Settings& s)
 {
-    if (s.skipCycles <= 0) return 0;
+    const size_t idx = skipSegments (s);
+    if (idx == 0) return 0;
     const auto& B = segmentBounds (a, s);
-    const size_t idx = (size_t) s.skipCycles * (s.halfCycles ? 2u : 1u);
     return idx < B.size() ? B[idx] : a.numSamples;
 }
 

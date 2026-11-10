@@ -118,7 +118,9 @@ public:
 
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
-        skipCycles = juce::jlimit (0, kMaxSkip, props->getIntValue ("skip", 2)); // se cambia arrastrando la línea en el visor
+        // se cambia arrastrando la línea en el visor; se cuenta en semiciclos (antes en ondas: 1 onda = 2)
+        skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
+                                                                                 : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Rampa", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
@@ -137,8 +139,8 @@ public:
         wave.maxSkip = kMaxSkip;
         wave.onSkipDragged = [this] (int n)
         {
-            if (skipCycles == n) { wave.refresh(); return; }
-            skipCycles = n;
+            if (skipHalves == n) { wave.refresh(); return; }
+            skipHalves = n;
             settingsChanged();  // reprocesa
             updateSkipView();   // la línea sigue al mouse enseguida
         };
@@ -299,8 +301,8 @@ private:
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
     juce::ComboBox formatBox;
     juce::Slider amount, ramp;
-    static constexpr int kMaxSkip = 256;
-    int skipCycles = 2;
+    static constexpr int kMaxSkip = 512; // semiciclos
+    int skipHalves = 4;
     juce::Label amountLabel, rampLabel, info;
     juce::ListBox list;
     WaveformView wave;
@@ -337,7 +339,7 @@ private:
         s.ramp = ramp.getValue() / 100.0;
         s.autoTarget = false;
         s.targetDb = 0.0; // el objetivo es siempre 0 dBFS
-        s.skipCycles = skipCycles;
+        s.skipHalves = skipHalves;
         s.thresholdDb = -200.0; // sin umbral: se normaliza todo, también la cola y el ruido
         return s;
     }
@@ -345,7 +347,7 @@ private:
     void saveSettings()
     {
         props->setValue ("amount", amount.getValue());
-        props->setValue ("skip", skipCycles);
+        props->setValue ("skipHalves", skipHalves);
         props->setValue ("ramp", ramp.getValue());
         props->saveIfNeeded();
     }
@@ -582,7 +584,7 @@ private:
         auto& it = *items[(size_t) current];
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::String t;
-        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · Skip: ") << skipCycles << u8 (" ondas · todo a 0 dBFS · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
+        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · Skip: ") << skipHalves << u8 (" semiciclos · todo a 0 dBFS · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
             t << u8 ("  ·  ¡SATURA! El ataque original pasa de 0 dBFS: exportá en 32 bit float");

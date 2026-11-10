@@ -124,6 +124,31 @@ int main()
         Settings z = s; z.autoTarget = false; z.targetDb = 0;
         fails += check ("armonicos fuertes, picos", in, fs, z, 0.3, 1.5);
     }
+    // ataque con glide muy rápido (de 120 a 34 Hz en 50 ms, como el 808 de Lex): las primeras ondas
+    // del ataque tienen que estar detectadas (si no, todo el ataque queda como un solo bloque y la
+    // línea de Skip no puede ir más atrás)
+    {
+        const double fs = 44100;
+        const size_t n = (size_t) (fs * 1.5);
+        Channels in (1, std::vector<float> (n));
+        double ph = 0;
+        size_t expectedBefore50 = 0; double lastPh = 0;
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double t = i / fs, f = t < 0.05 ? 120.0 - 86.0 * (t / 0.05) : 34.0;
+            ph += 2 * M_PI * f / fs;
+            if (t < 0.05 && std::floor (ph / (2 * M_PI)) > std::floor (lastPh / (2 * M_PI))) ++expectedBefore50;
+            lastPh = ph;
+            in[0][i] = (float) (std::exp (-t / 0.6) * std::tanh (2.0 * std::sin (ph)) / std::tanh (2.0));
+        }
+        auto a = analyse (in, fs);
+        size_t before50 = 0;
+        for (auto v : a.bounds) if (v < (size_t) (0.05 * fs)) ++before50;
+        const bool ok = before50 + 1 >= expectedBefore50 && a.bounds.front() < (size_t) (0.015 * fs);
+        std::printf ("glide rapido en el ataque: %zu ondas detectadas en los primeros 50 ms (hay %zu), primera a %.1f ms  %s\n",
+                     before50, expectedBefore50, a.bounds.front() * 1000.0 / fs, ok ? "OK" : "FALLA");
+        fails += ! ok;
+    }
     // semiciclos: un 808 asimétrico (el negativo más chico), los dos semiciclos tienen que quedar iguales
     {
         auto in = make808 (44100, 2.0, 140, 45, 0.08, 0.35, 2.0, 0.0, -100, false, -1, 0.6);
@@ -173,6 +198,17 @@ int main()
         bool ok = std::abs (g[50] - gf[50] * 0.5) < 1e-9;
         std::printf ("amount 50%%: ganancia onda 50 = %.2f dB (100%% = %.2f dB) %s\n", g[50], gf[50], ok ? "OK" : "FALLA");
         fails += !ok;
+    }
+    // Skip en semiciclos: con 3 salteados, se normaliza desde el 4º semiciclo (que arranca en un cruce descendente)
+    {
+        auto in = make808 (44100, 1.0, 140, 45, 0.08, 0.35, 2.0, 0.0, -100, false);
+        auto a = analyse (in, 44100);
+        Settings h; h.skipHalves = 3; h.autoTarget = false; h.targetDb = 0;
+        auto g = cycleGainsDb (a, h);
+        const bool ok = skipEndSample (a, h) == a.halfBounds[3] && g[0] == 0 && g[1] == 0 && g[2] == 0 && g[3] != 0
+                        && skipEndSample (a, [] { Settings z; z.skipHalves = 0; return z; }()) == 0;
+        std::printf ("skip en semiciclos (3): termina en el semiciclo 3, ganancias %.1f %.1f %.1f | %.1f dB  %s\n", g[0], g[1], g[2], g[3], ok ? "OK" : "FALLA");
+        fails += ! ok;
     }
     // casos raros: silencio, archivo cortísimo, mono
     {

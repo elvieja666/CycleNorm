@@ -109,13 +109,8 @@ private:
     size_t skipEnd = 0;
     bool draggingSkip = false;
 
-    // La línea de Skip está en el inicio de la onda número Skip (cada onda = 2 tramos, semiciclos).
-    // Con Skip en 0 se dibuja en el primer cruce, así siempre se puede agarrar.
-    double skipLineSample() const
-    {
-        if (skipEnd > 0) return (double) skipEnd;
-        return bounds.empty() ? 0.0 : (double) bounds.front();
-    }
+    // La línea de Skip está donde empieza el semiciclo número Skip. Con Skip en 0, bien a la izquierda.
+    double skipLineSample() const { return (double) skipEnd; }
     bool hasSkipLine() const { return totalLen() > 0 && ! bounds.empty() && onSkipDragged != nullptr; }
     bool nearSkipLine (juce::Point<float> p) const
     {
@@ -124,11 +119,12 @@ private:
     }
     void dragSkipTo (float x)
     {
+        // salta de semiciclo en semiciclo: 0 = el principio del archivo, N = donde empieza el semiciclo N
         const double target = xToSample (x);
-        int best = 0; double bestD = 1e300;
-        for (int k = 0; k <= maxSkip && (size_t) (2 * k) < bounds.size(); ++k)
+        int best = 0; double bestD = std::abs (target);
+        for (int k = 1; k <= maxSkip && (size_t) k < bounds.size(); ++k)
         {
-            const double d = std::abs ((double) bounds[(size_t) (2 * k)] - target);
+            const double d = std::abs ((double) bounds[(size_t) k] - target);
             if (d < bestD) { bestD = d; best = k; }
         }
         if (onSkipDragged) onSkipDragged (best);
@@ -150,6 +146,7 @@ private:
         const double len = (double) totalLen();
         viewLen = juce::jlimit (0.0, len, viewLen);
         viewStart = juce::jlimit (0.0, juce::jmax (0.0, len - viewLen), viewStart);
+        if (viewStart < viewLen * 0.005) viewStart = 0.0; // a unos píxeles del principio: pegado al principio
     }
 
     void timerCallback() override
@@ -252,8 +249,10 @@ private:
             if (showSkipLine)
             {
                 // línea de Skip (se arrastra): punteada, con una manija arriba
-                const float lx = (float) r.getX() + (float) sampleToX (skipLineSample());
-                if (lx >= (float) r.getX() - 1.0f && lx <= (float) r.getRight())
+                // (en 0 queda pegada al borde izquierdo; se corre 1 píxel para que se vea entera)
+                const float rawX = (float) r.getX() + (float) sampleToX (skipLineSample());
+                const float lx = juce::jmax ((float) r.getX() + 1.0f, rawX);
+                if (rawX >= (float) r.getX() - 1.0f && lx <= (float) r.getRight())
                 {
                     g.setColour (juce::Colour (0xffd0a040).withAlpha (draggingSkip ? 1.0f : 0.85f));
                     const float dashes[] = { 4.0f, 3.0f };
