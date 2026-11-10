@@ -1,6 +1,7 @@
 // CycleNorm: normaliza un 808 onda por onda (cada ciclo al mismo pico) y lo exporta.
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "CycleEngine.h"
+#include "LoopFinder.h"
 #include "ABSource.h"
 #include "WaveformView.h"
 
@@ -32,6 +33,9 @@ struct Item
     double targetUsedDb = 0.0;
     float outPeak = 0.0f;
     size_t endSample = 0; // dónde se corta el final (la línea de Fin); 0 = hasta el final del archivo
+    size_t loopStart = 0, loopEnd = 0; // zona de loop (0/0 = sin loop): de un cruce ascendente a otro
+    double loopQuality = 0;
+    bool hasLoop() const { return loopEnd > loopStart; }
 
     int lengthToWrite() const
     {
@@ -99,6 +103,10 @@ public:
         setupButton (playButton, "Play");
         setupButton (loopButton, "Loop");
         setupButton (abButton, "Escuchando: Procesado");
+        setupButton (findLoopButton, "Buscar loop");
+        setupButton (clearLoopButton, "Quitar loop");
+        findLoopButton.onClick = [this] { findLoopForCurrent(); };
+        clearLoopButton.onClick = [this] { setLoopForCurrent (0, 0); };
         setupButton (exportButton, u8 ("Exportar…"));
         setupButton (exportAllButton, u8 ("Exportar todos…"));
         loopButton.setClickingTogglesState (true);
@@ -129,6 +137,10 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Rampa", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
+        setupSlider (xfade, xfadeLabel, "Crossfade del loop", 0, 16, 1, "", props->getDoubleValue ("xfade", 0.0));
+        xfade.textFromValueFunction = [] (double v) { const int n = (int) v; return n == 0 ? juce::String ("Off") : juce::String (n) + (n == 1 ? " onda" : " ondas"); };
+        xfade.valueFromTextFunction = [] (const juce::String& t) { return t.trim().equalsIgnoreCase ("off") ? 0.0 : (double) t.getIntValue(); };
+        xfade.updateText();
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -149,11 +161,13 @@ public:
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
             auto& it = *items[(size_t) current];
             const size_t full = (size_t) it.original->getNumSamples();
+            if (it.hasLoop() && e < it.loopEnd) e = it.loopEnd; // Fin no puede cortar el loop
             it.endSample = e >= full ? 0 : e;
             source.setEndSample ((juce::int64) it.endSample);
             wave.setEndSample (it.endSample);
             updateInfo();
         };
+        wave.onLoopDragged = [this] (size_t s0, size_t s1) { setLoopForCurrent (s0, s1); };
         wave.onSkipDragged = [this] (int n)
         {
             if (skipHalves == n) { wave.refresh(); return; }
@@ -162,6 +176,7 @@ public:
                 auto& it = *items[(size_t) current];
                 auto st = readSettings(); st.skipHalves = n;
                 if (it.endSample > 0 && cyclenorm::skipEndSample (it.analysis, st) >= it.endSample) return;
+                if (it.hasLoop() && cyclenorm::skipEndSample (it.analysis, st) > it.loopStart) return; // ni el loop
             }
             skipHalves = n;
             settingsChanged();  // reprocesa
@@ -181,7 +196,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (1040, 660);
+        setSize (1200, 680);
         updateButtons();
         startTimerHz (15);
     }
@@ -222,7 +237,9 @@ public:
         removeButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (16);
         playButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (6);
         loopButton.setBounds (top.removeFromLeft (60)); top.removeFromLeft (6);
-        abButton.setBounds (top.removeFromLeft (180));
+        abButton.setBounds (top.removeFromLeft (180)); top.removeFromLeft (16);
+        findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
+        clearLoopButton.setBounds (top.removeFromLeft (95));
         exportAllButton.setBounds (top.removeFromRight (130)); top.removeFromRight (6);
         exportButton.setBounds (top.removeFromRight (100)); top.removeFromRight (6);
         formatBox.setBounds (top.removeFromRight (210));
@@ -234,7 +251,7 @@ public:
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 2;
+        const int colW = c.getWidth() / 3;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -244,6 +261,7 @@ public:
         };
         place (amountLabel, amount, nullptr);
         place (rampLabel, ramp, nullptr);
+        place (xfadeLabel, xfade, nullptr);
         r.removeFromBottom (8);
 
         list.setBounds (r.removeFromLeft (230));
@@ -295,6 +313,11 @@ public:
                 for (auto v : B) if (std::abs ((double) v - testEnd.getDoubleValue()) < bd) { bd = std::abs ((double) v - testEnd.getDoubleValue()); best = v; }
                 it0.endSample = best;
             }
+            if (juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_LOOP", {}).isNotEmpty())
+            {
+                list.selectRow (0);
+                findLoopForCurrent();
+            }
             const bool ok = writeItem (*items.front(), juce::File (testOut), err);
             std::printf ("test export: %s %s\n", ok ? "OK" : "FALLA", err.toRawUTF8());
             juce::Timer::callAfterDelay (1500, [] { juce::JUCEApplication::quit(); });
@@ -331,12 +354,13 @@ private:
     std::vector<std::unique_ptr<Item>> items;
     int current = -1;
 
-    juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
+    juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton,
+                     findLoopButton, clearLoopButton;
     juce::ComboBox formatBox;
-    juce::Slider amount, ramp;
+    juce::Slider amount, ramp, xfade;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 4;
-    juce::Label amountLabel, rampLabel, info;
+    juce::Label amountLabel, rampLabel, xfadeLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -382,6 +406,7 @@ private:
         props->setValue ("amount", amount.getValue());
         props->setValue ("skipHalves", skipHalves);
         props->setValue ("ramp", ramp.getValue());
+        props->setValue ("xfade", xfade.getValue());
         props->saveIfNeeded();
     }
 
@@ -528,8 +553,65 @@ private:
                 peak = juce::jmax (peak, std::abs (d[i]));
             }
         }
+        // crossfade del loop (metido en el audio, así suena igual al tocarlo que en el sampler)
+        if (it.hasLoop() && it.loopEnd <= (size_t) out->getNumSamples())
+        {
+            const int nx = (int) xfade.getValue();
+            if (nx > 0)
+            {
+                const auto& B = it.analysis.bounds;
+                const auto at = std::lower_bound (B.begin(), B.end(), it.loopEnd);
+                const long idx = (long) std::distance (B.begin(), at);
+                const size_t from = B[(size_t) juce::jmax (0L, idx - nx)];
+                std::vector<float*> chs;
+                for (int ch = 0; ch < out->getNumChannels(); ++ch) chs.push_back (out->getWritePointer (ch));
+                cyclenorm::applyLoopCrossfade (chs, it.loopStart, it.loopEnd, it.loopEnd - from);
+            }
+            cyclenorm::AudioView v;
+            for (int ch = 0; ch < out->getNumChannels(); ++ch) v.ch.push_back (out->getReadPointer (ch));
+            v.n = (size_t) out->getNumSamples();
+            it.loopQuality = cyclenorm::loopQuality (v, it.loopStart, it.loopEnd);
+        }
         it.processed = out;
         it.outPeak = peak;
+    }
+
+    //== loop ==================================================================
+    void findLoopForCurrent()
+    {
+        if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+        auto& it = *items[(size_t) current];
+        // se busca sobre el normalizado sin crossfade
+        const auto saved = std::make_pair (it.loopStart, it.loopEnd);
+        it.loopStart = it.loopEnd = 0;
+        processItem (it);
+        cyclenorm::AudioView v;
+        for (int ch = 0; ch < it.processed->getNumChannels(); ++ch) v.ch.push_back (it.processed->getReadPointer (ch));
+        v.n = (size_t) it.processed->getNumSamples();
+        const auto from = cyclenorm::skipEndSample (it.analysis, readSettings());
+        const auto L = cyclenorm::findLoop (it.analysis, v, from, (size_t) it.lengthToWrite());
+        if (! L.found)
+        {
+            it.loopStart = saved.first; it.loopEnd = saved.second;
+            processCurrent();
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Buscar loop",
+                u8 ("No encontré un loop entre la línea de Skip y la de Fin: hacen falta al menos unas 6 ondas estables."));
+            return;
+        }
+        setLoopForCurrent (L.start, L.end);
+        if (! loopButton.getToggleState()) { loopButton.setToggleState (true, juce::sendNotification); }
+    }
+
+    void setLoopForCurrent (size_t s0, size_t s1)
+    {
+        if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+        auto& it = *items[(size_t) current];
+        if (s1 <= s0) s0 = s1 = 0;
+        it.loopStart = s0; it.loopEnd = s1;
+        source.setLoopRegion ((juce::int64) s0, (juce::int64) s1);
+        wave.setLoop (s0, s1);
+        processCurrent();   // aplica el crossfade y mide la calidad
+        updateButtons();
     }
 
     void processCurrent()
@@ -558,6 +640,9 @@ private:
         source.setLooping (loopButton.getToggleState());
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
         wave.setEndSample (it.endSample);
+        wave.setLoopBounds (it.analysis.bounds);
+        wave.setLoop (it.loopStart, it.loopEnd);
+        source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
         updateSkipView();
         if (wasPlaying) transport.start();
         updateInfo();
@@ -601,6 +686,8 @@ private:
         playButton.setEnabled (has);
         exportButton.setEnabled (has);
         exportAllButton.setEnabled (! items.empty());
+        findLoopButton.setEnabled (has);
+        clearLoopButton.setEnabled (has && items[(size_t) current]->hasLoop());
         dragOut.setEnabled (has);
         dragOut.repaint();
     }
@@ -623,6 +710,14 @@ private:
         if (it.endSample > 0)
             t << u8 (" · Fin: ") << juce::String ((double) it.endSample / it.sampleRate, 2) << " s (de "
               << juce::String ((double) it.original->getNumSamples() / it.sampleRate, 2) << " s)";
+        if (it.hasLoop())
+        {
+            const auto& B = it.analysis.bounds;
+            const auto nCyc = std::distance (std::lower_bound (B.begin(), B.end(), it.loopStart), std::lower_bound (B.begin(), B.end(), it.loopEnd));
+            t << u8 (" · Loop: ") << juce::String ((double) it.loopStart / it.sampleRate, 3) << u8 ("–")
+              << juce::String ((double) it.loopEnd / it.sampleRate, 3) << " s (" << (int) nCyc << u8 (" ondas, calidad ")
+              << juce::String (it.loopQuality * 100.0, 1) << " %)";
+        }
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
             t << u8 ("  ·  ¡SATURA! El ataque original pasa de 0 dBFS: exportá en 32 bit float");
@@ -640,7 +735,7 @@ private:
         const int id = formatBox.getSelectedId();
         if (id == 2) return { false, 24 };
         if (id == 3) return { false, 32 };
-        const bool srcAiff = it.file.hasFileExtension ("aif;aiff");
+        const bool srcAiff = it.file.hasFileExtension ("aif;aiff") && ! it.hasLoop(); // con loop: WAV (lleva los puntos de loop)
         if (srcAiff && ! it.isFloat && it.bits <= 24) return { true, juce::jmax (8, it.bits) };
         if (it.isFloat || it.bits > 24) return { false, 32 };
         return { false, it.bits == 8 || it.bits == 16 || it.bits == 24 ? it.bits : 24 };
@@ -661,9 +756,28 @@ private:
         dest.deleteFile();
         auto stream = std::make_unique<juce::FileOutputStream> (dest);
         if (! stream->openedOk()) { error = "No se pudo escribir " + dest.getFullPathName(); return false; }
+        // Puntos de loop adentro del WAV (bloque "smpl", el que leen el Sampler de Logic, Kontakt,
+        // Simpler...) y la nota raíz medida, así el sampler lo afina y lo loopea solo.
+        juce::StringPairArray meta;
+        if (it.hasLoop() && ! fmtInfo.aiff)
+        {
+            const double note = cyclenorm::midiNoteOf (it.analysis, it.loopStart, it.loopEnd);
+            const int unity = juce::jlimit (0, 127, (int) std::floor (note));
+            const double frac = juce::jlimit (0.0, 0.999999, note - std::floor (note));
+            meta.set ("MidiUnityNote", juce::String (unity));
+            meta.set ("MidiPitchFraction", juce::String ((juce::int32) (juce::uint32) (frac * 4294967296.0))); // (como entero de 32 bits)
+            meta.set ("SamplePeriod", juce::String ((int) std::round (1.0e9 / it.sampleRate)));
+            meta.set ("NumSampleLoops", "1");
+            meta.set ("Loop0Identifier", "0");
+            meta.set ("Loop0Type", "0"); // hacia adelante
+            meta.set ("Loop0Start", juce::String ((juce::int64) it.loopStart));
+            meta.set ("Loop0End", juce::String ((juce::int64) it.loopEnd - 1)); // en el WAV el fin es la última muestra del loop
+            meta.set ("Loop0Fraction", "0");
+            meta.set ("Loop0PlayCount", "0"); // infinito
+        }
         std::unique_ptr<juce::AudioFormatWriter> w (fmt.createWriterFor (stream.get(), it.sampleRate,
                                                                           (unsigned int) it.processed->getNumChannels(),
-                                                                          fmtInfo.bits, {}, 0));
+                                                                          fmtInfo.bits, meta, 0));
         if (w == nullptr) { error = "Formato no soportado"; return false; }
         stream.release(); // ahora es del writer
         if (! w->writeFromAudioSampleBuffer (*it.processed, 0, it.lengthToWrite())) // hasta la línea de Fin
@@ -792,7 +906,7 @@ private:
             content = new MainComponent();
             setContentOwned (content, true);
             setResizable (true, true);
-            setResizeLimits (820, 520, 4000, 3000);
+            setResizeLimits (1130, 560, 4000, 3000);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }

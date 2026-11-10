@@ -7,7 +7,7 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **Abrir…**. También podés soltar archivos sobre el ícono del Dock.
 2. Arriba ves el **original** y abajo el **procesado**. Las líneas verticales finitas marcan cada semiciclo detectado. Aparecen cuando hacés zoom y entran.
 3. La app suena por la salida que tenga elegida la Mac y la sigue sola: si enchufás auriculares, conectás unos bluetooth o cambiás la salida en Ajustes > Sonido, en un segundo pasa a esa salida (si estaba sonando, sigue sonando, con un corte mínimo al cambiar).
-4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar), **↑ / ↓** = pasar de archivo. **Loop** repite.
+4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar), **↑ / ↓** = pasar de archivo. **Loop** repite: si el archivo tiene loop (zona verde), repite esa zona infinitamente; si no, todo el archivo.
 5. Para llevarlo al DAW tenés dos caminos:
    - **Exportar…** guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **Exportar todos…** procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
    - **Arrastrá el procesado al DAW**: arrastrás ese botón a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
@@ -25,6 +25,23 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar la app.
 
 **El objetivo es siempre 0 dBFS** (no hay control de Target) y **se normaliza todo**, incluida la cola hasta el final y el ruido de fondo (no hay Threshold). Abajo a la izquierda se ve cuántas ondas y semiciclos detectó y el pico de salida. Lo único que puede pasar de 0 dBFS es el ataque original que dejás sin tocar con Skip (si ya venía pasado). En ese caso aparece **¡SATURA!** en rojo: exportá en 32 bit float.
+
+## Loop
+
+La idea: normalizar el 808 y loopear una parte para que suene infinitamente sin que se note, y después darle el decay que quieras con la envolvente del sampler.
+
+1. Tocá **Buscar loop**. La app busca, entre la línea de Skip y la de Fin, de dónde a dónde loopear para que el empalme no se note. Marca esa zona en **verde** en el gráfico de abajo y prende **Loop**: el play arranca desde el principio y, al llegar al fin del loop, vuelve al inicio del loop infinitamente.
+2. Si querés otro largo, arrastrá las **puntas verdes** (manijas abajo). Saltan de onda entera en onda entera, así siempre cortan en fase y sin click. Abajo a la izquierda se lee el loop y su **calidad** (100 % = empalme perfecto). Si al estirarlo la calidad baja mucho, es porque la nota cambia a lo largo de la cola y el salto de pitch se va a notar.
+3. **Crossfade del loop** (de Off a 16 ondas, por defecto Off): funde las últimas ondas antes del fin del loop con las que están antes del inicio. Suaviza cualquier diferencia que quede en el empalme. Queda metido en el audio, así suena igual en la app que en el sampler.
+4. **Quitar loop** lo borra.
+5. Al **exportar**, el WAV lleva los **puntos de loop adentro** (bloque "smpl", el que leen el Sampler de Logic, Kontakt, Simpler y la mayoría de los samplers). También lleva la **nota raíz** medida (por ejemplo C1 + 3 cents), así el sampler lo afina solo. Con loop siempre se exporta en WAV, aunque el original sea AIFF.
+
+**Cómo elige el loop:** el inicio y el fin caen siempre en un cruce por cero ascendente de la fundamental (ondas enteras). Para cada par posible compara la onda antes del fin con la onda antes del inicio, y la onda en el fin con la del inicio. Es decir, lo que se escucha al saltar contra lo que se escucharía sin saltar, y mide:
+- **la forma de onda y el nivel** (timbre),
+- **el largo de las ondas** (la nota: que no haya salto de pitch),
+- **el brillo** (armónicos y ruido de fondo).
+
+Los 400 mejores se miden muestra a muestra alrededor del empalme. Entre los que empalman casi igual de bien, se queda con el loop más largo, que suena más natural que uno de pocas ondas. Hacen falta al menos 4 ondas estables. Cada archivo tiene su propio loop. La línea de Skip no puede pasar el inicio del loop, ni la de Fin quedar antes de su fin.
 
 ## Cómo funciona
 
@@ -48,7 +65,8 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 - `Source/CycleEngine.h`: el motor (detección de ondas y ganancia). No depende de JUCE.
 - `Source/Main.cpp`: la app (ventana, lista, controles, exportar).
 - `Source/WaveformView.h`: el visor de forma de onda.
-- `Source/ABSource.h`: la reproducción original / procesado.
-- `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico, Threshold, Target fijo, Amount 50 %). Incluye un 808 con 2º y 3º armónico casi tan fuertes como la fundamental y uno con un glide muy rápido en el ataque (de 120 a 34 Hz en 50 ms). Comprueba que cada tramo llega al objetivo, que cada onda dura un período de la fundamental, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
+- `Source/LoopFinder.h`: el buscador de loop, el crossfade del empalme y la nota raíz.
+- `Source/ABSource.h`: la reproducción original / procesado (y la zona de loop).
+- `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico, Threshold, Target fijo, Amount 50 %). Incluye un 808 con 2º y 3º armónico casi tan fuertes como la fundamental y uno con un glide muy rápido en el ataque (de 120 a 34 Hz en 50 ms). También prueba el loop: que caiga en ondas enteras, que empalme sin salto, el crossfade y la nota raíz. Comprueba que cada tramo llega al objetivo, que cada onda dura un período de la fundamental, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
 
 **Visor:** la rueda o el gesto vertical de dos dedos hace zoom, el gesto horizontal desplaza, el pinch también hace zoom, un clic mueve el cursor de reproducción y el doble clic vuelve a mostrar todo.

@@ -1,6 +1,6 @@
 // Prueba del motor con 808 sintéticos. Compilar:
 //   g++ -O2 -std=c++17 -fsanitize=address,undefined -I../Source EngineTest.cpp -o engine_test && ./engine_test
-#include "CycleEngine.h"
+#include "LoopFinder.h"
 #include <cstdio>
 #include <random>
 
@@ -208,6 +208,51 @@ int main()
         const bool ok = skipEndSample (a, h) == a.halfBounds[3] && g[0] == 0 && g[1] == 0 && g[2] == 0 && g[3] != 0
                         && skipEndSample (a, [] { Settings z; z.skipHalves = 0; return z; }()) == 0;
         std::printf ("skip en semiciclos (3): termina en el semiciclo 3, ganancias %.1f %.1f %.1f | %.1f dB  %s\n", g[0], g[1], g[2], g[3], ok ? "OK" : "FALLA");
+        fails += ! ok;
+    }
+    // Loop: en un 808 normalizado con armónicos y un poco de ruido, el buscador tiene que encontrar un
+    // loop de ondas enteras, que empalme sin salto (en fase) y con buena calidad. Con crossfade, el
+    // empalme queda igual o mejor.
+    {
+        const double fs = 44100, f = 41.0;
+        const size_t n = (size_t) (fs * 2.5);
+        Channels in (2, std::vector<float> (n));
+        std::mt19937 rng (7); std::normal_distribution<double> nd (0.0, 0.002);
+        double ph = 0;
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double t = i / fs, fr = f * (1.0 + 0.004 * std::exp (-t / 0.4)); // un poquito de caída de pitch
+            ph += 2 * M_PI * fr / fs;
+            const double v = std::exp (-t / 0.5) * (std::sin (ph) + 0.3 * std::sin (2 * ph + 0.5) + 0.15 * std::sin (3 * ph)) + nd (rng);
+            in[0][i] = (float) v; in[1][i] = (float) (0.9 * v);
+        }
+        auto a = analyse (in, fs);
+        Settings z; z.skipHalves = 8; z.autoTarget = false; z.targetDb = 0;
+        auto y = render (in, a, z);
+        AudioView v; v.ch = { y[0].data(), y[1].data() }; v.n = n;
+        auto L = findLoop (a, v, skipEndSample (a, z), n);
+        double maxStep = 0;
+        for (size_t i = L.start + 1; i < L.end; ++i) maxStep = std::max (maxStep, (double) std::abs (y[0][i] - y[0][i - 1]));
+        const double jump = std::abs (y[0][L.start] - y[0][L.end - 1]);
+        const bool onBounds = std::find (a.bounds.begin(), a.bounds.end(), L.start) != a.bounds.end()
+                           && std::find (a.bounds.begin(), a.bounds.end(), L.end) != a.bounds.end();
+        bool ok = L.found && onBounds && L.cycles >= 4 && L.quality > 0.9 && jump <= 1.5 * maxStep;
+        std::printf ("loop: %d ondas (%.3f-%.3f s), calidad %.1f%%, salto en el empalme %.4f (paso normal max %.4f)  %s\n",
+                     L.cycles, L.start / fs, L.end / fs, L.quality * 100, jump, maxStep, ok ? "OK" : "FALLA");
+        fails += ! ok;
+        // crossfade de 2 ondas
+        std::vector<float*> chs { y[0].data(), y[1].data() };
+        const size_t xf = 2 * (size_t) (fs / f);
+        applyLoopCrossfade (chs, L.start, L.end, xf);
+        const double jump2 = std::abs (y[0][L.start] - y[0][L.end - 1]);
+        AudioView v2; v2.ch = { y[0].data(), y[1].data() }; v2.n = n;
+        const double q2 = loopQuality (v2, L.start, L.end);
+        ok = jump2 <= jump + 1e-6 && q2 >= 0.9;
+        std::printf ("loop con crossfade de 2 ondas: salto %.4f, calidad %.1f%%  %s\n", jump2, q2 * 100, ok ? "OK" : "FALLA");
+        fails += ! ok;
+        const double note = midiNoteOf (a, L.start, L.end), expectedNote = 69.0 + 12.0 * std::log2 (f / 440.0);
+        ok = std::abs (note - expectedNote) < 0.2;
+        std::printf ("nota del loop: %.2f (esperada %.2f)  %s\n", note, expectedNote, ok ? "OK" : "FALLA");
         fails += ! ok;
     }
     // casos raros: silencio, archivo cortísimo, mono

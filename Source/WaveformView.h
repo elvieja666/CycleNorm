@@ -17,6 +17,7 @@ public:
     std::function<void (double)> onSeek;          // clic: mover a esta posición (segundos)
     std::function<void (int)> onSkipDragged;      // arrastrando la línea de Skip: nueva cantidad de semiciclos
     std::function<void (size_t)> onEndDragged;    // arrastrando la línea de Fin: nueva muestra final
+    std::function<void (size_t, size_t)> onLoopDragged; // arrastrando una punta del loop: nuevo inicio y fin
     int maxSkip = 64;
     std::function<bool()> isPlayingProcessed;     // para resaltar el carril que suena
 
@@ -41,6 +42,9 @@ public:
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirty = true; repaint(); } }
     // dónde se corta el final (la línea de Fin); el largo total = sin cortar
     void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; dirty = true; repaint(); } }
+    // zona de loop (0/0 = sin loop) y los cruces ascendentes (ondas enteras) donde pueden caer sus puntas
+    void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; dirty = true; repaint(); } }
+    void setLoopBounds (std::vector<size_t> b) { loopBounds = std::move (b); }
 
     void paint (juce::Graphics& g) override
     {
@@ -69,19 +73,24 @@ public:
         const int line = whichLine (e.position);
         draggingSkip = line == 1;
         draggingEnd = line == 2;
+        draggingLoop = line >= 3 ? line : 0;
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (draggingEnd) { dragEndTo (e.position.x); return; }
+        if (draggingLoop) { dragLoopTo (e.position.x); return; }
         if (totalLen() > 0 && onSeek) onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (draggingEnd) { dragEndTo (e.position.x); return; }
+        if (draggingLoop) { dragLoopTo (e.position.x); return; }
         mouseDown (e);
     }
     void mouseUp (const juce::MouseEvent& e) override
     {
         draggingSkip = draggingEnd = false;
+        draggingLoop = 0;
+        dirty = true; repaint();
         mouseMove (e);
     }
     void mouseDoubleClick (const juce::MouseEvent&) override
@@ -113,8 +122,28 @@ private:
     double sr = 44100.0, viewStart = 0, viewLen = 0;
     juce::Image cache;
     bool dirty = true;
-    size_t skipEnd = 0, endSample = 0;
+    size_t skipEnd = 0, endSample = 0, loopStart = 0, loopEnd = 0;
     bool draggingSkip = false, draggingEnd = false;
+    int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop
+    std::vector<size_t> loopBounds;
+
+    bool hasLoop() const { return loopEnd > loopStart && onLoopDragged != nullptr; }
+    bool xVisible (double sample) const { const double x = sampleToX (sample); return x >= -1.0 && x <= getWidth() + 1.0; }
+    // las puntas del loop saltan de onda entera en onda entera (cruces ascendentes de la fundamental)
+    void dragLoopTo (float x)
+    {
+        const double target = xToSample (x);
+        const bool isStart = draggingLoop == 3;
+        size_t best = isStart ? loopStart : loopEnd; double bestD = 1e300;
+        for (size_t v : loopBounds)
+        {
+            if (isStart && (v < skipEnd || v >= loopEnd)) continue;      // el inicio: después de Skip y antes del fin
+            if (! isStart && (v <= loopStart || v > endOrLen())) continue; // el fin: después del inicio y antes de Fin
+            const double d = std::abs ((double) v - target);
+            if (d < bestD) { bestD = d; best = v; }
+        }
+        if (onLoopDragged) onLoopDragged (isStart ? best : loopStart, isStart ? loopEnd : best);
+    }
 
     size_t endOrLen() const { return (endSample > 0 && endSample < (size_t) totalLen()) ? endSample : (size_t) totalLen(); }
     bool hasEndLine() const { return totalLen() > 0 && onEndDragged != nullptr; }
@@ -129,8 +158,12 @@ private:
         if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
         const float dS = hasSkipLine() ? std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))) : 1e9f;
         const float dE = (hasEndLine() && endLineVisible()) ? std::abs (p.x - endLineX()) : 1e9f;
-        if (std::min (dS, dE) > 6.0f) return 0;
-        return dS <= dE ? 1 : 2;
+        const float dLs = (hasLoop() && xVisible ((double) loopStart)) ? std::abs (p.x - (float) sampleToX ((double) loopStart)) : 1e9f;
+        const float dLe = (hasLoop() && xVisible ((double) loopEnd)) ? std::abs (p.x - (float) sampleToX ((double) loopEnd)) : 1e9f;
+        const float d[4] = { dS, dE, dLs, dLe };
+        int best = 0;
+        for (int k = 1; k < 4; ++k) if (d[k] < d[best]) best = k;
+        return d[best] > 6.0f ? 0 : best + 1;
     }
     // la línea de Fin salta de semiciclo en semiciclo (corta en un cruce por cero), o al final del archivo
     void dragEndTo (float x)
@@ -307,6 +340,37 @@ private:
                     g.setColour (juce::Colour (0xcc0e1013));
                     g.fillRect (juce::Rectangle<float> (juce::jmax ((float) r.getX(), ex), (float) r.getY(),
                                                         (float) r.getRight() - juce::jmax ((float) r.getX(), ex), (float) r.getHeight()));
+                }
+            }
+            // zona de loop (verde) con sus dos puntas arrastrables (manijas abajo)
+            if (showSkipLine && hasLoop())
+            {
+                const float x0 = (float) r.getX() + (float) sampleToX ((double) loopStart);
+                const float x1 = (float) r.getX() + (float) sampleToX ((double) loopEnd);
+                const float a0 = juce::jmax ((float) r.getX(), x0), a1 = juce::jmin ((float) r.getRight(), x1);
+                if (a1 > a0)
+                {
+                    g.setColour (juce::Colour (0x2a3ddc84));
+                    g.fillRect (juce::Rectangle<float> (a0, (float) r.getY(), a1 - a0, (float) r.getHeight()));
+                }
+                const float dashes[] = { 4.0f, 3.0f };
+                for (int k = 0; k < 2; ++k)
+                {
+                    const float lx = k == 0 ? x0 : x1;
+                    if (lx < (float) r.getX() - 1.0f || lx > (float) r.getRight() + 1.0f) continue;
+                    const bool grabbed = draggingLoop == 3 + k;
+                    g.setColour (juce::Colour (0xff3ddc84).withAlpha (grabbed ? 1.0f : 0.9f));
+                    g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, grabbed ? 2.0f : 1.2f);
+                    juce::Path handle;
+                    const float hy = (float) r.getBottom() - 30.0f;
+                    handle.addTriangle (lx - 6.0f, hy + 8.0f, lx + 6.0f, hy + 8.0f, lx, hy);
+                    g.fillPath (handle);
+                }
+                if (x0 >= (float) r.getX() && x0 + 44.0f < (float) r.getRight())
+                {
+                    g.setColour (juce::Colour (0xff3ddc84));
+                    g.setFont (juce::FontOptions (11.0f));
+                    g.drawText ("Loop", juce::Rectangle<float> (x0 + 5.0f, (float) r.getY() + 4.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
                 }
             }
             if (showSkipLine && hasEndLine() && endLineVisible())
