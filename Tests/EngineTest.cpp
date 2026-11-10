@@ -6,13 +6,26 @@
 
 using namespace cyclenorm;
 
+// Ruido gaussiano propio (y no std::normal_distribution): da exactamente los mismos números en
+// cualquier compilador (Linux, Mac), así las pruebas dan igual en todos lados.
+struct PortableNoise
+{
+    explicit PortableNoise (unsigned seed, double sigma) : state (seed ? seed : 1u), sd (sigma) {}
+    double operator() () // (mismo uso que nd (rng))
+    {
+        auto next = [this] { state ^= state << 13; state ^= state >> 17; state ^= state << 5; return ((double) state + 1.0) / 4294967297.0; };
+        const double u1 = next(), u2 = next();
+        return sd * std::sqrt (-2.0 * std::log (u1)) * std::cos (2.0 * M_PI * u2);
+    }
+    unsigned state; double sd;
+};
+
 static Channels make808 (double fs, double seconds, double f0, double f1, double glideS, double tau,
                          double drive, double dc, double noiseDb, bool stereoInvert, double hitAt2 = -1, double negScale = 1.0)
 {
     const size_t n = (size_t) (fs * seconds);
     Channels c (2, std::vector<float> (n, 0.0f));
-    std::mt19937 rng (1);
-    std::normal_distribution<double> nd (0.0, std::pow (10.0, noiseDb / 20.0));
+    PortableNoise nd (1u, std::pow (10.0, noiseDb / 20.0));
     double ph = 0;
     for (size_t i = 0; i < n; ++i)
     {
@@ -25,7 +38,7 @@ static Channels make808 (double fs, double seconds, double f0, double f1, double
         double click = tt < 0.004 ? 0.4 * std::exp (-tt / 0.0008) * std::sin (2 * M_PI * 1800 * tt) : 0;
         double sv = std::sin (ph);
         if (sv < 0) sv *= negScale * (0.7 + 0.3 * env); // semiciclo negativo más chico, y cada vez más asimétrico
-        double x = std::tanh (drive * env * sv) / std::tanh (drive) + click + dc + nd (rng);
+        double x = std::tanh (drive * env * sv) / std::tanh (drive) + click + dc + nd();
         c[0][i] = (float) (0.9 * x);
         c[1][i] = (float) ((stereoInvert ? -0.9 : 0.85) * x);
     }
@@ -217,13 +230,13 @@ int main()
         const double fs = 44100, f = 41.0;
         const size_t n = (size_t) (fs * 2.5);
         Channels in (2, std::vector<float> (n));
-        std::mt19937 rng (7); std::normal_distribution<double> nd (0.0, 0.002);
+        PortableNoise nd (7u, 0.002);
         double ph = 0;
         for (size_t i = 0; i < n; ++i)
         {
             const double t = i / fs, fr = f * (1.0 + 0.004 * std::exp (-t / 0.4)); // un poquito de caída de pitch
             ph += 2 * M_PI * fr / fs;
-            const double v = std::exp (-t / 0.5) * (std::sin (ph) + 0.3 * std::sin (2 * ph + 0.5) + 0.15 * std::sin (3 * ph)) + nd (rng);
+            const double v = std::exp (-t / 0.5) * (std::sin (ph) + 0.3 * std::sin (2 * ph + 0.5) + 0.15 * std::sin (3 * ph)) + nd();
             in[0][i] = (float) v; in[1][i] = (float) (0.9 * v);
         }
         auto a = analyse (in, fs);
@@ -247,8 +260,9 @@ int main()
         const double jump2 = std::abs (y[0][L.start] - y[0][L.end - 1]);
         AudioView v2; v2.ch = { y[0].data(), y[1].data() }; v2.n = n;
         const double q2 = loopQuality (v2, L.start, L.end);
-        ok = jump2 <= jump + 1e-6 && q2 >= 0.9;
-        std::printf ("loop con crossfade de 2 ondas: salto %.4f, calidad %.1f%%  %s\n", jump2, q2 * 100, ok ? "OK" : "FALLA");
+        // con crossfade, al volver al inicio el salto es un paso normal de la onda: sin click
+        ok = jump2 <= 1.5 * maxStep && q2 >= 0.9;
+        std::printf ("loop con crossfade de 2 ondas: salto %.4f (paso normal max %.4f), calidad %.1f%%  %s\n", jump2, maxStep, q2 * 100, ok ? "OK" : "FALLA");
         fails += ! ok;
         const double note = midiNoteOf (a, L.start, L.end), expectedNote = 69.0 + 12.0 * std::log2 (f / 440.0);
         ok = std::abs (note - expectedNote) < 0.2;
