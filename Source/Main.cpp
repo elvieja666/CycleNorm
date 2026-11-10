@@ -116,16 +116,6 @@ public:
         formatBox.setWantsKeyboardFocus (false);
         addAndMakeVisible (formatBox);
 
-        modeBox.addItem ("Semiciclo", 1);
-        modeBox.addItem ("Onda entera", 2);
-        modeBox.setSelectedId (props->getIntValue ("mode", 1), juce::dontSendNotification);
-        modeBox.onChange = [this] { props->setValue ("mode", modeBox.getSelectedId()); updateMarkers(); settingsChanged(); };
-        modeBox.setWantsKeyboardFocus (false);
-        addAndMakeVisible (modeBox);
-        modeLabel.setText ("Modo", juce::dontSendNotification);
-        modeLabel.setFont (juce::FontOptions (13.0f));
-        modeLabel.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
-        addAndMakeVisible (modeLabel);
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
         setupSlider (skip, skipLabel, "Skip (ondas)", 0, 64, 1, "", props->getDoubleValue ("skip", 2.0));
@@ -210,12 +200,7 @@ public:
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 3;
-        {
-            auto col = c.removeFromLeft (colW).reduced (6, 0);
-            modeLabel.setBounds (col.removeFromTop (20));
-            modeBox.setBounds (col.removeFromTop (28));
-        }
+        const int colW = c.getWidth() / 2;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -303,9 +288,9 @@ private:
     int current = -1;
 
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
-    juce::ComboBox formatBox, modeBox;
+    juce::ComboBox formatBox;
     juce::Slider amount, skip;
-    juce::Label amountLabel, skipLabel, modeLabel, info;
+    juce::Label amountLabel, skipLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -334,7 +319,7 @@ private:
     cyclenorm::Settings readSettings() const
     {
         cyclenorm::Settings s;
-        s.halfCycles = modeBox.getSelectedId() != 2;
+        s.halfCycles = true; // siempre semiciclo por semiciclo
         s.amount = amount.getValue() / 100.0;
         s.autoTarget = false;
         s.targetDb = 0.0; // el objetivo es siempre 0 dBFS
@@ -502,12 +487,6 @@ private:
             end = B.empty() ? (size_t) items[(size_t) current]->original->getNumSamples()
                             : (idx < B.size() ? B[idx] : (size_t) items[(size_t) current]->original->getNumSamples());
         wave.setSkipEnd (end);
-    }
-
-    void updateMarkers()
-    {
-        if (juce::isPositiveAndBelow (current, (int) items.size()))
-            wave.setMarkers (cyclenorm::segmentBounds (items[(size_t) current]->analysis, readSettings()));
     }
 
     void togglePlay()

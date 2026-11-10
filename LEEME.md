@@ -5,7 +5,7 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 ## Cómo usarla
 
 1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **Abrir…**. También podés soltar archivos sobre el ícono del Dock.
-2. Arriba ves el **original** y abajo el **procesado**. Las líneas verticales finitas marcan cada semiciclo (u onda, según el Modo) detectado. Aparecen cuando hacés zoom y entran.
+2. Arriba ves el **original** y abajo el **procesado**. Las líneas verticales finitas marcan cada semiciclo detectado. Aparecen cuando hacés zoom y entran.
 3. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar), **↑ / ↓** = pasar de archivo. **Loop** repite.
 4. Para llevarlo al DAW tenés dos caminos:
    - **Exportar…** guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **Exportar todos…** procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
@@ -15,9 +15,8 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 
 | Control | Qué hace |
 |---|---|
-| **Modo** | **Semiciclo** (por defecto): el positivo y el negativo de cada onda se normalizan por separado, así los dos lados llegan a 0 dBFS. **Onda entera**: cada onda completa va a 0 dBFS por su pico más alto, y el lado más chico queda más chico (conserva la asimetría) |
 | **Amount** | Cuánto normaliza. **100 %**: todos los semiciclos a 0 dBFS (plano). **0 %**: el original. En el medio, cada semiciclo recorre ese porcentaje del camino hasta 0 dB (por ejemplo, con 50 % uno que estaba en -24 dB queda en -12 dB) |
-| **Skip (ondas)** | Las primeras ondas que no se tocan, para respetar el ataque o el click del 808. Se cuenta en ondas enteras también en modo Semiciclo (2 = 4 semiciclos). Por defecto 2. En el gráfico de abajo (procesado), las ondas salteadas se ven en el **gris del original**, con una línea punteada amarilla donde empieza a normalizar |
+| **Skip (ondas)** | Las primeras ondas que no se tocan, para respetar el ataque o el click del 808. Se cuenta en ondas enteras (2 = 4 semiciclos). Por defecto 2. En el gráfico de abajo (procesado), las ondas salteadas se ven en el **gris del original**, con una línea punteada amarilla donde empieza a normalizar |
 | **Formato** | **Igual al original** (mismo formato, bits y sample rate), **WAV 24 bit** o **WAV 32 bit float** |
 
 Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar la app.
@@ -27,7 +26,7 @@ Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar l
 ## Cómo funciona
 
 - **Detección:** usa el canal con más energía (si L y R están en contrafase, sumarlos los anularía). Para encontrar las ondas le saca el DC y los agudos con filtros de fase cero (ida y vuelta, sin desfase), así los armónicos de un 808 saturado no agregan cruces falsos. Después corre cada cruce (el que sube y el que baja) al cruce real del audio más cercano. No usa el promedio: un 808 asimétrico tiene DC propio, y sus semiciclos empiezan y terminan donde el audio vale 0. Si cerca no hay un cruce real, ahí no corta y une ese tramo con el vecino. Justo antes de un golpe nuevo, la cola y el golpe a veces se pegan sin pasar por 0. Si un tramo queda mucho más largo que los anteriores, se corta en los cruces reales que tenga adentro, y si la señal salta de golpe (más de 3 veces el nivel de la cola), se corta justo en el arranque. Así la cola se sostiene a 0 dB hasta el golpe, sin un pozo antes.
-- **Ganancia:** mide el pico de cada semiciclo (u onda) en todos los canales y le aplica la ganancia que lo lleva a 0 dBFS. La misma ganancia va a todos los canales, así la imagen estéreo no cambia.
+- **Ganancia:** mide el pico de cada semiciclo en todos los canales y le aplica la ganancia que lo lleva a 0 dBFS. La misma ganancia va a todos los canales, así la imagen estéreo no cambia.
 - **Sin clicks:** el cambio de ganancia entre una onda y la siguiente cae justo en el cruce por cero, con una rampa muy corta (1 ms como máximo, o el 6 % de la onda).
 - **Puntas del archivo:** el pedacito antes del primer cruce y el que queda después del último (una onda incompleta) se normalizan con su propio pico, sin pasarse nunca de 0 dBFS.
 - **Límite:** la ganancia nunca sube más de +60 dB, así el silencio digital no se lleva a 0 dB.
@@ -47,6 +46,6 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 - `Source/Main.cpp`: la app (ventana, lista, controles, exportar).
 - `Source/WaveformView.h`: el visor de forma de onda.
 - `Source/ABSource.h`: la reproducción original / procesado.
-- `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico en los dos modos, Threshold, Target fijo, Amount 50 %). Comprueba que cada tramo llega al objetivo, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
+- `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico, Threshold, Target fijo, Amount 50 %). Comprueba que cada tramo llega al objetivo, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
 
 **Visor:** la rueda o el gesto vertical de dos dedos hace zoom, el gesto horizontal desplaza, el pinch también hace zoom, un clic mueve el cursor de reproducción y el doble clic vuelve a mostrar todo.
