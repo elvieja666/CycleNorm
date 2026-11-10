@@ -467,6 +467,7 @@ private:
         processItem (it);
         source.setProcessed (it.processed);
         wave.setProcessed (it.processed);
+        updateSkipView();
         updateInfo();
     }
 
@@ -483,9 +484,24 @@ private:
         transport.setSource (&source, 0, nullptr, it.sampleRate, 2);
         source.setLooping (loopButton.getToggleState());
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
+        updateSkipView();
         if (wasPlaying) transport.start();
         updateInfo();
         updateButtons();
+    }
+
+    // dónde terminan las ondas salteadas con Skip (para pintarlas en gris en el procesado)
+    void updateSkipView()
+    {
+        if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+        const auto st = readSettings();
+        const auto& B = cyclenorm::segmentBounds (items[(size_t) current]->analysis, st);
+        const size_t idx = (size_t) st.skipCycles * (st.halfCycles ? 2u : 1u);
+        size_t end = 0;
+        if (st.skipCycles > 0)
+            end = B.empty() ? (size_t) items[(size_t) current]->original->getNumSamples()
+                            : (idx < B.size() ? B[idx] : (size_t) items[(size_t) current]->original->getNumSamples());
+        wave.setSkipEnd (end);
     }
 
     void updateMarkers()

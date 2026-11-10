@@ -17,7 +17,7 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 |---|---|
 | **Modo** | **Semiciclo** (por defecto): el positivo y el negativo de cada onda se normalizan por separado, así los dos lados llegan a 0 dBFS. **Onda entera**: cada onda completa va a 0 dBFS por su pico más alto, y el lado más chico queda más chico (conserva la asimetría) |
 | **Amount** | Cuánto normaliza. **100 %**: todos los semiciclos a 0 dBFS (plano). **0 %**: el original. En el medio, cada semiciclo recorre ese porcentaje del camino hasta 0 dB (por ejemplo, con 50 % uno que estaba en -24 dB queda en -12 dB) |
-| **Skip (ondas)** | Las primeras ondas que no se tocan, para respetar el ataque o el click del 808. Se cuenta en ondas enteras también en modo Semiciclo (2 = 4 semiciclos). Por defecto 2 |
+| **Skip (ondas)** | Las primeras ondas que no se tocan, para respetar el ataque o el click del 808. Se cuenta en ondas enteras también en modo Semiciclo (2 = 4 semiciclos). Por defecto 2. En el gráfico de abajo (procesado), las ondas salteadas se ven en el **gris del original**, con una línea punteada amarilla donde empieza a normalizar |
 | **Formato** | **Igual al original** (mismo formato, bits y sample rate), **WAV 24 bit** o **WAV 32 bit float** |
 
 Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar la app.

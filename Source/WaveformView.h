@@ -34,6 +34,8 @@ public:
     void clear() { setData (nullptr, nullptr, {}, 44100.0, true); }
     void refresh() { dirty = true; repaint(); }
     void setMarkers (std::vector<size_t> cycleBounds) { bounds = std::move (cycleBounds); dirty = true; repaint(); }
+    // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
+    void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirty = true; repaint(); } }
 
     void paint (juce::Graphics& g) override
     {
@@ -87,6 +89,7 @@ private:
     double sr = 44100.0, viewStart = 0, viewLen = 0;
     juce::Image cache;
     bool dirty = true;
+    size_t skipEnd = 0;
 
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
     double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * getWidth() : 0; }
@@ -112,7 +115,7 @@ private:
     }
 
     void drawLane (juce::Graphics& g, const juce::AudioBuffer<float>* buf, juce::Rectangle<int> r,
-                   juce::Colour col, const juce::String& title, bool active)
+                   juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0)
     {
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
@@ -141,12 +144,20 @@ private:
             }
         }
 
-        if (buf != nullptr && buf->getNumSamples() > 0 && viewLen > 0)
+        // zona salteada con Skip: fondo apenas distinto y una línea donde empieza a normalizar
+        const float skipX = greyUntil > 0 ? (float) r.getX() + (float) sampleToX ((double) greyUntil) : (float) r.getX();
+        if (greyUntil > 0 && skipX > (float) r.getX())
+        {
+            g.setColour (juce::Colour (0xff1d2025));
+            g.fillRect (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), skipX - (float) r.getX(), (float) r.getHeight()));
+        }
+
+        auto drawWave = [&] (juce::Colour waveColour)
         {
             const int w = r.getWidth();
             const double spp = viewLen / juce::jmax (1, w);
             const int nCh = buf->getNumChannels(), n = buf->getNumSamples();
-            g.setColour (col);
+            g.setColour (waveColour);
             if (spp < 1.0)
             {
                 juce::Path p;
@@ -175,6 +186,35 @@ private:
                     g.fillRect ((float) (r.getX() + x), y0, 1.0f, juce::jmax (1.0f, y1 - y0));
                 }
             }
+        };
+
+        if (buf != nullptr && buf->getNumSamples() > 0 && viewLen > 0)
+        {
+            if (greyUntil > 0 && skipX > (float) r.getX())
+            {
+                {   // las ondas salteadas, en el gris del original
+                    juce::Graphics::ScopedSaveState ss (g);
+                    g.reduceClipRegion (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), skipX - (float) r.getX(), (float) r.getHeight()).getSmallestIntegerContainer());
+                    drawWave (juce::Colour (0xff8f98a6));
+                }
+                {
+                    juce::Graphics::ScopedSaveState ss (g);
+                    g.reduceClipRegion (juce::Rectangle<float> (skipX, (float) r.getY(), (float) r.getRight() - skipX, (float) r.getHeight()).toNearestInt());
+                    drawWave (col);
+                }
+                if (skipX < (float) r.getRight())
+                {
+                    g.setColour (juce::Colour (0xffd0a040).withAlpha (0.8f));
+                    const float dashes[] = { 4.0f, 3.0f };
+                    g.drawDashedLine (juce::Line<float> (skipX, (float) r.getY(), skipX, (float) r.getBottom()), dashes, 2, 1.0f);
+                    g.setFont (juce::FontOptions (11.0f));
+                    const float labelW = 44.0f;
+                    if (skipX - (float) r.getX() > labelW + 6.0f)
+                        g.drawText ("Skip", juce::Rectangle<float> (skipX - labelW - 4.0f, (float) r.getBottom() - 18.0f, labelW, 14.0f), juce::Justification::centredRight);
+                }
+            }
+            else
+                drawWave (col);
             // rojo donde pasa de 0 dBFS
             g.setColour (juce::Colour (0x40ff3030));
             g.drawHorizontalLine ((int) (mid - half), (float) r.getX(), (float) r.getRight());
@@ -204,6 +244,6 @@ private:
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
         drawLane (g, orig.get(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc);
-        drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Procesado", playingProc);
+        drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Procesado", playingProc, skipEnd);
     }
 };
