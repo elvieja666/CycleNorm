@@ -15,6 +15,8 @@ public:
     std::function<double()> getPlayheadSeconds;  // posición actual (segundos)
     std::function<bool()> isPlaying;
     std::function<void (double)> onSeek;          // clic: mover a esta posición (segundos)
+    std::function<void (int)> onSkipDragged;      // arrastrando la línea de Skip: nueva cantidad de ondas
+    int maxSkip = 64;
     std::function<bool()> isPlayingProcessed;     // para resaltar el carril que suena
 
     WaveformView() { startTimerHz (30); }
@@ -55,11 +57,26 @@ public:
 
     void resized() override { dirty = true; }
 
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        setMouseCursor (nearSkipLine (e.position) ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+    }
     void mouseDown (const juce::MouseEvent& e) override
     {
+        draggingSkip = nearSkipLine (e.position);
+        if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (totalLen() > 0 && onSeek) onSeek (juce::jmax (0.0, xToSample (e.position.x)) / sr);
     }
-    void mouseDrag (const juce::MouseEvent& e) override { mouseDown (e); }
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        if (draggingSkip) { dragSkipTo (e.position.x); return; }
+        mouseDown (e);
+    }
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        draggingSkip = false;
+        mouseMove (e);
+    }
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
         viewStart = 0; viewLen = (double) totalLen(); dirty = true; repaint();
@@ -90,6 +107,32 @@ private:
     juce::Image cache;
     bool dirty = true;
     size_t skipEnd = 0;
+    bool draggingSkip = false;
+
+    // La línea de Skip está en el inicio de la onda número Skip (cada onda = 2 tramos, semiciclos).
+    // Con Skip en 0 se dibuja en el primer cruce, así siempre se puede agarrar.
+    double skipLineSample() const
+    {
+        if (skipEnd > 0) return (double) skipEnd;
+        return bounds.empty() ? 0.0 : (double) bounds.front();
+    }
+    bool hasSkipLine() const { return totalLen() > 0 && ! bounds.empty() && onSkipDragged != nullptr; }
+    bool nearSkipLine (juce::Point<float> p) const
+    {
+        if (! hasSkipLine() || p.y < getHeight() / 2.0f) return false; // solo en el carril de abajo (procesado)
+        return std::abs (p.x - (float) sampleToX (skipLineSample())) <= 6.0f;
+    }
+    void dragSkipTo (float x)
+    {
+        const double target = xToSample (x);
+        int best = 0; double bestD = 1e300;
+        for (int k = 0; k <= maxSkip && (size_t) (2 * k) < bounds.size(); ++k)
+        {
+            const double d = std::abs ((double) bounds[(size_t) (2 * k)] - target);
+            if (d < bestD) { bestD = d; best = k; }
+        }
+        if (onSkipDragged) onSkipDragged (best);
+    }
 
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
     double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * getWidth() : 0; }
@@ -115,7 +158,7 @@ private:
     }
 
     void drawLane (juce::Graphics& g, const juce::AudioBuffer<float>* buf, juce::Rectangle<int> r,
-                   juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0)
+                   juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0, bool showSkipLine = false)
     {
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
@@ -202,19 +245,27 @@ private:
                     g.reduceClipRegion (juce::Rectangle<float> (skipX, (float) r.getY(), (float) r.getRight() - skipX, (float) r.getHeight()).toNearestInt());
                     drawWave (col);
                 }
-                if (skipX < (float) r.getRight())
-                {
-                    g.setColour (juce::Colour (0xffd0a040).withAlpha (0.8f));
-                    const float dashes[] = { 4.0f, 3.0f };
-                    g.drawDashedLine (juce::Line<float> (skipX, (float) r.getY(), skipX, (float) r.getBottom()), dashes, 2, 1.0f);
-                    g.setFont (juce::FontOptions (11.0f));
-                    const float labelW = 44.0f;
-                    if (skipX - (float) r.getX() > labelW + 6.0f)
-                        g.drawText ("Skip", juce::Rectangle<float> (skipX - labelW - 4.0f, (float) r.getBottom() - 18.0f, labelW, 14.0f), juce::Justification::centredRight);
-                }
             }
             else
                 drawWave (col);
+
+            if (showSkipLine)
+            {
+                // línea de Skip (se arrastra): punteada, con una manija arriba
+                const float lx = (float) r.getX() + (float) sampleToX (skipLineSample());
+                if (lx >= (float) r.getX() - 1.0f && lx <= (float) r.getRight())
+                {
+                    g.setColour (juce::Colour (0xffd0a040).withAlpha (draggingSkip ? 1.0f : 0.85f));
+                    const float dashes[] = { 4.0f, 3.0f };
+                    g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, draggingSkip ? 2.0f : 1.2f);
+                    juce::Path handle;
+                    const float hy = (float) r.getY() + 22.0f;
+                    handle.addTriangle (lx - 6.0f, hy, lx + 6.0f, hy, lx, hy + 8.0f);
+                    g.fillPath (handle);
+                    g.setFont (juce::FontOptions (11.0f));
+                    g.drawText ("Skip", juce::Rectangle<float> (lx + 5.0f, (float) r.getBottom() - 18.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
+                }
+            }
             // rojo donde pasa de 0 dBFS
             g.setColour (juce::Colour (0x40ff3030));
             g.drawHorizontalLine ((int) (mid - half), (float) r.getX(), (float) r.getRight());
@@ -244,6 +295,6 @@ private:
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
         drawLane (g, orig.get(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc);
-        drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Procesado", playingProc, skipEnd);
+        drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Procesado", playingProc, skipEnd, hasSkipLine());
     }
 };

@@ -118,7 +118,7 @@ public:
 
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
-        setupSlider (skip, skipLabel, "Skip (ondas)", 0, 64, 1, "", props->getDoubleValue ("skip", 2.0));
+        setupSlider (skip, skipLabel, "Skip (ondas)", 0, 256, 1, "", props->getDoubleValue ("skip", 2.0));
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -133,6 +133,13 @@ public:
         wave.isPlaying = [this] { return transport.isPlaying(); };
         wave.isPlayingProcessed = [this] { return abButton.getToggleState(); };
         wave.onSeek = [this] (double s) { transport.setPosition (s); wave.repaint(); };
+        wave.maxSkip = (int) skip.getMaximum();
+        wave.onSkipDragged = [this] (int n)
+        {
+            if ((int) skip.getValue() == n) { wave.refresh(); return; }
+            skip.setValue (n, juce::sendNotificationSync); // mueve la barra y reprocesa
+            updateSkipView();                               // la línea sigue al mouse enseguida
+        };
         addAndMakeVisible (wave);
 
         info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
