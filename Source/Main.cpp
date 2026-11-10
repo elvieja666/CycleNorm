@@ -94,7 +94,6 @@ public:
         setupButton (abButton, "Escuchando: Procesado");
         setupButton (exportButton, u8 ("Exportar…"));
         setupButton (exportAllButton, u8 ("Exportar todos…"));
-        setupButton (autoTarget, "Auto");
         loopButton.setClickingTogglesState (true);
         abButton.setClickingTogglesState (true);
         abButton.setToggleState (true, juce::dontSendNotification);
@@ -129,15 +128,11 @@ public:
         addAndMakeVisible (modeLabel);
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
-        setupSlider (target, targetLabel, "Target", -30, 6, 0.1, " dB", props->getDoubleValue ("target", -1.0));
         setupSlider (skip, skipLabel, "Skip (ondas)", 0, 64, 1, "", props->getDoubleValue ("skip", 2.0));
         setupSlider (threshold, thresholdLabel, "Threshold", -120, 0, 0.5, "", props->getDoubleValue ("threshold", -120.0));
         threshold.textFromValueFunction = [] (double v) { return v <= -120.0 ? juce::String ("Off") : juce::String (v, 1) + " dB"; };
         threshold.valueFromTextFunction = [] (const juce::String& t) { return t.trim().equalsIgnoreCase ("off") ? -120.0 : t.getDoubleValue(); };
         threshold.updateText();
-        autoTarget.setToggleState (props->getBoolValue ("auto", true), juce::dontSendNotification);
-        autoTarget.onClick = [this] { target.setEnabled (! autoTarget.getToggleState()); settingsChanged(); };
-        target.setEnabled (! autoTarget.getToggleState());
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -219,7 +214,7 @@ public:
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 5;
+        const int colW = c.getWidth() / 4;
         {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             modeLabel.setBounds (col.removeFromTop (20));
@@ -233,7 +228,6 @@ public:
             s.setBounds (col.removeFromTop (28));
         };
         place (amountLabel, amount, nullptr);
-        place (targetLabel, target, &autoTarget);
         place (skipLabel, skip, nullptr);
         place (thresholdLabel, threshold, nullptr);
         r.removeFromBottom (8);
@@ -314,10 +308,9 @@ private:
     int current = -1;
 
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
-    juce::ToggleButton autoTarget;
     juce::ComboBox formatBox, modeBox;
-    juce::Slider amount, target, skip, threshold;
-    juce::Label amountLabel, targetLabel, skipLabel, thresholdLabel, modeLabel, info;
+    juce::Slider amount, skip, threshold;
+    juce::Label amountLabel, skipLabel, thresholdLabel, modeLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -348,8 +341,8 @@ private:
         cyclenorm::Settings s;
         s.halfCycles = modeBox.getSelectedId() != 2;
         s.amount = amount.getValue() / 100.0;
-        s.autoTarget = autoTarget.getToggleState();
-        s.targetDb = target.getValue();
+        s.autoTarget = false;
+        s.targetDb = 0.0; // el objetivo es siempre 0 dBFS
         s.skipCycles = (int) skip.getValue();
         s.thresholdDb = threshold.getValue() <= -120.0 ? -200.0 : threshold.getValue();
         return s;
@@ -358,10 +351,8 @@ private:
     void saveSettings()
     {
         props->setValue ("amount", amount.getValue());
-        props->setValue ("target", target.getValue());
         props->setValue ("skip", skip.getValue());
         props->setValue ("threshold", threshold.getValue());
-        props->setValue ("auto", autoTarget.getToggleState());
         props->saveIfNeeded();
     }
 
@@ -550,15 +541,12 @@ private:
     {
         if (! juce::isPositiveAndBelow (current, (int) items.size())) { info.setText ({}, juce::dontSendNotification); return; }
         auto& it = *items[(size_t) current];
-        if (autoTarget.getToggleState()) // en Auto, la barra muestra el objetivo que se está usando
-            target.setValue (juce::jlimit (-30.0, 6.0, it.targetUsedDb), juce::dontSendNotification);
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::String t;
-        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · objetivo ") << juce::String (it.targetUsedDb, 1)
-          << u8 (" dB · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
-        if (it.outPeak > 1.0f && ! exportsFloat (it))
+        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · todo a 0 dBFS · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
+        if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
-            t << u8 ("  ·  ¡SATURA! Bajá el Target o exportá en 32 bit float");
+            t << u8 ("  ·  ¡SATURA! El ataque original pasa de 0 dBFS: exportá en 32 bit float");
             info.setColour (juce::Label::textColourId, juce::Colour (0xffff6b6b));
         }
         else info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
