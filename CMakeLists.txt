@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(CycleNorm VERSION 1.4.0)
+project(CycleNorm VERSION 1.5.0)
 
 set(CMAKE_CXX_STANDARD 17)
 if(APPLE)
