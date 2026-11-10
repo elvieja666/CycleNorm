@@ -307,6 +307,8 @@ private:
     DragOut dragOut;
     juce::Rectangle<int> titleArea, controlsArea;
     bool pendingReprocess = false;
+    int outputCheckTicks = 0;
+    juce::String lastFailedOutput;
     juce::uint32 lastChange = 0;
 
     //==========================================================================
@@ -363,10 +365,41 @@ private:
             list.repaint();
         }
         playButton.setButtonText (transport.isPlaying() ? "Stop" : "Play");
+        if (++outputCheckTicks >= 15) { outputCheckTicks = 0; followSystemOutput(); } // una vez por segundo
         // que espacio / A / flechas anden siempre (salvo mientras se escribe un valor)
         if (juce::Component::getCurrentlyFocusedComponent() == nullptr && isShowing()
             && juce::Process::isForegroundProcess())
             grabKeyboardFocus();
+    }
+
+    //== salida de audio =======================================================
+    // Seguir siempre la salida que tenga elegida la Mac: si enchufás auriculares (que en las Mac
+    // nuevas son un dispositivo aparte), o conectás unos bluetooth, o cambiás la salida en
+    // Ajustes > Sonido, la app pasa a esa salida sola, sin cortar la reproducción.
+    void followSystemOutput()
+    {
+        auto* type = deviceManager.getCurrentDeviceTypeObject();
+        if (type == nullptr) return;
+        type->scanForDevices(); // la lista cambia al enchufar / desenchufar
+        const auto names = type->getDeviceNames (false);
+        const int idx = type->getDefaultDeviceIndex (false);
+        if (! juce::isPositiveAndBelow (idx, names.size())) return;
+        const auto wanted = names[idx];
+
+        auto setup = deviceManager.getAudioDeviceSetup();
+        const bool deviceOpen = deviceManager.getCurrentAudioDevice() != nullptr;
+        if (deviceOpen && setup.outputDeviceName == wanted) { lastFailedOutput.clear(); return; }
+        if (wanted == lastFailedOutput) return; // ya se intentó y no abrió: no insistir cada segundo
+
+        const bool wasPlaying = transport.isPlaying();
+        setup.outputDeviceName = wanted;
+        setup.inputDeviceName = {};
+        setup.useDefaultOutputChannels = true;
+        setup.sampleRate = 0;   // el que use ese dispositivo
+        setup.bufferSize = 0;
+        const auto err = deviceManager.setAudioDeviceSetup (setup, true);
+        lastFailedOutput = err.isEmpty() ? juce::String() : wanted;
+        if (wasPlaying && ! transport.isPlaying()) transport.start();
     }
 
     //== archivos ==============================================================

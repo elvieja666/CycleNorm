@@ -6,8 +6,9 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 
 1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **Abrir…**. También podés soltar archivos sobre el ícono del Dock.
 2. Arriba ves el **original** y abajo el **procesado**. Las líneas verticales finitas marcan cada semiciclo detectado. Aparecen cuando hacés zoom y entran.
-3. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar), **↑ / ↓** = pasar de archivo. **Loop** repite.
-4. Para llevarlo al DAW tenés dos caminos:
+3. La app suena por la salida que tenga elegida la Mac y la sigue sola: si enchufás auriculares, conectás unos bluetooth o cambiás la salida en Ajustes > Sonido, en un segundo pasa a esa salida (si estaba sonando, sigue sonando, con un corte mínimo al cambiar).
+4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar), **↑ / ↓** = pasar de archivo. **Loop** repite.
+5. Para llevarlo al DAW tenés dos caminos:
    - **Exportar…** guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **Exportar todos…** procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
    - **Arrastrá el procesado al DAW**: arrastrás ese botón a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
 
