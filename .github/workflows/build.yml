@@ -1,0 +1,39 @@
+name: Compilar app
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Compilar
+        run: cmake --build build --config Release --parallel
+
+      - name: Probar el motor
+        run: |
+          clang++ -O2 -std=c++17 -ISource Tests/EngineTest.cpp -o engine_test
+          ./engine_test
+
+      - name: Armar CycleNorm.zip (todo en la misma carpeta)
+        run: |
+          mkdir pkg
+          cp -R build/CycleNorm_artefacts/Release/CycleNorm.app pkg/
+          cp Instalador/Instalar.command Instalador/Desinstalar.command LEEME.md pkg/
+          chmod +x pkg/Instalar.command pkg/Desinstalar.command
+          codesign --force --deep --sign - pkg/CycleNorm.app
+          lipo -info pkg/CycleNorm.app/Contents/MacOS/CycleNorm
+          (cd pkg && zip -ry ../CycleNorm.zip .)
+          unzip -l CycleNorm.zip | head -20
+
+      - name: Subir CycleNorm.zip
+        uses: actions/upload-artifact@v7
+        with:
+          path: CycleNorm.zip
+          archive: false
