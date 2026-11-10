@@ -513,7 +513,12 @@ private:
     void togglePlay()
     {
         if (current < 0) return;
-        if (transport.isPlaying()) transport.stop();
+        if (transport.isPlaying())
+        {
+            transport.stop();
+            transport.setPosition (0); // el próximo play arranca desde el principio
+            wave.repaint();
+        }
         else
         {
             if (transport.getCurrentPosition() >= transport.getLengthInSeconds() - 0.001) transport.setPosition (0);
