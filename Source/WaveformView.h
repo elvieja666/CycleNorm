@@ -118,13 +118,17 @@ private:
 
     size_t endOrLen() const { return (endSample > 0 && endSample < (size_t) totalLen()) ? endSample : (size_t) totalLen(); }
     bool hasEndLine() const { return totalLen() > 0 && onEndDragged != nullptr; }
-    float endLineX() const { return juce::jmin ((float) getWidth() - 2.0f, (float) sampleToX ((double) endOrLen())); }
+    // x de la línea de Fin; si con el zoom quedó fuera de la vista, no se ve (como la de Skip).
+    // Pegada al borde derecho (el final del archivo con la vista completa) se corre 2 píxeles para que se vea.
+    float endLineRawX() const { return (float) sampleToX ((double) endOrLen()); }
+    bool endLineVisible() const { const float x = endLineRawX(); return x >= -1.0f && x <= (float) getWidth() + 1.0f; }
+    float endLineX() const { return juce::jlimit (1.0f, (float) getWidth() - 2.0f, endLineRawX()); }
     // 0 = ninguna, 1 = Skip, 2 = Fin (si las dos están cerca, la más cercana)
     int whichLine (juce::Point<float> p) const
     {
         if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
         const float dS = hasSkipLine() ? std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))) : 1e9f;
-        const float dE = hasEndLine() ? std::abs (p.x - endLineX()) : 1e9f;
+        const float dE = (hasEndLine() && endLineVisible()) ? std::abs (p.x - endLineX()) : 1e9f;
         if (std::min (dS, dE) > 6.0f) return 0;
         return dS <= dE ? 1 : 2;
     }
@@ -175,6 +179,7 @@ private:
         viewLen = juce::jlimit (0.0, len, viewLen);
         viewStart = juce::jlimit (0.0, juce::jmax (0.0, len - viewLen), viewStart);
         if (viewStart < viewLen * 0.005) viewStart = 0.0; // a unos píxeles del principio: pegado al principio
+        else if (len - (viewStart + viewLen) < viewLen * 0.005) viewStart = juce::jmax (0.0, len - viewLen); // idem al final
     }
 
     void timerCallback() override
@@ -304,10 +309,9 @@ private:
                                                         (float) r.getRight() - juce::jmax ((float) r.getX(), ex), (float) r.getHeight()));
                 }
             }
-            if (showSkipLine && hasEndLine())
+            if (showSkipLine && hasEndLine() && endLineVisible())
             {
                 const float ex = (float) r.getX() + endLineX();
-                if (ex >= (float) r.getX())
                 {
                     g.setColour (juce::Colour (0xffe0605a).withAlpha (draggingEnd ? 1.0f : 0.9f));
                     const float dashes[] = { 4.0f, 3.0f };
