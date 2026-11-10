@@ -214,6 +214,99 @@ inline Analysis analyse (const Channels& in, double sampleRate)
         if (bestD != (size_t) -1 && pick > s0 && pick < s1) hb.push_back (pick); // si no hay cruce real, la onda queda entera
     }
     hb.push_back (b.back());
+
+    // Relleno de huecos: si un tramo quedó mucho más largo que los anteriores (pasa justo antes
+    // de un golpe nuevo, donde la detección filtrada pierde los últimos cruces de la cola), se
+    // corta en los cruces reales del audio que tenga adentro. Si no, la cola que queda en ese
+    // tramo tomaría la ganancia del golpe nuevo y se escucharía un pozo antes del golpe.
+    {
+        std::vector<char> rising (hb.size(), 0);
+        for (size_t k = 0, j = 0; k < hb.size(); ++k)
+        {
+            while (j < b.size() && b[j] < hb[k]) ++j;
+            rising[k] = (j < b.size() && b[j] == hb[k]) ? 1 : 0;
+        }
+        std::vector<size_t> nb;  std::vector<char> nr;
+        nb.reserve (hb.size() + 16); nr.reserve (hb.size() + 16);
+        for (size_t k = 0; k < hb.size(); ++k)
+        {
+            nb.push_back (hb[k]); nr.push_back (rising[k]);
+            if (k + 1 >= hb.size()) break;
+            const size_t s0 = hb[k], s1 = hb[k + 1];
+            // largo esperado de un semiciclo: mediana de los últimos (hasta 6) tramos
+            std::vector<size_t> prev;
+            for (size_t j = nb.size() - 1; j > 0 && prev.size() < 6; --j)
+            {
+                const size_t len = nb[j] - nb[j - 1];
+                prev.push_back (nr[j] != nr[j - 1] ? len : len / 2); // si faltaba el cruce del medio, era una onda entera
+            }
+            if (prev.size() < 2) continue;
+            std::nth_element (prev.begin(), prev.begin() + (long) prev.size() / 2, prev.end());
+            const double E = (double) prev[prev.size() / 2];
+            if ((double) (s1 - s0) <= 1.5 * E) continue;
+
+            std::vector<size_t> ins; std::vector<char> insR;
+            bool wantRising = ! rising[k];
+            size_t last = s0;
+            for (size_t i = s0 + 1; i < s1; ++i)
+            {
+                if ((double) (i - last) < 0.3 * E) continue;
+                if ((double) (s1 - i) < 0.1 * E) break;
+                const bool up = raw[i - 1] < 0.0 && raw[i] >= 0.0;
+                const bool down = raw[i - 1] >= 0.0 && raw[i] < 0.0;
+                if ((wantRising && up) || (! wantRising && down))
+                {
+                    const size_t z = std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i;
+                    ins.push_back (z); insR.push_back (wantRising ? 1 : 0);
+                    last = z; wantRising = ! wantRising;
+                }
+            }
+            // (si el último agregado es del mismo tipo que el cruce que sigue no pasa nada:
+            // ese tramo es el arranque del golpe nuevo y se normaliza con su propio pico)
+            for (size_t j = 0; j < ins.size(); ++j) { nb.push_back (ins[j]); nr.push_back (insR[j]); }
+        }
+        // Arranque de un golpe nuevo en medio de un tramo (la cola y el golpe pegados sin pasar
+        // por 0): se corta justo donde la señal salta, así la cola no toma la ganancia del golpe.
+        {
+            std::vector<size_t> ob;  std::vector<char> orr;
+            ob.reserve (nb.size() + 8); orr.reserve (nb.size() + 8);
+            for (size_t k = 0; k < nb.size(); ++k)
+            {
+                ob.push_back (nb[k]); orr.push_back (nr[k]);
+                if (k + 1 >= nb.size() || k == 0) continue;
+                const size_t s0 = nb[k], s1 = nb[k + 1];
+                const double E = (double) (nb[k] - nb[k - 1]); // largo del tramo anterior
+                const size_t minPre = (size_t) std::max (8.0, 0.2 * E);
+                // se compara con el pico de la cola hasta 1 ms antes (un golpe sube en unas muestras,
+                // pero no de una: comparar con la muestra anterior no lo vería)
+                const size_t lag = (size_t) std::max (2.0, sampleRate * 0.001);
+                std::vector<double> pre (s1 - s0);
+                double m = 0;
+                for (size_t i = s0; i < s1; ++i) { m = std::max (m, std::abs (raw[i])); pre[i - s0] = m; }
+                for (size_t i = s0 + std::max (minPre, lag); i < s1; ++i)
+                {
+                    const double tail = pre[i - s0 - lag];
+                    if (tail > 1e-6 && std::abs (raw[i]) > 3.0 * tail)
+                    {
+                        size_t j = i; // atrás hasta donde la señal todavía estaba al nivel de la cola
+                        while (j > s0 + minPre / 2 && std::abs (raw[j - 1]) > tail) --j;
+                        if (s1 - j >= 4 && j > s0 + minPre / 2) { ob.push_back (j); orr.push_back (1); }
+                        break;
+                    }
+                }
+            }
+            nb.swap (ob); nr.swap (orr);
+        }
+
+        hb.swap (nb);
+        // las ondas enteras (modo Onda entera) arrancan en los cruces ascendentes (y en los golpes nuevos)
+        b.clear();
+        for (size_t k = 0; k < hb.size(); ++k)
+            if (nr[k] || k == 0 || k + 1 == hb.size()) b.push_back (hb[k]);
+        a.peaks.resize (b.size() - 1);
+        for (size_t k = 0; k + 1 < b.size(); ++k) a.peaks[k] = peakOf (b[k], b[k + 1]);
+    }
+
     a.halfPeaks.resize (hb.size() - 1);
     for (size_t k = 0; k + 1 < hb.size(); ++k) a.halfPeaks[k] = peakOf (hb[k], hb[k + 1]);
     return a;

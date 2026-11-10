@@ -79,6 +79,26 @@ int main()
     fails += check ("808 saturado + DC + ruido 48k", make808 (48000, 2.0, 160, 38, 0.12, 0.4, 6.0, 0.01, -80, false), 48000, s, 0.5, 1.05);
     fails += check ("808 estereo invertido 96k", make808 (96000, 1.5, 120, 50, 0.05, 0.3, 2.0, 0.0, -90, true), 96000, s, 0.3, 1.05);
     fails += check ("dos golpes 44.1k", make808 (44100, 2.0, 150, 42, 0.08, 0.2, 3.0, 0.0, -90, false, 1.0), 44100, s, 0.6, 1.05);
+    // sin pozo antes de un golpe nuevo: en los 40 ms antes del segundo golpe, cada ventana de 5 ms
+    // tiene que llegar cerca del objetivo (la cola sostenida hasta el golpe)
+    {
+        auto in = make808 (44100, 2.0, 150, 42, 0.08, 0.2, 3.0, 0.0, -90, false, 1.0);
+        auto a = analyse (in, 44100);
+        Settings z = s; z.autoTarget = false; z.targetDb = 0.0;
+        auto out = render (in, a, z);
+        double worst = 0;
+        const size_t hit = 44100, w = 44100 * 5 / 1000;
+        for (size_t st = hit - 8 * w; st + w <= hit; st += w)
+        {
+            float p = 0;
+            for (size_t i = st; i < st + w; ++i) p = std::max (p, std::abs (out[0][i]));
+            worst = std::min (worst, detail::toDb (p));
+        }
+        // ventanas de 5 ms con un 808 de 42 Hz (media onda = 12 ms): alguna puede caer cerca del cruce
+        const bool ok = worst > -12.0;
+        std::printf ("sin pozo antes del golpe: peor ventana %.1f dB  %s\n", worst, ok ? "OK" : "FALLA");
+        fails += ! ok;
+    }
     // semiciclos: un 808 asimétrico (el negativo más chico), los dos semiciclos tienen que quedar iguales
     {
         auto in = make808 (44100, 2.0, 140, 45, 0.08, 0.35, 2.0, 0.0, -100, false, -1, 0.6);

@@ -129,10 +129,6 @@ public:
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
         setupSlider (skip, skipLabel, "Skip (ondas)", 0, 64, 1, "", props->getDoubleValue ("skip", 2.0));
-        setupSlider (threshold, thresholdLabel, "Threshold", -120, 0, 0.5, "", props->getDoubleValue ("threshold", -120.0));
-        threshold.textFromValueFunction = [] (double v) { return v <= -120.0 ? juce::String ("Off") : juce::String (v, 1) + " dB"; };
-        threshold.valueFromTextFunction = [] (const juce::String& t) { return t.trim().equalsIgnoreCase ("off") ? -120.0 : t.getDoubleValue(); };
-        threshold.updateText();
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -214,7 +210,7 @@ public:
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 4;
+        const int colW = c.getWidth() / 3;
         {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             modeLabel.setBounds (col.removeFromTop (20));
@@ -229,7 +225,6 @@ public:
         };
         place (amountLabel, amount, nullptr);
         place (skipLabel, skip, nullptr);
-        place (thresholdLabel, threshold, nullptr);
         r.removeFromBottom (8);
 
         list.setBounds (r.removeFromLeft (230));
@@ -309,8 +304,8 @@ private:
 
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton;
     juce::ComboBox formatBox, modeBox;
-    juce::Slider amount, skip, threshold;
-    juce::Label amountLabel, skipLabel, thresholdLabel, modeLabel, info;
+    juce::Slider amount, skip;
+    juce::Label amountLabel, skipLabel, modeLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -344,7 +339,7 @@ private:
         s.autoTarget = false;
         s.targetDb = 0.0; // el objetivo es siempre 0 dBFS
         s.skipCycles = (int) skip.getValue();
-        s.thresholdDb = threshold.getValue() <= -120.0 ? -200.0 : threshold.getValue();
+        s.thresholdDb = -200.0; // sin umbral: se normaliza todo, también la cola y el ruido
         return s;
     }
 
@@ -352,7 +347,6 @@ private:
     {
         props->setValue ("amount", amount.getValue());
         props->setValue ("skip", skip.getValue());
-        props->setValue ("threshold", threshold.getValue());
         props->saveIfNeeded();
     }
 
