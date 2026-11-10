@@ -24,6 +24,8 @@ public:
         b = std::move (processed);
     }
     void setPlayProcessed (bool shouldPlayProcessed) { useB = shouldPlayProcessed; }
+    // dónde termina la reproducción (la línea de Fin); 0 = hasta el final del archivo
+    void setEndSample (juce::int64 e) { endSample = e; }
     bool isPlayingProcessed() const { return useB; }
 
     void prepareToPlay (int, double) override {}
@@ -37,7 +39,9 @@ public:
         const auto& src = useB ? b : a;
         if (src == nullptr || src->getNumSamples() == 0) return;
 
-        const int len = src->getNumSamples();
+        const int full = src->getNumSamples();
+        const juce::int64 e = endSample.load();
+        const int len = (e > 0 && e < full) ? (int) e : full;
         const int srcCh = src->getNumChannels();
         juce::int64 p = pos.load();
         int done = 0;
@@ -63,7 +67,8 @@ public:
     {
         const juce::SpinLock::ScopedLockType sl (lock);
         const auto& src = b ? b : a;
-        return src ? src->getNumSamples() : 0;
+        const juce::int64 full = src ? src->getNumSamples() : 0, e = endSample.load();
+        return (e > 0 && e < full) ? e : full;
     }
     bool isLooping() const override { return looping; }
     void setLooping (bool shouldLoop) override { looping = shouldLoop; }
@@ -71,6 +76,6 @@ public:
 private:
     mutable juce::SpinLock lock;
     BufferPtr a, b;
-    std::atomic<juce::int64> pos { 0 };
+    std::atomic<juce::int64> pos { 0 }, endSample { 0 };
     std::atomic<bool> useB { true }, looping { false };
 };

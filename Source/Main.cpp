@@ -31,6 +31,13 @@ struct Item
     cyclenorm::Analysis analysis;
     double targetUsedDb = 0.0;
     float outPeak = 0.0f;
+    size_t endSample = 0; // dónde se corta el final (la línea de Fin); 0 = hasta el final del archivo
+
+    int lengthToWrite() const
+    {
+        const int full = original ? original->getNumSamples() : 0;
+        return (endSample > 0 && (int) endSample < full) ? (int) endSample : full;
+    }
 };
 
 //==============================================================================
@@ -137,9 +144,25 @@ public:
         wave.isPlayingProcessed = [this] { return abButton.getToggleState(); };
         wave.onSeek = [this] (double s) { transport.setPosition (s); wave.repaint(); };
         wave.maxSkip = kMaxSkip;
+        wave.onEndDragged = [this] (size_t e)
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            const size_t full = (size_t) it.original->getNumSamples();
+            it.endSample = e >= full ? 0 : e;
+            source.setEndSample ((juce::int64) it.endSample);
+            wave.setEndSample (it.endSample);
+            updateInfo();
+        };
         wave.onSkipDragged = [this] (int n)
         {
             if (skipHalves == n) { wave.refresh(); return; }
+            if (juce::isPositiveAndBelow (current, (int) items.size()))
+            {   // Skip no puede pasar la línea de Fin
+                auto& it = *items[(size_t) current];
+                auto st = readSettings(); st.skipHalves = n;
+                if (it.endSample > 0 && cyclenorm::skipEndSample (it.analysis, st) >= it.endSample) return;
+            }
             skipHalves = n;
             settingsChanged();  // reprocesa
             updateSkipView();   // la línea sigue al mouse enseguida
@@ -262,6 +285,16 @@ public:
         if (testOut.isNotEmpty() && ! items.empty())
         {
             juce::String err;
+            const auto testEnd = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_END", {});
+            if (testEnd.isNotEmpty()) // la muestra más cercana a la pedida, como hace la línea de Fin
+            {
+                auto& it0 = *items.front();
+                const auto st = readSettings();
+                const auto& B = cyclenorm::segmentBounds (it0.analysis, st);
+                size_t best = 0; double bd = 1e300;
+                for (auto v : B) if (std::abs ((double) v - testEnd.getDoubleValue()) < bd) { bd = std::abs ((double) v - testEnd.getDoubleValue()); best = v; }
+                it0.endSample = best;
+            }
             const bool ok = writeItem (*items.front(), juce::File (testOut), err);
             std::printf ("test export: %s %s\n", ok ? "OK" : "FALLA", err.toRawUTF8());
             juce::Timer::callAfterDelay (1500, [] { juce::JUCEApplication::quit(); });
@@ -519,10 +552,12 @@ private:
         auto& it = *items[(size_t) row];
         processItem (it);
         source.setBuffers (it.original, it.processed);
+        source.setEndSample ((juce::int64) it.endSample);
         source.setNextReadPosition (0);
         transport.setSource (&source, 0, nullptr, it.sampleRate, 2);
         source.setLooping (loopButton.getToggleState());
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
+        wave.setEndSample (it.endSample);
         updateSkipView();
         if (wasPlaying) transport.start();
         updateInfo();
@@ -585,6 +620,9 @@ private:
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::String t;
         t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · Skip: ") << skipHalves << u8 (" semiciclos · todo a 0 dBFS · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
+        if (it.endSample > 0)
+            t << u8 (" · Fin: ") << juce::String ((double) it.endSample / it.sampleRate, 2) << " s (de "
+              << juce::String ((double) it.original->getNumSamples() / it.sampleRate, 2) << " s)";
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
             t << u8 ("  ·  ¡SATURA! El ataque original pasa de 0 dBFS: exportá en 32 bit float");
@@ -628,7 +666,7 @@ private:
                                                                           fmtInfo.bits, {}, 0));
         if (w == nullptr) { error = "Formato no soportado"; return false; }
         stream.release(); // ahora es del writer
-        if (! w->writeFromAudioSampleBuffer (*it.processed, 0, it.processed->getNumSamples()))
+        if (! w->writeFromAudioSampleBuffer (*it.processed, 0, it.lengthToWrite())) // hasta la línea de Fin
         {
             error = "Error al escribir " + dest.getFileName();
             return false;

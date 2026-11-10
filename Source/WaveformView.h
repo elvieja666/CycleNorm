@@ -15,7 +15,8 @@ public:
     std::function<double()> getPlayheadSeconds;  // posición actual (segundos)
     std::function<bool()> isPlaying;
     std::function<void (double)> onSeek;          // clic: mover a esta posición (segundos)
-    std::function<void (int)> onSkipDragged;      // arrastrando la línea de Skip: nueva cantidad de ondas
+    std::function<void (int)> onSkipDragged;      // arrastrando la línea de Skip: nueva cantidad de semiciclos
+    std::function<void (size_t)> onEndDragged;    // arrastrando la línea de Fin: nueva muestra final
     int maxSkip = 64;
     std::function<bool()> isPlayingProcessed;     // para resaltar el carril que suena
 
@@ -38,6 +39,8 @@ public:
     void setMarkers (std::vector<size_t> cycleBounds) { bounds = std::move (cycleBounds); dirty = true; repaint(); }
     // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirty = true; repaint(); } }
+    // dónde se corta el final (la línea de Fin); el largo total = sin cortar
+    void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; dirty = true; repaint(); } }
 
     void paint (juce::Graphics& g) override
     {
@@ -59,22 +62,26 @@ public:
 
     void mouseMove (const juce::MouseEvent& e) override
     {
-        setMouseCursor (nearSkipLine (e.position) ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+        setMouseCursor (whichLine (e.position) != 0 ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
-        draggingSkip = nearSkipLine (e.position);
+        const int line = whichLine (e.position);
+        draggingSkip = line == 1;
+        draggingEnd = line == 2;
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
-        if (totalLen() > 0 && onSeek) onSeek (juce::jmax (0.0, xToSample (e.position.x)) / sr);
+        if (draggingEnd) { dragEndTo (e.position.x); return; }
+        if (totalLen() > 0 && onSeek) onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
+        if (draggingEnd) { dragEndTo (e.position.x); return; }
         mouseDown (e);
     }
     void mouseUp (const juce::MouseEvent& e) override
     {
-        draggingSkip = false;
+        draggingSkip = draggingEnd = false;
         mouseMove (e);
     }
     void mouseDoubleClick (const juce::MouseEvent&) override
@@ -106,17 +113,38 @@ private:
     double sr = 44100.0, viewStart = 0, viewLen = 0;
     juce::Image cache;
     bool dirty = true;
-    size_t skipEnd = 0;
-    bool draggingSkip = false;
+    size_t skipEnd = 0, endSample = 0;
+    bool draggingSkip = false, draggingEnd = false;
+
+    size_t endOrLen() const { return (endSample > 0 && endSample < (size_t) totalLen()) ? endSample : (size_t) totalLen(); }
+    bool hasEndLine() const { return totalLen() > 0 && onEndDragged != nullptr; }
+    float endLineX() const { return juce::jmin ((float) getWidth() - 2.0f, (float) sampleToX ((double) endOrLen())); }
+    // 0 = ninguna, 1 = Skip, 2 = Fin (si las dos están cerca, la más cercana)
+    int whichLine (juce::Point<float> p) const
+    {
+        if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
+        const float dS = hasSkipLine() ? std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))) : 1e9f;
+        const float dE = hasEndLine() ? std::abs (p.x - endLineX()) : 1e9f;
+        if (std::min (dS, dE) > 6.0f) return 0;
+        return dS <= dE ? 1 : 2;
+    }
+    // la línea de Fin salta de semiciclo en semiciclo (corta en un cruce por cero), o al final del archivo
+    void dragEndTo (float x)
+    {
+        const double target = xToSample (x);
+        size_t best = (size_t) totalLen(); double bestD = std::abs ((double) totalLen() - target);
+        for (size_t v : bounds)
+        {
+            if (v <= skipEnd) continue; // no antes de donde empieza a normalizar
+            const double d = std::abs ((double) v - target);
+            if (d < bestD) { bestD = d; best = v; }
+        }
+        if (onEndDragged) onEndDragged (best);
+    }
 
     // La línea de Skip está donde empieza el semiciclo número Skip. Con Skip en 0, bien a la izquierda.
     double skipLineSample() const { return (double) skipEnd; }
     bool hasSkipLine() const { return totalLen() > 0 && ! bounds.empty() && onSkipDragged != nullptr; }
-    bool nearSkipLine (juce::Point<float> p) const
-    {
-        if (! hasSkipLine() || p.y < getHeight() / 2.0f) return false; // solo en el carril de abajo (procesado)
-        return std::abs (p.x - (float) sampleToX (skipLineSample())) <= 6.0f;
-    }
     void dragSkipTo (float x)
     {
         // salta de semiciclo en semiciclo: 0 = el principio del archivo, N = donde empieza el semiciclo N
@@ -263,6 +291,33 @@ private:
                     g.fillPath (handle);
                     g.setFont (juce::FontOptions (11.0f));
                     g.drawText ("Skip", juce::Rectangle<float> (lx + 5.0f, (float) r.getBottom() - 18.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
+                }
+            }
+            // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
+            if (endSample > 0 && endSample < (size_t) totalLen())
+            {
+                const float ex = (float) r.getX() + (float) sampleToX ((double) endSample);
+                if (ex < (float) r.getRight())
+                {
+                    g.setColour (juce::Colour (0xcc0e1013));
+                    g.fillRect (juce::Rectangle<float> (juce::jmax ((float) r.getX(), ex), (float) r.getY(),
+                                                        (float) r.getRight() - juce::jmax ((float) r.getX(), ex), (float) r.getHeight()));
+                }
+            }
+            if (showSkipLine && hasEndLine())
+            {
+                const float ex = (float) r.getX() + endLineX();
+                if (ex >= (float) r.getX())
+                {
+                    g.setColour (juce::Colour (0xffe0605a).withAlpha (draggingEnd ? 1.0f : 0.9f));
+                    const float dashes[] = { 4.0f, 3.0f };
+                    g.drawDashedLine (juce::Line<float> (ex, (float) r.getY(), ex, (float) r.getBottom()), dashes, 2, draggingEnd ? 2.0f : 1.2f);
+                    juce::Path handle;
+                    const float hy = (float) r.getY() + 22.0f;
+                    handle.addTriangle (ex - 6.0f, hy, ex + 6.0f, hy, ex, hy + 8.0f);
+                    g.fillPath (handle);
+                    g.setFont (juce::FontOptions (11.0f));
+                    g.drawText ("Fin", juce::Rectangle<float> (ex - 34.0f, (float) r.getBottom() - 18.0f, 30.0f, 14.0f), juce::Justification::centredRight);
                 }
             }
             // rojo donde pasa de 0 dBFS
