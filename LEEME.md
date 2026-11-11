@@ -1,16 +1,18 @@
-# CycleNorm v1.7.0
+# CycleNorm v1.8.0
+
+> La app está en inglés; este LEEME queda en castellano. Los nombres de botones y controles van como aparecen en la app.
 
 App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semiciclo de la onda (el positivo y el negativo, de cruce por cero a cruce por cero) y lleva cada uno a **0 dBFS**. Así, aunque el 808 sea asimétrico (el lado negativo más chico que el positivo, o al revés), los dos lados quedan iguales. El decay desaparece y el 808 queda plano de principio a fin, pero con el timbre real de cada momento (el glide, la saturación y los armónicos de la cola se mantienen). Después lo exportás o lo arrastrás directo al DAW.
 
 ## Cómo usarla
 
-1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **Abrir…**. También podés soltar archivos sobre el ícono del Dock.
+1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **Open…**. También podés soltar archivos sobre el ícono del Dock.
 2. Arriba ves el **original** y abajo el **procesado**. Las líneas verticales finitas marcan cada semiciclo detectado. Aparecen cuando hacés zoom y entran.
 3. La app suena por la salida que tenga elegida la Mac y la sigue sola: si enchufás auriculares, conectás unos bluetooth o cambiás la salida en Ajustes > Sonido, en un segundo pasa a esa salida (si estaba sonando, sigue sonando, con un corte mínimo al cambiar).
 4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar), **↑ / ↓** = pasar de archivo. **Loop** repite: si el archivo tiene loop (zona verde), repite esa zona infinitamente; si no, todo el archivo.
 5. Para llevarlo al DAW tenés dos caminos:
-   - **Exportar…** guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **Exportar todos…** procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
-   - **Arrastrá el procesado al DAW**: arrastrás ese botón a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
+   - **Export…** guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **Export all…** procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
+   - **Drag the processed audio to your DAW**: arrastrás ese botón a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
 
 ## Controles
 
@@ -18,24 +20,24 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 |---|---|
 | **Amount** | Cuánto normaliza. **100 %**: todos los semiciclos a 0 dBFS (plano). **0 %**: el original. En el medio, cada semiciclo recorre ese porcentaje del camino hasta 0 dB (por ejemplo, con 50 % uno que estaba en -24 dB queda en -12 dB) |
 | **Skip** | Los primeros semiciclos que no se tocan, para respetar el ataque o el click del 808. Por defecto 4 (2 ondas). **No tiene barra: se cambia arrastrando la línea punteada amarilla** en el gráfico de abajo (procesado). Al pasar el mouse por encima, el puntero cambia a ↔. La línea **salta de corte en corte** (cada semiciclo), de 0 (bien a la izquierda, al principio del archivo: no saltea nada) a 512. Se puede parar en todos los cortes, también en el primero, y en el arranque del ataque: el pedazo antes del primer corte de onda entera también se corta en sus semiciclos (si el sonido empieza dentro del archivo), sin contar los rulitos chicos. Los semiciclos salteados se ven en el gris del original, y abajo a la izquierda se lee cuántos son |
-| **Fin** | La línea roja punteada a la derecha del gráfico de abajo. **Se arrastra para cortar el final del sample**, por ejemplo para sacar el ruido que queda subido al final. Salta de semiciclo en semiciclo, así el corte cae siempre en un cruce por cero y no hace click. Lo que queda a la derecha se ve oscurecido y no suena ni se exporta: Play, Exportar, Exportar todos y el arrastre al DAW terminan ahí. Es **por archivo** (cada sample tiene su propio Fin) y arranca al final (sin cortar). No puede quedar antes de la línea de Skip. Abajo a la izquierda se lee dónde está ("Fin: 1.81 s (de 2.64 s)") |
-| **Rampa** | De 0 a 100 % (por defecto **0**). Es la rampa en cada cambio de ganancia, centrada en el cruce por cero, y es proporcional a cada semiciclo. **0 %**: rampa mínima (1 ms como mucho, o el 6 % del semiciclo; unos 0,7 ms en un 808 de 45 Hz). **100 %**: cubre el 40 % de cada semiciclo a cada lado del cruce (unos 9 ms en total en un 808 de 45 Hz, 3,3 ms en uno de 120 Hz). Ojo: al mezclar la ganancia de un semiciclo con la del vecino, en un 808 asimétrico los lados vuelven a quedar un poco distintos (en las pruebas el 2º armónico sube de -60 a -29 dB). Puede servir en los saltos bruscos (la cola con ruido, el arranque de un golpe). Nunca deja pasar de 0 dB: si la rampa mete una ganancia más alta en el borde de un semiciclo, ahí se baja justo lo necesario |
-| **Formato** | **Igual al original** (mismo formato, bits y sample rate), **WAV 24 bit** o **WAV 32 bit float** |
+| **End** | La línea roja punteada a la derecha del gráfico de abajo. **Se arrastra para cortar el final del sample**, por ejemplo para sacar el ruido que queda subido al final. Salta de semiciclo en semiciclo, así el corte cae siempre en un cruce por cero y no hace click. Lo que queda a la derecha se ve oscurecido y no suena ni se exporta: Play, Export, Export all y el arrastre al DAW terminan ahí. Es **por archivo** (cada sample tiene su propio End) y arranca al final (sin cortar). No puede quedar antes de la línea de Skip. Abajo a la izquierda se lee dónde está ("End: 1.81 s (of 2.64 s)") |
+| **Ramp** | De 0 a 100 % (por defecto **0**). Es la rampa en cada cambio de ganancia, centrada en el cruce por cero, y es proporcional a cada semiciclo. **0 %**: rampa mínima (1 ms como mucho, o el 6 % del semiciclo; unos 0,7 ms en un 808 de 45 Hz). **100 %**: cubre el 40 % de cada semiciclo a cada lado del cruce (unos 9 ms en total en un 808 de 45 Hz, 3,3 ms en uno de 120 Hz). Ojo: al mezclar la ganancia de un semiciclo con la del vecino, en un 808 asimétrico los lados vuelven a quedar un poco distintos (en las pruebas el 2º armónico sube de -60 a -29 dB). Puede servir en los saltos bruscos (la cola con ruido, el arranque de un golpe). Nunca deja pasar de 0 dB: si la rampa mete una ganancia más alta en el borde de un semiciclo, ahí se baja justo lo necesario |
+| **Format** | **Same as original** (mismo formato, bits y sample rate), **WAV 24-bit** o **WAV 32-bit float** |
 
 Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar la app.
 
-**El objetivo es siempre 0 dBFS** (no hay control de Target) y **se normaliza todo**, incluida la cola hasta el final y el ruido de fondo (no hay Threshold). Abajo a la izquierda se ve cuántas ondas y semiciclos detectó y el pico de salida. Lo único que puede pasar de 0 dBFS es el ataque original que dejás sin tocar con Skip (si ya venía pasado). En ese caso aparece **¡SATURA!** en rojo: exportá en 32 bit float.
+**El objetivo es siempre 0 dBFS** (no hay control de Target) y **se normaliza todo**, incluida la cola hasta el final y el ruido de fondo (no hay Threshold). Abajo a la izquierda se ve (en inglés) cuántas ondas (cycles) y semiciclos (half-cycles) detectó y el pico de salida. Lo único que puede pasar de 0 dBFS es el ataque original que dejás sin tocar con Skip (si ya venía pasado). En ese caso aparece **CLIPPING!** en rojo: exportá en 32 bit float.
 
 ## Loop
 
 La idea: normalizar el 808 y loopear una parte para que suene infinitamente sin que se note, y después darle el decay que quieras con la envolvente del sampler.
 
-1. Tocá **Buscar loop**. La app prueba **todos** los inicios y fines posibles entre la línea de Skip y la de Fin (abajo se ve una barra de progreso, y el botón pasa a **Cancelar**). Marca el mejor en **verde** en el gráfico de abajo y prende **Loop**: el play arranca desde el principio y, al llegar al fin del loop, vuelve al inicio del loop infinitamente.
-   **Otro loop** pasa por las otras 4 mejores opciones (distintas entre sí, no el mismo loop corrido una onda), para elegir de oído. Abajo dice cuál está puesta ("opción 2 de 5").
-2. Para **mover el loop entero**, agarrá la zona verde por adentro (aparece la manito) y arrastrala: las dos puntas se mueven juntas, el loop mantiene la misma cantidad de ondas y sigue cayendo en ondas enteras, entre la línea de Skip y la de Fin. Un clic sin arrastrar adentro de la zona solo mueve el cursor de reproducción.
+1. Tocá **Endd loop**. La app prueba **todos** los inicios y fines posibles entre la línea de Skip y la de End (abajo se ve una barra de progreso, y el botón pasa a **Cancel**). Marca el mejor en **verde** en el gráfico de abajo y prende **Loop**: el play arranca desde el principio y, al llegar al fin del loop, vuelve al inicio del loop infinitamente.
+   **Next loop** pasa por las otras 4 mejores opciones (distintas entre sí, no el mismo loop corrido una onda), para elegir de oído. Abajo dice cuál está puesta ("option 2 of 5").
+2. Para **mover el loop entero**, agarrá la zona verde por adentro (aparece la manito) y arrastrala: las dos puntas se mueven juntas, el loop mantiene la misma cantidad de ondas y sigue cayendo en ondas enteras, entre la línea de Skip y la de End. Un clic sin arrastrar adentro de la zona solo mueve el cursor de reproducción.
 3. Si querés otro largo, arrastrá las **puntas verdes** (manijas abajo). Saltan de onda entera en onda entera, así siempre cortan en fase y sin click. Abajo a la izquierda se lee el loop y su **calidad** (100 % = empalme perfecto). Si al estirarlo la calidad baja mucho, es porque la nota cambia a lo largo de la cola y el salto de pitch se va a notar.
-4. **Crossfade del loop**, como en el Quick Sampler de Logic, pero sobre la forma de onda: abajo de la zona verde, en el fin del loop, hay una **manija ✕**. Arrastrala hacia la izquierda: se engancha en los cruces por cero (ondas enteras), así nunca queda a mitad de onda. Va de 1 onda hasta el largo del loop (si el loop tiene 2 ondas, hasta 2); llevándola hasta el fin del loop queda en **Off**, que es como viene. Se ven dos triángulos: el de antes del inicio es lo que entra y el de antes del fin es lo que sale. Funde las últimas ondas antes del fin del loop con las que están antes del inicio, así al saltar lo que venía sonando ya es casi lo mismo que lo que sigue. Queda metido en el audio exportado, así funciona en cualquier sampler. Si lo usás, no le pongas además crossfade en el sampler, porque se sumarían. Es por archivo y se lee abajo ("crossfade 2 ondas"). La calidad % mide los puntos de loop, sin el crossfade.
-5. **Quitar loop** lo borra.
+4. **Crossfade del loop**, como en el Quick Sampler de Logic, pero sobre la forma de onda: abajo de la zona verde, en el fin del loop, hay una **manija ✕**. Arrastrala hacia la izquierda: se engancha en los cruces por cero (ondas enteras), así nunca queda a mitad de onda. Va de 1 onda hasta el largo del loop (si el loop tiene 2 ondas, hasta 2); llevándola hasta el fin del loop queda en **Off**, que es como viene. Se ven dos triángulos: el de antes del inicio es lo que entra y el de antes del fin es lo que sale. Funde las últimas ondas antes del fin del loop con las que están antes del inicio, así al saltar lo que venía sonando ya es casi lo mismo que lo que sigue. Queda metido en el audio exportado, así funciona en cualquier sampler. Si lo usás, no le pongas además crossfade en el sampler, porque se sumarían. Es por archivo y se lee abajo ("crossfade 2 cycles"). La calidad % mide los puntos de loop, sin el crossfade.
+5. **Clear loop** lo borra.
 6. Al **exportar**, el WAV lleva los **puntos de loop adentro** (bloque "smpl", el que leen el Sampler de Logic, Kontakt, Simpler y la mayoría de los samplers). También lleva la **nota raíz** medida (por ejemplo C1 + 3 cents), así el sampler lo afina solo. Con loop siempre se exporta en WAV, aunque el original sea AIFF.
 
 **Cómo elige el loop:** el inicio y el fin caen en cruces por cero ascendentes de la fundamental (ondas enteras). La búsqueda prueba **todos** los pares posibles y a cada uno lo mide completo:
@@ -45,7 +47,7 @@ La idea: normalizar el 808 y loopear una parte para que suene infinitamente sin 
 
 Después hace un **ajuste fino**: corre cada punta hasta ±8 muestras alrededor del cruce (siempre pegada al cero) si así empalma mejor. Se queda con los 5 mejores distintos. Como primera opción pone el mejor, o uno más largo si es prácticamente igual de bueno (hasta 8 % peor). Un loop largo suena más natural que uno de pocas ondas.
 
-La **calidad %** resume todo eso con el mismo criterio, también cuando movés el loop a mano: alrededor de 97 % es un empalme con 1 % de diferencia y un loop estable. Hacen falta al menos 4 ondas. Con un 808 de unos segundos tarda una fracción de segundo; con archivos largos (20 s) tarda unos segundos. Cada archivo tiene su propio loop. La línea de Skip no puede pasar el inicio del loop, ni la de Fin quedar antes de su fin.
+La **calidad %** resume todo eso con el mismo criterio, también cuando movés el loop a mano: alrededor de 97 % es un empalme con 1 % de diferencia y un loop estable. Hacen falta al menos 4 ondas. Con un 808 de unos segundos tarda una fracción de segundo; con archivos largos (20 s) tarda unos segundos. Cada archivo tiene su propio loop. La línea de Skip no puede pasar el inicio del loop, ni la de End quedar antes de su fin.
 
 ## Cómo funciona
 
@@ -60,7 +62,7 @@ La **calidad %** resume todo eso con el mismo criterio, también cuando movés e
 
 1. En GitHub Desktop: escribí un Summary, **Commit to main**, **Push origin**. Cada push dispara la compilación; si querés guardar un cambio sin compilar, poné `[skip ci]` en el Summary.
 2. Esperá la compilación en **Actions** ("Compilar app"). Antes de armar el zip, corre la prueba del motor, que tiene que dar TODO OK. Después descargá **CycleNorm.zip**.
-3. Descomprimí y hacé doble clic en **Instalar.command**: copia `CycleNorm.app` a Aplicaciones, le saca el bloqueo de macOS y la abre. **Desinstalar.command** la borra junto con sus ajustes.
+3. Descomprimí y hacé doble clic en **Install.command**: copia `CycleNorm.app` a Aplicaciones, le saca el bloqueo de macOS y la abre. **Uninstall.command** la borra junto con sus ajustes.
 
 La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 

@@ -61,7 +61,7 @@ public:
         g.setColour (isEnabled() ? kAccent : juce::Colour (0xff555a63));
         g.drawRoundedRectangle (r, 6.0f, 1.2f);
         g.setFont (juce::FontOptions (13.0f));
-        g.drawText (u8 ("⇢  Arrastrá el procesado al DAW"), getLocalBounds(), juce::Justification::centred);
+        g.drawText (u8 ("⇢  Drag the processed audio to your DAW"), getLocalBounds(), juce::Justification::centred);
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
@@ -133,15 +133,15 @@ public:
             b.setWantsKeyboardFocus (false);
             addAndMakeVisible (b);
         };
-        setupButton (openButton, u8 ("Abrir…"));
-        setupButton (removeButton, "Quitar");
+        setupButton (openButton, u8 ("Open…"));
+        setupButton (removeButton, "Remove");
         setupButton (playButton, "Play");
         setupButton (loopButton, "Loop");
-        setupButton (abButton, "Escuchando: Procesado");
-        setupButton (findLoopButton, "Buscar loop");
-        setupButton (clearLoopButton, "Quitar loop");
+        setupButton (abButton, "Hearing: Processed");
+        setupButton (findLoopButton, "Find loop");
+        setupButton (clearLoopButton, "Clear loop");
         findLoopButton.onClick = [this] { if (loopJob != nullptr) cancelLoopSearch(); else findLoopForCurrent(); };
-        setupButton (otherLoopButton, "Otro loop");
+        setupButton (otherLoopButton, "Next loop");
         otherLoopButton.onClick = [this] { nextLoopCandidate(); };
         addChildComponent (progressBar);
         progressBar.setColour (juce::ProgressBar::foregroundColourId, kAccent);
@@ -153,8 +153,8 @@ public:
         progressLabel.setInterceptsMouseClicks (false, false);
         addChildComponent (progressLabel);
         clearLoopButton.onClick = [this] { setLoopForCurrent (0, 0); };
-        setupButton (exportButton, u8 ("Exportar…"));
-        setupButton (exportAllButton, u8 ("Exportar todos…"));
+        setupButton (exportButton, u8 ("Export…"));
+        setupButton (exportAllButton, u8 ("Export all…"));
         loopButton.setClickingTogglesState (true);
         abButton.setClickingTogglesState (true);
         abButton.setToggleState (true, juce::dontSendNotification);
@@ -169,9 +169,9 @@ public:
         exportButton.onClick = [this] { exportSelected(); };
         exportAllButton.onClick = [this] { exportAll(); };
 
-        formatBox.addItem ("Formato: igual al original", 1);
-        formatBox.addItem ("Formato: WAV 24 bit", 2);
-        formatBox.addItem ("Formato: WAV 32 bit float", 3);
+        formatBox.addItem ("Format: same as original", 1);
+        formatBox.addItem ("Format: WAV 24-bit", 2);
+        formatBox.addItem ("Format: WAV 32-bit float", 3);
         formatBox.setSelectedId (props->getIntValue ("format", 1), juce::dontSendNotification);
         formatBox.onChange = [this] { props->setValue ("format", formatBox.getSelectedId()); updateInfo(); };
         formatBox.setWantsKeyboardFocus (false);
@@ -182,7 +182,7 @@ public:
         // se cambia arrastrando la línea en el visor; se cuenta en semiciclos (antes en ondas: 1 onda = 2)
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
-        setupSlider (ramp, rampLabel, "Rampa", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
+        setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -279,7 +279,7 @@ public:
         g.drawText ("CycleNorm", titleArea, juce::Justification::centredLeft);
         g.setColour (juce::Colour (0xff8a919c));
         g.setFont (juce::FontOptions (12.0f));
-        g.drawText (u8 ("normaliza semiciclo por semiciclo · espacio = play · A = original/procesado"),
+        g.drawText (u8 ("normalizes half-cycle by half-cycle · space = play · A = original/processed"),
                     titleArea.withTrimmedLeft (110), juce::Justification::centredLeft);
     }
 
@@ -382,7 +382,7 @@ public:
                 processCurrent();
             }
             const bool ok = writeItem (*items.front(), juce::File (testOut), err);
-            std::printf ("test export: %s %s\n", ok ? "OK" : "FALLA", err.toRawUTF8());
+            std::printf ("test export: %s %s\n", ok ? "OK" : "FAIL", err.toRawUTF8());
             juce::Timer::callAfterDelay (1500, [] { juce::JUCEApplication::quit(); });
         }
     }
@@ -487,7 +487,7 @@ private:
         if (loopJob != nullptr)
         {
             progressValue = loopJob->progress.load();
-            progressLabel.setText (u8 ("Buscando el mejor loop (probando todos los pares)…  ") + juce::String ((int) std::round (progressValue * 100.0)) + " %",
+            progressLabel.setText (u8 ("Finding the best loop (trying every pair)…  ") + juce::String ((int) std::round (progressValue * 100.0)) + " %",
                                    juce::dontSendNotification);
             if (loopJob->finished.load()) loopSearchFinished();
         }
@@ -543,7 +543,7 @@ private:
 
     void openFiles()
     {
-        chooser = std::make_unique<juce::FileChooser> ("Elegir audio", juce::File (props->getValue ("lastDir")),
+        chooser = std::make_unique<juce::FileChooser> ("Choose audio", juce::File (props->getValue ("lastDir")),
                                                        "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.caf");
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
                                   | juce::FileBrowserComponent::canSelectMultipleItems,
@@ -566,7 +566,7 @@ private:
         list.updateContent();
         if (firstNew >= 0) list.selectRow (firstNew);
         if (! failed.isEmpty())
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "No se pudieron abrir",
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open",
                                                     failed.joinIntoString ("\n"));
         updateButtons();
     }
@@ -698,7 +698,7 @@ private:
         progressLabel.setVisible (true);
         progressLabel.toFront (false);
         info.setVisible (false);
-        findLoopButton.setButtonText ("Cancelar");
+        findLoopButton.setButtonText ("Cancel");
         loopJob->startThread();
     }
 
@@ -716,7 +716,7 @@ private:
         progressBar.setVisible (false);
         progressLabel.setVisible (false);
         info.setVisible (true);
-        findLoopButton.setButtonText ("Buscar loop");
+        findLoopButton.setButtonText ("Find loop");
         updateButtons();
     }
 
@@ -732,8 +732,8 @@ private:
         auto& it = *job->item;
         if (job->results.empty())
         {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Buscar loop",
-                u8 ("No encontré un loop entre la línea de Skip y la de Fin: hacen falta al menos unas 6 ondas estables."));
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Find loop",
+                u8 ("No loop found between the Skip and End lines: at least about 6 steady cycles are needed."));
             return;
         }
         it.loopCands = job->results;
@@ -841,7 +841,7 @@ private:
     void updateAB()
     {
         source.setPlayProcessed (abButton.getToggleState());
-        abButton.setButtonText (abButton.getToggleState() ? "Escuchando: Procesado" : "Escuchando: Original");
+        abButton.setButtonText (abButton.getToggleState() ? "Hearing: Processed" : "Hearing: Original");
         wave.refresh();
     }
 
@@ -873,24 +873,24 @@ private:
         auto& it = *items[(size_t) current];
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::String t;
-        t << (int) it.analysis.numCycles() << u8 (" ondas (") << (int) it.analysis.halfPeaks.size() << u8 (" semiciclos) · Skip: ") << skipHalves << u8 (" semiciclos · todo a 0 dBFS · pico de salida ") << juce::String (peakDb, 1) << " dBFS";
+        t << (int) it.analysis.numCycles() << u8 (" cycles (") << (int) it.analysis.halfPeaks.size() << u8 (" half-cycles) · Skip: ") << skipHalves << u8 (" half-cycles · all at 0 dBFS · output peak ") << juce::String (peakDb, 1) << " dBFS";
         if (it.endSample > 0)
-            t << u8 (" · Fin: ") << juce::String ((double) it.endSample / it.sampleRate, 2) << " s (de "
+            t << u8 (" · End: ") << juce::String ((double) it.endSample / it.sampleRate, 2) << " s (of "
               << juce::String ((double) it.original->getNumSamples() / it.sampleRate, 2) << " s)";
         if (it.hasLoop())
         {
             const auto& B = it.analysis.bounds;
             const auto nCyc = std::distance (std::lower_bound (B.begin(), B.end(), it.loopStart), std::lower_bound (B.begin(), B.end(), it.loopEnd));
             t << u8 (" · Loop: ") << juce::String ((double) it.loopStart / it.sampleRate, 3) << u8 ("–")
-              << juce::String ((double) it.loopEnd / it.sampleRate, 3) << " s (" << (int) nCyc << u8 (" ondas, calidad ")
+              << juce::String ((double) it.loopEnd / it.sampleRate, 3) << " s (" << (int) nCyc << u8 (" cycles, quality ")
               << juce::String (it.loopQuality * 100.0, 1) << " %)";
-            t << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) + (it.xfadeCycles == 1 ? " onda" : " ondas") : juce::String ("Off"));
+            t << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) + (it.xfadeCycles == 1 ? " cycle" : " cycles") : juce::String ("Off"));
             if (it.loopCandIdx >= 0 && it.loopCands.size() > 1)
-                t << u8 (" · opción ") << (it.loopCandIdx + 1) << " de " << (int) it.loopCands.size();
+                t << u8 (" · option ") << (it.loopCandIdx + 1) << " of " << (int) it.loopCands.size();
         }
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
-            t << u8 ("  ·  ¡SATURA! El ataque original pasa de 0 dBFS: exportá en 32 bit float");
+            t << u8 ("  ·  CLIPPING! The original attack goes over 0 dBFS: export as 32-bit float");
             info.setColour (juce::Label::textColourId, juce::Colour (0xffff6b6b));
         }
         else info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
@@ -925,7 +925,7 @@ private:
 
         dest.deleteFile();
         auto stream = std::make_unique<juce::FileOutputStream> (dest);
-        if (! stream->openedOk()) { error = "No se pudo escribir " + dest.getFullPathName(); return false; }
+        if (! stream->openedOk()) { error = "Could not write " + dest.getFullPathName(); return false; }
         // Puntos de loop adentro del WAV (bloque "smpl", el que leen el Sampler de Logic, Kontakt,
         // Simpler...) y la nota raíz medida, así el sampler lo afina y lo loopea solo.
         juce::StringPairArray meta;
@@ -948,11 +948,11 @@ private:
         std::unique_ptr<juce::AudioFormatWriter> w (fmt.createWriterFor (stream.get(), it.sampleRate,
                                                                           (unsigned int) it.processed->getNumChannels(),
                                                                           fmtInfo.bits, meta, 0));
-        if (w == nullptr) { error = "Formato no soportado"; return false; }
+        if (w == nullptr) { error = "Format not supported"; return false; }
         stream.release(); // ahora es del writer
         if (! w->writeFromAudioSampleBuffer (*it.processed, 0, it.lengthToWrite())) // hasta la línea de Fin
         {
-            error = "Error al escribir " + dest.getFileName();
+            error = "Error writing " + dest.getFileName();
             return false;
         }
         return true;
@@ -963,7 +963,7 @@ private:
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
         auto& it = *items[(size_t) current];
         const juce::File dir (props->getValue ("exportDir", it.file.getParentDirectory().getFullPathName()));
-        chooser = std::make_unique<juce::FileChooser> ("Exportar", dir.getChildFile (defaultName (it)),
+        chooser = std::make_unique<juce::FileChooser> ("Export", dir.getChildFile (defaultName (it)),
                                                        outFormatFor (it).aiff ? "*.aif" : "*.wav");
         chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                                   | juce::FileBrowserComponent::warnAboutOverwriting,
@@ -982,7 +982,7 @@ private:
     void exportAll()
     {
         if (items.empty()) return;
-        chooser = std::make_unique<juce::FileChooser> (u8 ("Elegí la carpeta de destino"),
+        chooser = std::make_unique<juce::FileChooser> (u8 ("Choose the destination folder"),
                                                        juce::File (props->getValue ("exportDir", items.front()->file.getParentDirectory().getFullPathName())));
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
                               [this] (const juce::FileChooser& fc) {
@@ -1000,8 +1000,8 @@ private:
                                   }
                                   juce::AlertWindow::showMessageBoxAsync (
                                       errors.isEmpty() ? juce::MessageBoxIconType::InfoIcon : juce::MessageBoxIconType::WarningIcon,
-                                      "Exportar todos",
-                                      juce::String (ok) + " archivo(s) exportados en\n" + dir.getFullPathName()
+                                      "Export all",
+                                      juce::String (ok) + " file(s) exported to\n" + dir.getFullPathName()
                                           + (errors.isEmpty() ? juce::String() : "\n\n" + errors.joinIntoString ("\n")));
                               });
     }
@@ -1030,7 +1030,7 @@ private:
         g.drawText (it.file.getFileName(), 8, 2, w - 12, h / 2, juce::Justification::bottomLeft, true);
         g.setColour (juce::Colour (0xff8a919c));
         g.setFont (juce::FontOptions (11.0f));
-        g.drawText (juce::String ((int) it.analysis.numCycles()) + u8 (" ondas · ") + juce::String (it.sampleRate / 1000.0, 1)
+        g.drawText (juce::String ((int) it.analysis.numCycles()) + u8 (" cycles · ") + juce::String (it.sampleRate / 1000.0, 1)
                         + " kHz · " + (it.isFloat ? juce::String ("32f") : juce::String (it.bits)) + " bit",
                     8, h / 2, w - 12, h / 2 - 2, juce::Justification::topLeft, true);
     }

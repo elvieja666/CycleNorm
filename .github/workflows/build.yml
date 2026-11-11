@@ -25,8 +25,8 @@ jobs:
         run: |
           mkdir pkg
           cp -R build/CycleNorm_artefacts/Release/CycleNorm.app pkg/
-          cp Instalador/Instalar.command Instalador/Desinstalar.command LEEME.md pkg/
-          chmod +x pkg/Instalar.command pkg/Desinstalar.command
+          cp Instalador/Install.command Instalador/Uninstall.command LEEME.md pkg/
+          chmod +x pkg/Install.command pkg/Uninstall.command
           codesign --force --deep --sign - pkg/CycleNorm.app
           lipo -info pkg/CycleNorm.app/Contents/MacOS/CycleNorm
           (cd pkg && zip -ry ../CycleNorm.zip .)

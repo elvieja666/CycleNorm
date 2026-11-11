@@ -504,7 +504,7 @@ private:
                     handle.addTriangle (ex - 6.0f, hy, ex + 6.0f, hy, ex, hy + 8.0f);
                     g.fillPath (handle);
                     g.setFont (juce::FontOptions (11.0f));
-                    g.drawText ("Fin", juce::Rectangle<float> (ex - 34.0f, (float) r.getBottom() - 18.0f, 30.0f, 14.0f), juce::Justification::centredRight);
+                    g.drawText ("End", juce::Rectangle<float> (ex - 34.0f, (float) r.getBottom() - 18.0f, 30.0f, 14.0f), juce::Justification::centredRight);
                 }
             }
             // rojo donde pasa de 0 dBFS
@@ -515,7 +515,7 @@ private:
 
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
         g.setFont (juce::FontOptions (13.0f, active ? juce::Font::bold : juce::Font::plain));
-        g.drawText (title + (active ? "  (sonando)" : ""), r.reduced (8, 4), juce::Justification::topLeft);
+        g.drawText (title + (active ? "  (playing)" : ""), r.reduced (8, 4), juce::Justification::topLeft);
     }
 
     void renderCache()
@@ -529,13 +529,13 @@ private:
         {
             g.setColour (juce::Colour (0xff8a919c));
             g.setFont (juce::FontOptions (16.0f));
-            g.drawText (juce::String::fromUTF8 ("Arrastrá acá tus 808 (WAV / AIFF)"), getLocalBounds(), juce::Justification::centred);
+            g.drawText (juce::String ("Drop your 808s here (WAV / AIFF)"), getLocalBounds(), juce::Justification::centred);
             return;
         }
         const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
         drawLane (g, orig.get(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc);
-        drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Procesado", playingProc, skipEnd, hasSkipLine());
+        drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
     }
 };
