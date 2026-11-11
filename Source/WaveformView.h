@@ -66,11 +66,24 @@ public:
 
     void mouseMove (const juce::MouseEvent& e) override
     {
-        setMouseCursor (whichLine (e.position) != 0 ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor);
+        if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+        else if (insideLoop (e.position)) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
+        else setMouseCursor (juce::MouseCursor::NormalCursor);
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
         const int line = whichLine (e.position);
+        // adentro de la zona del loop (no sobre una punta): se prepara para mover el loop entero.
+        // Si se suelta sin arrastrar, es un clic normal (mueve el cursor de reproducción).
+        movingLoop = false;
+        pendingLoopMove = line == 0 && insideLoop (e.position);
+        if (pendingLoopMove)
+        {
+            moveDownX = e.position.x;
+            moveStartIdx = indexOfLoopBound (loopStart);
+            moveCycles = (int) indexOfLoopBound (loopEnd) - (int) moveStartIdx;
+            return;
+        }
         draggingSkip = line == 1;
         draggingEnd = line == 2;
         draggingLoop = line >= 3 ? line : 0;
@@ -81,6 +94,12 @@ public:
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
+        if (pendingLoopMove)
+        {
+            if (! movingLoop && e.getDistanceFromDragStartX() != 0 && std::abs (e.position.x - moveDownX) >= 3.0f) movingLoop = true;
+            if (movingLoop) moveLoopBy (e.position.x - moveDownX);
+            return;
+        }
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (draggingEnd) { dragEndTo (e.position.x); return; }
         if (draggingLoop) { dragLoopTo (e.position.x); return; }
@@ -88,6 +107,9 @@ public:
     }
     void mouseUp (const juce::MouseEvent& e) override
     {
+        if (pendingLoopMove && ! movingLoop && totalLen() > 0 && onSeek) // clic sin arrastrar: mover el cursor
+            onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
+        pendingLoopMove = movingLoop = false;
         draggingSkip = draggingEnd = false;
         draggingLoop = 0;
         dirty = true; repaint();
@@ -126,6 +148,41 @@ private:
     bool draggingSkip = false, draggingEnd = false;
     int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop
     std::vector<size_t> loopBounds;
+    bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
+    float moveDownX = 0;
+    size_t moveStartIdx = 0;
+    int moveCycles = 0;
+
+    bool insideLoop (juce::Point<float> p) const
+    {
+        if (! hasLoop() || p.y < getHeight() / 2.0f) return false; // solo en el carril de abajo (procesado)
+        const float x0 = (float) sampleToX ((double) loopStart), x1 = (float) sampleToX ((double) loopEnd);
+        return p.x > x0 && p.x < x1;
+    }
+    size_t indexOfLoopBound (size_t sample) const
+    {
+        auto it = std::lower_bound (loopBounds.begin(), loopBounds.end(), sample);
+        return (size_t) std::distance (loopBounds.begin(), it);
+    }
+    // Mover el loop entero: misma cantidad de ondas, las dos puntas en cruces ascendentes (ondas
+    // enteras), entre la línea de Skip y la de Fin.
+    void moveLoopBy (float dx)
+    {
+        if (moveCycles <= 0 || loopBounds.empty() || ! onLoopDragged) return;
+        const double from = (double) loopBounds[std::min (moveStartIdx, loopBounds.size() - 1)];
+        const double target = from + (double) dx / juce::jmax (1, getWidth()) * viewLen;
+        size_t best = moveStartIdx; double bestD = 1e300;
+        for (size_t k = 0; k + (size_t) moveCycles < loopBounds.size(); ++k)
+        {
+            const size_t s0 = loopBounds[k], s1 = loopBounds[k + (size_t) moveCycles];
+            if (s0 < skipEnd || s1 > endOrLen()) continue;
+            const double d = std::abs ((double) s0 - target);
+            if (d < bestD) { bestD = d; best = k; }
+        }
+        if (best + (size_t) moveCycles >= loopBounds.size()) return;
+        const size_t s0 = loopBounds[best], s1 = loopBounds[best + (size_t) moveCycles];
+        if (s0 != loopStart || s1 != loopEnd) onLoopDragged (s0, s1);
+    }
 
     bool hasLoop() const { return loopEnd > loopStart && onLoopDragged != nullptr; }
     bool xVisible (double sample) const { const double x = sampleToX (sample); return x >= -1.0 && x <= getWidth() + 1.0; }
@@ -351,7 +408,7 @@ private:
                 const float a0 = juce::jmax ((float) r.getX(), x0), a1 = juce::jmin ((float) r.getRight(), x1);
                 if (a1 > a0)
                 {
-                    g.setColour (juce::Colour (0x2a3ddc84));
+                    g.setColour (juce::Colour (movingLoop ? 0x483ddc84 : 0x2a3ddc84));
                     g.fillRect (juce::Rectangle<float> (a0, (float) r.getY(), a1 - a0, (float) r.getHeight()));
                 }
                 const float dashes[] = { 4.0f, 3.0f };
