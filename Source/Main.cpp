@@ -35,6 +35,8 @@ struct Item
     size_t endSample = 0; // dónde se corta el final (la línea de Fin); 0 = hasta el final del archivo
     size_t loopStart = 0, loopEnd = 0; // zona de loop (0/0 = sin loop): de un cruce ascendente a otro
     double loopQuality = 0;
+    std::vector<cyclenorm::LoopResult> loopCands; // los mejores loops que encontró la búsqueda
+    int loopCandIdx = -1;                        // cuál de ellos está puesto (-1 = uno movido a mano)
     bool hasLoop() const { return loopEnd > loopStart; }
 
     int lengthToWrite() const
@@ -77,6 +79,38 @@ private:
 };
 
 //==============================================================================
+// Búsqueda de loop en segundo plano (exhaustiva: puede tardar un poco con archivos largos).
+class LoopSearchJob : public juce::Thread
+{
+public:
+    LoopSearchJob (Item* target, std::shared_ptr<const juce::AudioBuffer<float>> audio, cyclenorm::Analysis an, size_t from, size_t to)
+        : juce::Thread ("Buscar loop"), item (target), buf (std::move (audio)), analysis (std::move (an)), zoneFrom (from), zoneTo (to) {}
+    ~LoopSearchJob() override { stopThread (4000); }
+
+    void run() override
+    {
+        cyclenorm::AudioView v;
+        for (int ch = 0; ch < buf->getNumChannels(); ++ch) v.ch.push_back (buf->getReadPointer (ch));
+        v.n = (size_t) buf->getNumSamples();
+        results = cyclenorm::findLoops (analysis, v, zoneFrom, zoneTo, 4, 5, [this] (double p) {
+            progress = p;
+            return ! threadShouldExit();
+        });
+        cancelled = threadShouldExit();
+        finished = true;
+    }
+
+    Item* const item;
+    std::atomic<double> progress { 0.0 };
+    std::atomic<bool> finished { false }, cancelled { false };
+    std::vector<cyclenorm::LoopResult> results; // (se lee recién con finished == true)
+
+private:
+    std::shared_ptr<const juce::AudioBuffer<float>> buf;
+    cyclenorm::Analysis analysis;
+    size_t zoneFrom, zoneTo;
+};
+
 class MainComponent : public juce::Component,
                       public juce::FileDragAndDropTarget,
                       private juce::ListBoxModel,
@@ -105,7 +139,18 @@ public:
         setupButton (abButton, "Escuchando: Procesado");
         setupButton (findLoopButton, "Buscar loop");
         setupButton (clearLoopButton, "Quitar loop");
-        findLoopButton.onClick = [this] { findLoopForCurrent(); };
+        findLoopButton.onClick = [this] { if (loopJob != nullptr) cancelLoopSearch(); else findLoopForCurrent(); };
+        setupButton (otherLoopButton, "Otro loop");
+        otherLoopButton.onClick = [this] { nextLoopCandidate(); };
+        addChildComponent (progressBar);
+        progressBar.setColour (juce::ProgressBar::foregroundColourId, kAccent);
+        progressBar.setColour (juce::ProgressBar::backgroundColourId, juce::Colour (0xff2d323a));
+        progressBar.setTextToDisplay (" "); // el texto va en una etiqueta encima (el de la barra no se leía)
+        progressLabel.setColour (juce::Label::textColourId, juce::Colours::white);
+        progressLabel.setFont (juce::FontOptions (13.0f));
+        progressLabel.setJustificationType (juce::Justification::centred);
+        progressLabel.setInterceptsMouseClicks (false, false);
+        addChildComponent (progressLabel);
         clearLoopButton.onClick = [this] { setLoopForCurrent (0, 0); };
         setupButton (exportButton, u8 ("Exportar…"));
         setupButton (exportAllButton, u8 ("Exportar todos…"));
@@ -196,13 +241,14 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (1200, 680);
+        setSize (1290, 680);
         updateButtons();
         startTimerHz (15);
     }
 
     ~MainComponent() override
     {
+        if (loopJob != nullptr) { loopJob->signalThreadShouldExit(); loopJob.reset(); }
         saveSettings();
         transport.stop();
         transport.setSource (nullptr);
@@ -239,6 +285,7 @@ public:
         loopButton.setBounds (top.removeFromLeft (60)); top.removeFromLeft (6);
         abButton.setBounds (top.removeFromLeft (180)); top.removeFromLeft (16);
         findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
+        otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
         clearLoopButton.setBounds (top.removeFromLeft (95));
         exportAllButton.setBounds (top.removeFromRight (130)); top.removeFromRight (6);
         exportButton.setBounds (top.removeFromRight (100)); top.removeFromRight (6);
@@ -250,6 +297,8 @@ public:
         auto bottomRow = c.removeFromBottom (30);
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
+        progressBar.setBounds (bottomRow.reduced (0, 4).withTrimmedRight (12));
+        progressLabel.setBounds (progressBar.getBounds());
         c.removeFromBottom (6);
         const int colW = c.getWidth() / 3;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
@@ -355,7 +404,11 @@ private:
     int current = -1;
 
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton,
-                     findLoopButton, clearLoopButton;
+                     findLoopButton, otherLoopButton, clearLoopButton;
+    double progressValue = 0.0;
+    juce::ProgressBar progressBar { progressValue };
+    juce::Label progressLabel;
+    std::unique_ptr<LoopSearchJob> loopJob;
     juce::ComboBox formatBox;
     juce::Slider amount, ramp, xfade;
     static constexpr int kMaxSkip = 512; // semiciclos
@@ -418,6 +471,13 @@ private:
 
     void timerCallback() override
     {
+        if (loopJob != nullptr)
+        {
+            progressValue = loopJob->progress.load();
+            progressLabel.setText (u8 ("Buscando el mejor loop (probando todos los pares)…  ") + juce::String ((int) std::round (progressValue * 100.0)) + " %",
+                                   juce::dontSendNotification);
+            if (loopJob->finished.load()) loopSearchFinished();
+        }
         if (pendingReprocess && juce::Time::getMillisecondCounter() - lastChange > 40)
         {
             pendingReprocess = false;
@@ -570,7 +630,7 @@ private:
             cyclenorm::AudioView v;
             for (int ch = 0; ch < out->getNumChannels(); ++ch) v.ch.push_back (out->getReadPointer (ch));
             v.n = (size_t) out->getNumSamples();
-            it.loopQuality = cyclenorm::loopQuality (v, it.loopStart, it.loopEnd);
+            it.loopQuality = cyclenorm::loopQuality (it.analysis, v, it.loopStart, it.loopEnd);
         }
         it.processed = out;
         it.outPeak = peak;
@@ -581,25 +641,83 @@ private:
     {
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
         auto& it = *items[(size_t) current];
-        // se busca sobre el normalizado sin crossfade
+        // se busca sobre el normalizado sin crossfade (una copia, en otro hilo)
         const auto saved = std::make_pair (it.loopStart, it.loopEnd);
         it.loopStart = it.loopEnd = 0;
         processItem (it);
-        cyclenorm::AudioView v;
-        for (int ch = 0; ch < it.processed->getNumChannels(); ++ch) v.ch.push_back (it.processed->getReadPointer (ch));
-        v.n = (size_t) it.processed->getNumSamples();
+        auto copy = std::make_shared<juce::AudioBuffer<float>> (*it.processed);
+        it.loopStart = saved.first; it.loopEnd = saved.second;
+        processItem (it);
         const auto from = cyclenorm::skipEndSample (it.analysis, readSettings());
-        const auto L = cyclenorm::findLoop (it.analysis, v, from, (size_t) it.lengthToWrite());
-        if (! L.found)
+        loopJob = std::make_unique<LoopSearchJob> (&it, copy, it.analysis, from, (size_t) it.lengthToWrite());
+        progressValue = 0.0;
+        progressBar.setVisible (true);
+        progressLabel.setVisible (true);
+        progressLabel.toFront (false);
+        info.setVisible (false);
+        findLoopButton.setButtonText ("Cancelar");
+        loopJob->startThread();
+    }
+
+    void cancelLoopSearch()
+    {
+        if (loopJob == nullptr) return;
+        loopJob->signalThreadShouldExit();
+        loopJob->stopThread (4000);
+        loopJob.reset();
+        endLoopSearchUi();
+    }
+
+    void endLoopSearchUi()
+    {
+        progressBar.setVisible (false);
+        progressLabel.setVisible (false);
+        info.setVisible (true);
+        findLoopButton.setButtonText ("Buscar loop");
+        updateButtons();
+    }
+
+    void loopSearchFinished()
+    {
+        auto job = std::move (loopJob);
+        job->stopThread (1000);
+        endLoopSearchUi();
+        if (job->cancelled.load()) return;
+        // el archivo puede haberse quitado o cambiado mientras buscaba
+        const bool stillThere = std::any_of (items.begin(), items.end(), [&] (auto& p) { return p.get() == job->item; });
+        if (! stillThere) return;
+        auto& it = *job->item;
+        if (job->results.empty())
         {
-            it.loopStart = saved.first; it.loopEnd = saved.second;
-            processCurrent();
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Buscar loop",
                 u8 ("No encontré un loop entre la línea de Skip y la de Fin: hacen falta al menos unas 6 ondas estables."));
             return;
         }
-        setLoopForCurrent (L.start, L.end);
+        it.loopCands = job->results;
+        if (items[(size_t) current].get() != &it) { it.loopCandIdx = 0; it.loopStart = it.loopCands[0].start; it.loopEnd = it.loopCands[0].end; return; }
+        applyLoopCandidate (0);
         if (! loopButton.getToggleState()) { loopButton.setToggleState (true, juce::sendNotification); }
+    }
+
+    void applyLoopCandidate (int idx)
+    {
+        if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+        auto& it = *items[(size_t) current];
+        if (! juce::isPositiveAndBelow (idx, (int) it.loopCands.size())) return;
+        const auto& c = it.loopCands[(size_t) idx];
+        setLoopForCurrent (c.start, c.end);
+        it.loopCandIdx = idx;
+        updateInfo();
+        updateButtons();
+    }
+
+    // "Otro loop": el siguiente de los mejores candidatos (vuelve al primero al final)
+    void nextLoopCandidate()
+    {
+        if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+        auto& it = *items[(size_t) current];
+        if (it.loopCands.empty()) return;
+        applyLoopCandidate ((it.loopCandIdx + 1) % (int) it.loopCands.size());
     }
 
     void setLoopForCurrent (size_t s0, size_t s1)
@@ -608,6 +726,8 @@ private:
         auto& it = *items[(size_t) current];
         if (s1 <= s0) s0 = s1 = 0;
         it.loopStart = s0; it.loopEnd = s1;
+        it.loopCandIdx = -1; // (applyLoopCandidate lo vuelve a poner)
+        if (s1 == 0) it.loopCands.clear();
         source.setLoopRegion ((juce::int64) s0, (juce::int64) s1);
         wave.setLoop (s0, s1);
         processCurrent();   // aplica el crossfade y mide la calidad
@@ -686,7 +806,8 @@ private:
         playButton.setEnabled (has);
         exportButton.setEnabled (has);
         exportAllButton.setEnabled (! items.empty());
-        findLoopButton.setEnabled (has);
+        findLoopButton.setEnabled (has || loopJob != nullptr);
+        otherLoopButton.setEnabled (has && loopJob == nullptr && items[(size_t) current]->loopCands.size() > 1);
         clearLoopButton.setEnabled (has && items[(size_t) current]->hasLoop());
         dragOut.setEnabled (has);
         dragOut.repaint();
@@ -717,6 +838,8 @@ private:
             t << u8 (" · Loop: ") << juce::String ((double) it.loopStart / it.sampleRate, 3) << u8 ("–")
               << juce::String ((double) it.loopEnd / it.sampleRate, 3) << " s (" << (int) nCyc << u8 (" ondas, calidad ")
               << juce::String (it.loopQuality * 100.0, 1) << " %)";
+            if (it.loopCandIdx >= 0 && it.loopCands.size() > 1)
+                t << u8 (" · opción ") << (it.loopCandIdx + 1) << " de " << (int) it.loopCands.size();
         }
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
@@ -906,7 +1029,7 @@ private:
             content = new MainComponent();
             setContentOwned (content, true);
             setResizable (true, true);
-            setResizeLimits (1130, 560, 4000, 3000);
+            setResizeLimits (1230, 560, 4000, 3000);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }

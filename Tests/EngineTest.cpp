@@ -280,9 +280,10 @@ int main()
         double maxStep = 0;
         for (size_t i = L.start + 1; i < L.end; ++i) maxStep = std::max (maxStep, (double) std::abs (y[0][i] - y[0][i - 1]));
         const double jump = std::abs (y[0][L.start] - y[0][L.end - 1]);
-        const bool onBounds = std::find (a.bounds.begin(), a.bounds.end(), L.start) != a.bounds.end()
-                           && std::find (a.bounds.begin(), a.bounds.end(), L.end) != a.bounds.end();
-        bool ok = L.found && onBounds && L.cycles >= 4 && L.quality > 0.9 && jump <= 1.5 * maxStep;
+        // las puntas caen en ondas enteras (con el ajuste fino, a lo sumo 8 muestras del cruce)
+        auto nearBound = [&] (size_t v) { for (auto b : a.bounds) if ((b > v ? b - v : v - b) <= 8) return true; return false; };
+        const bool onBounds = nearBound (L.start) && nearBound (L.end);
+        bool ok = L.found && onBounds && L.cycles >= 4 && L.quality > 0.85 && jump <= 1.5 * maxStep;
         std::printf ("loop: %d ondas (%.3f-%.3f s), calidad %.1f%%, salto en el empalme %.4f (paso normal max %.4f)  %s\n",
                      L.cycles, L.start / fs, L.end / fs, L.quality * 100, jump, maxStep, ok ? "OK" : "FALLA");
         fails += ! ok;
@@ -292,11 +293,25 @@ int main()
         applyLoopCrossfade (chs, L.start, L.end, xf);
         const double jump2 = std::abs (y[0][L.start] - y[0][L.end - 1]);
         AudioView v2; v2.ch = { y[0].data(), y[1].data() }; v2.n = n;
-        const double q2 = loopQuality (v2, L.start, L.end);
+        const double q2 = loopQuality (a, v2, L.start, L.end);
         // con crossfade, al volver al inicio el salto es un paso normal de la onda: sin click
-        ok = jump2 <= 1.5 * maxStep && q2 >= 0.9;
+        ok = jump2 <= 1.5 * maxStep && q2 >= 0.85;
         std::printf ("loop con crossfade de 2 ondas: salto %.4f (paso normal max %.4f), calidad %.1f%%  %s\n", jump2, maxStep, q2 * 100, ok ? "OK" : "FALLA");
         fails += ! ok;
+        // varios candidatos distintos, progreso hasta 1 y cancelar
+        {
+            double lastP = 0; int calls = 0;
+            auto many = findLoops (a, v, skipEndSample (a, z), n, 4, 5, [&] (double pr) { lastP = pr; ++calls; return true; });
+            bool distinct = many.size() >= 3;
+            for (size_t x = 0; x < many.size(); ++x)
+                for (size_t w = x + 1; w < many.size(); ++w)
+                    if (many[x].start == many[w].start && many[x].end == many[w].end) distinct = false;
+            int seen = 0;
+            auto cancelled = findLoops (a, v, skipEndSample (a, z), n, 4, 5, [&] (double) { return ++seen < 3; });
+            const bool okMany = distinct && lastP >= 1.0 && calls > 3 && cancelled.empty();
+            std::printf ("loop: %zu candidatos distintos, progreso hasta %.0f%%, cancelar  %s\n", many.size(), lastP * 100, okMany ? "OK" : "FALLA");
+            fails += ! okMany;
+        }
         const double note = midiNoteOf (a, L.start, L.end), expectedNote = 69.0 + 12.0 * std::log2 (f / 440.0);
         ok = std::abs (note - expectedNote) < 0.2;
         std::printf ("nota del loop: %.2f (esperada %.2f)  %s\n", note, expectedNote, ok ? "OK" : "FALLA");

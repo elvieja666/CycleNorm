@@ -30,19 +30,22 @@ Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar l
 
 La idea: normalizar el 808 y loopear una parte para que suene infinitamente sin que se note, y después darle el decay que quieras con la envolvente del sampler.
 
-1. Tocá **Buscar loop**. La app busca, entre la línea de Skip y la de Fin, de dónde a dónde loopear para que el empalme no se note. Marca esa zona en **verde** en el gráfico de abajo y prende **Loop**: el play arranca desde el principio y, al llegar al fin del loop, vuelve al inicio del loop infinitamente.
+1. Tocá **Buscar loop**. La app prueba **todos** los inicios y fines posibles entre la línea de Skip y la de Fin (abajo se ve una barra de progreso, y el botón pasa a **Cancelar**). Marca el mejor en **verde** en el gráfico de abajo y prende **Loop**: el play arranca desde el principio y, al llegar al fin del loop, vuelve al inicio del loop infinitamente.
+   **Otro loop** pasa por las otras 4 mejores opciones (distintas entre sí, no el mismo loop corrido una onda), para elegir de oído. Abajo dice cuál está puesta ("opción 2 de 5").
 2. Para **mover el loop entero**, agarrá la zona verde por adentro (aparece la manito) y arrastrala: las dos puntas se mueven juntas, el loop mantiene la misma cantidad de ondas y sigue cayendo en ondas enteras, entre la línea de Skip y la de Fin. Un clic sin arrastrar adentro de la zona solo mueve el cursor de reproducción.
 3. Si querés otro largo, arrastrá las **puntas verdes** (manijas abajo). Saltan de onda entera en onda entera, así siempre cortan en fase y sin click. Abajo a la izquierda se lee el loop y su **calidad** (100 % = empalme perfecto). Si al estirarlo la calidad baja mucho, es porque la nota cambia a lo largo de la cola y el salto de pitch se va a notar.
 4. **Crossfade del loop** (de Off a 16 ondas, por defecto Off): funde las últimas ondas antes del fin del loop con las que están antes del inicio. Suaviza cualquier diferencia que quede en el empalme. Queda metido en el audio, así suena igual en la app que en el sampler.
 5. **Quitar loop** lo borra.
 6. Al **exportar**, el WAV lleva los **puntos de loop adentro** (bloque "smpl", el que leen el Sampler de Logic, Kontakt, Simpler y la mayoría de los samplers). También lleva la **nota raíz** medida (por ejemplo C1 + 3 cents), así el sampler lo afina solo. Con loop siempre se exporta en WAV, aunque el original sea AIFF.
 
-**Cómo elige el loop:** el inicio y el fin caen siempre en un cruce por cero ascendente de la fundamental (ondas enteras). Para cada par posible compara la onda antes del fin con la onda antes del inicio, y la onda en el fin con la del inicio. Es decir, lo que se escucha al saltar contra lo que se escucharía sin saltar, y mide:
-- **la forma de onda y el nivel** (timbre),
-- **el largo de las ondas** (la nota: que no haya salto de pitch),
-- **el brillo** (armónicos y ruido de fondo).
+**Cómo elige el loop:** el inicio y el fin caen en cruces por cero ascendentes de la fundamental (ondas enteras). La búsqueda prueba **todos** los pares posibles y a cada uno lo mide completo:
+- **El empalme, fino:** 2 ondas a cada lado del corte, muestra a muestra y por canal (estéreo incluido): lo que suena al saltar del fin al inicio contra lo que sonaría sin saltar. También mide **la pendiente** en el punto de corte, porque un cambio de pendiente se oye como un "tic" suave.
+- **La nota en el empalme:** que las ondas a los dos lados del corte duren lo mismo (sin salto de pitch).
+- **La estabilidad de todo el loop,** no solo del empalme: cuánto varía la nota onda a onda y del principio al final del loop, cuánto cambia el timbre (principio, medio y final) y cuánto varían el nivel, el brillo y el ruido. Un loop que "ondula" por dentro se nota al repetirse, aunque el empalme sea perfecto.
 
-Los 400 mejores se miden muestra a muestra alrededor del empalme. Entre los que empalman casi igual de bien, se queda con el loop más largo, que suena más natural que uno de pocas ondas. Hacen falta al menos 4 ondas estables. Cada archivo tiene su propio loop. La línea de Skip no puede pasar el inicio del loop, ni la de Fin quedar antes de su fin.
+Después hace un **ajuste fino**: corre cada punta hasta ±8 muestras alrededor del cruce (siempre pegada al cero) si así empalma mejor. Se queda con los 5 mejores distintos. Como primera opción pone el mejor, o uno más largo si es prácticamente igual de bueno (hasta 8 % peor). Un loop largo suena más natural que uno de pocas ondas.
+
+La **calidad %** resume todo eso con el mismo criterio, también cuando movés el loop a mano: alrededor de 97 % es un empalme con 1 % de diferencia y un loop estable. Hacen falta al menos 4 ondas. Con un 808 de unos segundos tarda una fracción de segundo; con archivos largos (20 s) tarda unos segundos. Cada archivo tiene su propio loop. La línea de Skip no puede pasar el inicio del loop, ni la de Fin quedar antes de su fin.
 
 ## Cómo funciona
 
@@ -68,6 +71,6 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 - `Source/WaveformView.h`: el visor de forma de onda.
 - `Source/LoopFinder.h`: el buscador de loop, el crossfade del empalme y la nota raíz.
 - `Source/ABSource.h`: la reproducción original / procesado (y la zona de loop).
-- `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico, Threshold, Target fijo, Amount 50 %). Incluye un 808 con 2º y 3º armónico casi tan fuertes como la fundamental, uno con un glide muy rápido en el ataque (de 120 a 34 Hz en 50 ms) y uno que arranca con un rulito chico para arriba. También prueba el loop: que caiga en ondas enteras, que empalme sin salto, el crossfade y la nota raíz. Comprueba que cada tramo llega al objetivo, que cada onda dura un período de la fundamental, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
+- `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico, Threshold, Target fijo, Amount 50 %). Incluye un 808 con 2º y 3º armónico casi tan fuertes como la fundamental, uno con un glide muy rápido en el ataque (de 120 a 34 Hz en 50 ms) y uno que arranca con un rulito chico para arriba. También prueba el loop: que caiga en ondas enteras, que empalme sin salto, que devuelva varias opciones distintas, que se pueda cancelar, el crossfade y la nota raíz. Comprueba que cada tramo llega al objetivo, que cada onda dura un período de la fundamental, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
 
 **Visor:** la rueda o el gesto vertical de dos dedos hace zoom, el gesto horizontal desplaza, el pinch también hace zoom, un clic mueve el cursor de reproducción y el doble clic vuelve a mostrar todo.
