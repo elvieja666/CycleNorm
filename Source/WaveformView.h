@@ -380,20 +380,6 @@ private:
         g.setColour (juce::Colour (0xff2c3138));
         g.drawHorizontalLine ((int) mid, (float) r.getX(), (float) r.getRight());
 
-        // marcas de cada tramo (onda o semiciclo), si entran (al menos 5 píxeles por tramo)
-        if (! bounds.empty() && viewLen > 0)
-        {
-            auto first = std::lower_bound (bounds.begin(), bounds.end(), (size_t) juce::jmax (0.0, viewStart));
-            auto last  = std::upper_bound (bounds.begin(), bounds.end(), (size_t) (viewStart + viewLen));
-            const auto inView = (double) std::distance (first, last);
-            if (inView > 0 && getWidth() / inView >= 5.0)
-            {
-                g.setColour (juce::Colour (0xff3a3f2a));
-                for (auto it = first; it != last; ++it)
-                    g.drawVerticalLine ((int) sampleToX ((double) *it), (float) r.getY(), (float) r.getBottom());
-            }
-        }
-
         // zona salteada con Skip: fondo apenas distinto y una línea donde empieza a normalizar
         const float skipX = greyUntil > 0 ? (float) r.getX() + (float) sampleToX ((double) greyUntil) : (float) r.getX();
         if (greyUntil > 0 && skipX > (float) r.getX())

@@ -7,7 +7,7 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 ## Cómo usarla
 
 1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **Open…**. También podés soltar archivos sobre el ícono del Dock.
-2. Arriba ves el **original** y abajo el **procesado**. Las líneas verticales finitas marcan cada semiciclo detectado. Aparecen cuando hacés zoom y entran.
+2. Arriba ves el **original** y abajo el **procesado**. Los cortes de cada semiciclo no se dibujan (no hacen falta): la app los usa por dentro.
 3. La app suena por la salida que tenga elegida la Mac y la sigue sola: si enchufás auriculares, conectás unos bluetooth o cambiás la salida en Ajustes > Sonido, en un segundo pasa a esa salida (si estaba sonando, sigue sonando, con un corte mínimo al cambiar).
 4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar, con un fundido de 10 ms para que no haga click; también hay fundido cuando el procesado cambia mientras suena, por ejemplo al mover Amount o el loop), **↑ / ↓** = pasar de archivo. **Loop** repite: si el archivo tiene loop (zona verde), repite esa zona infinitamente; si no, todo el archivo.
 5. Para llevarlo al DAW tenés dos caminos:
@@ -33,7 +33,7 @@ Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar l
 
 Arriba a la derecha la app muestra el **pitch preciso** del 808: nota, cents y Hz, por ejemplo "Pitch (loop): C1 −5.0 cents · 32.609 Hz". También muestra el **drift**: cuánto cambia la nota en esa zona (el último cuarto contra el primero, en cents).
 - **Qué zona mide:** si hay loop, el loop, que es lo que va a sonar sostenido. Si no, entre la línea de Skip y la de End. Corré Skip para dejar afuera el glide del ataque.
-- **Cómo lo mide:** con los cruces por cero de la fundamental (las líneas verticales finitas), ubicados entre muestras (donde el audio vale 0 exactamente) y promediando el período de todas las ondas de la zona. Descarta las ondas que se alejan más de un 15 % de la típica (el corte del final, el glide, un rulito). En las pruebas el error es menor a 0,01 cents.
+- **Cómo lo mide:** con los cruces por cero de la fundamental , ubicados entre muestras (donde el audio vale 0 exactamente) y promediando el período de todas las ondas de la zona. Descarta las ondas que se alejan más de un 15 % de la típica (el corte del final, el glide, un rulito). En las pruebas el error es menor a 0,01 cents.
 - **Nombre de la nota:** notación científica, C1 = 32,7 Hz = MIDI 24. En Logic esa misma nota aparece como **C0**, porque Logic llama C3 al do central.
 - **Nota raíz del WAV exportado** (para el sampler): usa esta misma medición.
 - **Curva de pitch:** sobre el gráfico de arriba (el original) hay una línea amarilla, con un punto por onda, que muestra cómo se mueve la nota. Se ve el glide del ataque bajando hasta quedar fijo en la nota, y el drift de la cola. El eje vertical está en notas, con una línea por semitono y su nombre a la derecha (de a dos si el glide es muy grande, siempre incluyendo C). Si la nota casi no cambia, muestra ±50 cents para que el drift se vea. No dibuja los puntos que no son de la nota: los que saltan más de un 35 % respecto de sus vecinos, las ondas casi en silencio y la cola del corte o fade final (más de un 3 % lejos de la nota que venía sonando).
