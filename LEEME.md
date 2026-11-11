@@ -28,6 +28,14 @@ Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar l
 
 **El objetivo es siempre 0 dBFS** (no hay control de Target) y **se normaliza todo**, incluida la cola hasta el final y el ruido de fondo (no hay Threshold). Abajo a la izquierda se ve (en inglés) cuántas ondas (cycles) y semiciclos (half-cycles) detectó y el pico de salida. Lo único que puede pasar de 0 dBFS es el ataque original que dejás sin tocar con Skip (si ya venía pasado). En ese caso aparece **CLIPPING!** en rojo: exportá en 32 bit float.
 
+## Pitch
+
+Arriba a la derecha la app muestra el **pitch preciso** del 808: nota, cents y Hz, por ejemplo "Pitch (loop): C1 −5.0 cents · 32.609 Hz". También muestra el **drift**: cuánto cambia la nota en esa zona (el último cuarto contra el primero, en cents).
+- **Qué zona mide:** si hay loop, el loop, que es lo que va a sonar sostenido. Si no, entre la línea de Skip y la de End. Corré Skip para dejar afuera el glide del ataque.
+- **Cómo lo mide:** con los cruces por cero de la fundamental (las líneas verticales finitas), ubicados entre muestras (donde el audio vale 0 exactamente) y promediando el período de todas las ondas de la zona. Descarta las ondas que se alejan más de un 15 % de la típica (el corte del final, el glide, un rulito). En las pruebas el error es menor a 0,01 cents.
+- **Nombre de la nota:** notación científica, C1 = 32,7 Hz = MIDI 24. En Logic esa misma nota aparece como **C0**, porque Logic llama C3 al do central.
+- **Nota raíz del WAV exportado** (para el sampler): usa esta misma medición.
+
 ## Loop
 
 La idea: normalizar el 808 y loopear una parte para que suene infinitamente sin que se note, y después darle el decay que quieras con la envolvente del sampler.

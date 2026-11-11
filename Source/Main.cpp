@@ -243,6 +243,10 @@ public:
         info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
         info.setFont (juce::FontOptions (13.0f));
         addAndMakeVisible (info);
+        pitchLabel.setColour (juce::Label::textColourId, kAccent);
+        pitchLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        pitchLabel.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (pitchLabel);
 
         dragOut.makeFile = [this] { return writeForDrag(); };
         addAndMakeVisible (dragOut);
@@ -287,6 +291,7 @@ public:
     {
         auto r = getLocalBounds().reduced (10);
         titleArea = r.removeFromTop (28);
+        pitchLabel.setBounds (titleArea.withTrimmedLeft (titleArea.getWidth() / 2));
         r.removeFromTop (6);
 
         auto top = r.removeFromTop (30);
@@ -427,7 +432,7 @@ private:
     juce::Slider amount, ramp;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 4;
-    juce::Label amountLabel, rampLabel, info;
+    juce::Label amountLabel, rampLabel, info, pitchLabel;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -871,8 +876,14 @@ private:
 
     void updateInfo()
     {
-        if (! juce::isPositiveAndBelow (current, (int) items.size())) { info.setText ({}, juce::dontSendNotification); return; }
+        if (! juce::isPositiveAndBelow (current, (int) items.size()))
+        {
+            info.setText ({}, juce::dontSendNotification);
+            pitchLabel.setText ({}, juce::dontSendNotification);
+            return;
+        }
         auto& it = *items[(size_t) current];
+        updatePitch (it);
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::String t;
         t << (int) it.analysis.numCycles() << u8 (" cycles (") << (int) it.analysis.halfPeaks.size() << u8 (" half-cycles) · Skip: ") << skipHalves << u8 (" half-cycles · all at 0 dBFS · output peak ") << juce::String (peakDb, 1) << " dBFS";
@@ -897,6 +908,28 @@ private:
         }
         else info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
         info.setText (t, juce::dontSendNotification);
+    }
+
+    // Pitch preciso: en el loop si hay, si no entre la línea de Skip y la de End
+    static cyclenorm::PitchInfo pitchOf (const Item& it, const cyclenorm::Settings& st, bool& inLoop)
+    {
+        inLoop = it.hasLoop();
+        if (inLoop) return cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8);
+        return cyclenorm::measurePitch (it.analysis, cyclenorm::skipEndSample (it.analysis, st), (size_t) it.lengthToWrite());
+    }
+    void updatePitch (const Item& it)
+    {
+        bool inLoop = false;
+        const auto p = pitchOf (it, readSettings(), inLoop);
+        if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); return; }
+        const double cents = (p.midi - std::round (p.midi)) * 100.0;
+        juce::String t;
+        t << "Pitch (" << (inLoop ? "loop" : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
+          << " " << (cents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (cents), 1) << " cents  ·  "
+          << juce::String (p.hz, 3) << " Hz";
+        if (p.cycles >= 8)
+            t << u8 ("  ·  drift ") << (p.driftCents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (p.driftCents), 1) << " cents";
+        pitchLabel.setText (t, juce::dontSendNotification);
     }
 
     //== exportar ==============================================================
@@ -933,7 +966,9 @@ private:
         juce::StringPairArray meta;
         if (it.hasLoop() && ! fmtInfo.aiff)
         {
-            const double note = cyclenorm::midiNoteOf (it.analysis, it.loopStart, it.loopEnd);
+            bool inLoop = false;
+            const auto pm = pitchOf (it, readSettings(), inLoop);
+            const double note = pm.valid ? pm.midi : cyclenorm::midiNoteOf (it.analysis, it.loopStart, it.loopEnd);
             const int unity = juce::jlimit (0, 127, (int) std::floor (note));
             const double frac = juce::jlimit (0.0, 0.999999, note - std::floor (note));
             meta.set ("MidiUnityNote", juce::String (unity));

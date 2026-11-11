@@ -317,6 +317,29 @@ int main()
         std::printf ("nota del loop: %.2f (esperada %.2f)  %s\n", note, expectedNote, ok ? "OK" : "FALLA");
         fails += ! ok;
     }
+    // Pitch preciso (cruces exactos entre muestras): 808 saturado con armónicos y glide, en varias notas
+    {
+        bool ok = true;
+        for (double f : { 32.703, 41.2, 55.0, 30.87 })
+        {
+            const double fs = 44100;
+            const size_t n = (size_t) (fs * 2);
+            Channels in (1, std::vector<float> (n));
+            double ph = 0;
+            for (size_t i = 0; i < n; ++i)
+            {
+                const double t = i / fs, fr = t < 0.06 ? f * 2.5 - f * 1.5 * (t / 0.06) : f;
+                ph += 2 * M_PI * fr / fs;
+                in[0][i] = (float) (std::exp (-t / 0.6) * (std::tanh (2 * std::sin (ph)) + 0.3 * std::sin (2 * ph + 0.4)));
+            }
+            auto a = analyse (in, fs);
+            auto p = measurePitch (a, (size_t) (0.2 * fs), (size_t) (1.9 * fs));
+            const double err = 1200.0 * std::log2 (p.hz / f);
+            std::printf ("pitch %.3f Hz: medido %.4f Hz (%s), error %.3f cents  %s\n", f, p.hz, noteName (p.midi).c_str(), err, std::abs (err) < 0.5 ? "OK" : "FALLA");
+            ok = ok && p.valid && std::abs (err) < 0.5;
+        }
+        fails += ! ok;
+    }
     // casos raros: silencio, archivo cortísimo, mono
     {
         Channels z (1, std::vector<float> (1000, 0.0f));

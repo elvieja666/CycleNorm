@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace cyclenorm
@@ -40,7 +41,8 @@ struct Analysis
     std::vector<float>  peaks;  // pico (todos los canales) de cada onda: bounds[k] .. bounds[k+1]
     std::vector<size_t> halfBounds; // inicio de cada semiciclo: cruce ascendente, descendente, ascendente...
     std::vector<float>  halfPeaks;  // pico de cada semiciclo: halfBounds[k] .. halfBounds[k+1]
-    std::vector<float>  f0;         // la nota (fundamental, Hz) en cada muestra
+    std::vector<float>  f0;         // la nota (fundamental, Hz) en cada muestra (estimación, para detectar)
+    std::vector<double> boundsFrac; // inicio exacto de cada onda (bounds[k]), entre muestras: donde el audio vale 0
     float preRollPeak = 0.0f;   // pico antes del primer cruce
     float tailPeak    = 0.0f;   // pico después del último cruce
 
@@ -585,6 +587,24 @@ inline Analysis analyse (const Channels& in, double sampleRate)
         }
     }
 
+    // Cruce exacto, entre muestras: donde el audio vale 0 (interpolación lineal entre las dos
+    // muestras del cruce ascendente). Con esto el período de cada onda se mide con mucha precisión.
+    a.boundsFrac.resize (b.size());
+    for (size_t k = 0; k < b.size(); ++k)
+    {
+        const size_t z = b[k];
+        double pos = (double) z;
+        auto cross = [&] (size_t i) { // entre i-1 y i
+            const double y0 = raw[i - 1], y1 = raw[i];
+            return (y0 < 0.0 && y1 >= 0.0) ? (double) (i - 1) + (-y0) / std::max (1e-300, y1 - y0) : -1.0;
+        };
+        double c = -1.0;
+        if (z >= 1) c = cross (z);
+        if (c < 0.0 && z + 1 < n) c = cross (z + 1);
+        if (c >= 0.0) pos = c;
+        a.boundsFrac[k] = pos;
+    }
+
     a.halfPeaks.resize (hb.size() - 1);
     for (size_t k = 0; k + 1 < hb.size(); ++k) a.halfPeaks[k] = peakOf (hb[k], hb[k + 1]);
     return a;
@@ -710,6 +730,58 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
         }
     }
     return curve;
+}
+
+// Pitch preciso de una zona, medido con los cruces exactos de la fundamental: el promedio de
+// todas las ondas enteras que entran en [from, to). También cuánto se mueve la nota adentro de la
+// zona (drift: el último cuarto contra el primero, en cents).
+struct PitchInfo
+{
+    bool   valid = false;
+    double hz = 0, midi = 0;  // midi con fracción (69 = A4 = 440 Hz)
+    int    cycles = 0;
+    double driftCents = 0;
+};
+
+inline PitchInfo measurePitch (const Analysis& a, size_t from, size_t to)
+{
+    PitchInfo p;
+    const auto& bf = a.boundsFrac;
+    if (bf.size() < 3 || a.sampleRate <= 0) return p;
+    // los períodos de las ondas enteras que entran en la zona
+    std::vector<double> per;
+    for (size_t k = 0; k + 1 < bf.size(); ++k)
+        if (bf[k] >= (double) from && bf[k + 1] <= (double) to) per.push_back (bf[k + 1] - bf[k]);
+    if (per.size() < 2) return p;
+    // fuera las ondas que no son de la nota (el corte del final, el glide del ataque, un rulito):
+    // más de un 15 % lejos de la típica (la mediana)
+    std::vector<double> sorted = per;
+    std::nth_element (sorted.begin(), sorted.begin() + (long) sorted.size() / 2, sorted.end());
+    const double med = sorted[sorted.size() / 2];
+    std::vector<double> ok;
+    for (double v : per) if (std::abs (v - med) <= 0.15 * med) ok.push_back (v);
+    if (ok.size() < 2) return p;
+    double sum = 0;
+    for (double v : ok) sum += v;
+    p.hz = a.sampleRate * (double) ok.size() / sum; // = promedio de los períodos (muy preciso)
+    p.midi = 69.0 + 12.0 * std::log2 (p.hz / 440.0);
+    p.cycles = (int) ok.size();
+    p.valid = true;
+    if (ok.size() >= 8)
+    {
+        const size_t q = ok.size() / 4;
+        double s1 = 0, s2 = 0;
+        for (size_t k = 0; k < q; ++k) { s1 += ok[k]; s2 += ok[ok.size() - 1 - k]; }
+        p.driftCents = 1200.0 * std::log2 (s1 / s2); // (frecuencia final / inicial)
+    }
+    return p;
+}
+
+inline std::string noteName (double midi) // nota más cercana, notación científica (C1 = 32,7 Hz = MIDI 24)
+{
+    static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    const int m = (int) std::lround (midi);
+    return std::string (names[((m % 12) + 12) % 12]) + std::to_string (m / 12 - 1);
 }
 
 // Dónde termina lo salteado con Skip (de ahí en adelante se normaliza).
