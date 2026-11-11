@@ -215,7 +215,18 @@ public:
         pitchShift.wheelStepFine = 0.1;   // Shift + rueda: de a 0,1 cent
         pitchShift.setDoubleClickReturnValue (true, 0.0);
         pitchShift.setVelocityModeParameters (0.15, 1, 0.0, true, juce::ModifierKeys::shiftModifier); // Shift + arrastrar = fino
-        pitchShift.onValueChange = [this] { pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter(); };
+        pitchShift.onValueChange = [this] {
+            pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter();
+            // al toque: la curva amarilla y el pitch de arriba se corren mientras movés la barra;
+            // el re-sampleo de verdad se hace cuando la soltás / dejás de moverla
+            if (juce::isPositiveAndBelow (current, (int) items.size()))
+            {
+                const auto& it = *items[(size_t) current];
+                const double extra = pitchShift.getValue() / 100.0 - it.tuneSemis;
+                wave.setPitchPreview (extra);
+                updatePitch (it, extra);
+            }
+        };
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -858,7 +869,7 @@ private:
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
         wave.setEndSample (it.endSample);
         wave.setLoopBounds (it.analysis.bounds);
-        wave.setPitchCurve (pitchCurveOf (it));
+        wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
         wave.setLoop (it.loopStart, it.loopEnd);
         wave.setLoopXfade (xfadeSamples (it));
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
@@ -1015,7 +1026,7 @@ private:
         wave.scaleView (factor);
         wave.setEndSample (it.endSample);
         wave.setLoopBounds (it.analysis.bounds);
-        wave.setPitchCurve (pitchCurveOf (it));
+        wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
         wave.setLoop (it.loopStart, it.loopEnd);
         wave.setLoopXfade (xfadeSamples (it));
         updateSkipView();
@@ -1068,18 +1079,21 @@ private:
         if (inLoop) return cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8);
         return cyclenorm::measurePitch (it.analysis, cyclenorm::skipEndSample (it.analysis, st), (size_t) it.lengthToWrite());
     }
-    void updatePitch (const Item& it)
+    void updatePitch (const Item& it, double previewSemis = 0.0)
     {
         bool inLoop = false;
-        const auto p = pitchOf (it, readSettings(), inLoop);
+        auto p = pitchOf (it, readSettings(), inLoop);
+        p.midi += previewSemis;                                  // vista previa de la barra Pitch
+        p.hz *= std::pow (2.0, previewSemis / 12.0);
         if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); return; }
         const double cents = (p.midi - std::round (p.midi)) * 100.0;
         juce::String t;
         t << "Pitch (" << (inLoop ? "loop" : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
           << " " << (cents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (cents), 1) << " cents  ·  "
           << juce::String (p.hz, 3) << " Hz";
-        if (std::abs (it.tuneSemis) > 1e-9)
-            t << u8 ("  ·  tuned ") << (it.tuneSemis >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (it.tuneSemis * 100.0), 1) << " cents";
+        const double tuned = it.tuneSemis + previewSemis;
+        if (std::abs (tuned) > 1e-9)
+            t << u8 ("  ·  tuned ") << (tuned >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (tuned * 100.0), 1) << " cents";
         if (p.cycles >= 8)
             t << u8 ("  ·  drift ") << (p.driftCents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (p.driftCents), 1) << " cents";
         pitchLabel.setText (t, juce::dontSendNotification);

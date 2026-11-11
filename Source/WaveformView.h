@@ -30,7 +30,7 @@ public:
         proc = std::move (processed);
         bounds = std::move (cycleBounds);
         sr = sampleRate;
-        if (resetView || viewLen <= 0) { viewStart = 0; viewLen = (double) totalLen(); pitchZoom = 1.0; }
+        if (resetView || viewLen <= 0) { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; }
         clampView();
         dirty = true;
         repaint();
@@ -51,7 +51,15 @@ public:
     // largo del crossfade del loop en muestras (0 = Off)
     void setLoopXfade (size_t len) { if (len != xfadeLen) { xfadeLen = len; dirty = true; repaint(); } }
     // Curva de pitch: un punto por onda (muestra del centro de la onda, Hz). Se dibuja sobre el original.
-    void setPitchCurve (std::vector<std::pair<double, double>> pts) { pitchPts = std::move (pts); dirty = true; repaint(); }
+    // appliedSemis: re-pitch que ya tiene la curva (para que el rango vertical quede fijo y la línea se mueva)
+    void setPitchCurve (std::vector<std::pair<double, double>> pts, double appliedSemis = 0.0)
+    { pitchPts = std::move (pts); pitchApplied = appliedSemis; pitchPreviewSemis = 0.0; frozenValid = false; dirty = true; repaint(); }
+    // vista previa mientras se mueve la barra Pitch: corre la curva estos semitonos sin re-samplear
+    void setPitchPreview (double semis)
+    {
+        if (std::abs (semis - pitchPreviewSemis) < 1e-9) return;
+        pitchPreviewSemis = semis; dirty = true; repaint();
+    }
 
     void paint (juce::Graphics& g) override
     {
@@ -125,7 +133,7 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
         viewStart = 0; viewLen = (double) totalLen();
-        pitchZoom = 1.0; // también el zoom vertical del pitch
+        zoomSpan = 0.0; // también el zoom vertical del pitch
         dirty = true; repaint();
     }
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
@@ -140,10 +148,10 @@ public:
             const double mAtMouse = pitchMidiAt (xToSample (e.position.x));
             const double frac = juce::jlimit (0.15, 0.85, (mAtMouse - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo));
             // hasta ~0,5 cents de alto en todo el carril
-            pitchZoom = juce::jlimit (1.0, juce::jmax (1.0, autoSpan / 0.005), pitchZoom * std::pow (2.0, d * 3.0));
-            const double span = autoSpan / pitchZoom;
+            const double cur = zoomSpan > 0.0 ? zoomSpan : autoSpan;
+            const double span = juce::jlimit (0.005, autoSpan, cur / std::pow (2.0, d * 3.0));
+            zoomSpan = span >= autoSpan * 0.999 ? 0.0 : span; // el alto se guarda en semitonos (no cambia al re-pitchear)
             pitchCenter = (mAtMouse - frac * span) + span * 0.5; // la nota bajo el mouse queda en su lugar
-            if (pitchZoom <= 1.0) pitchCenter = 0.0;
             pitchLo = pitchCenter - span * 0.5; pitchHi = pitchCenter + span * 0.5; // varias ruedas antes de repintar
             dirty = true; repaint();
             return;
@@ -176,7 +184,9 @@ private:
     size_t xfadeLen = 0;
     std::vector<std::pair<double, double>> pitchPts;
     // zoom vertical del pitch (1 = rango automático) y lo último dibujado (para el zoom con el mouse)
-    double pitchZoom = 1.0, pitchCenter = 0.0, autoSpan = 1.0, pitchLo = 0.0, pitchHi = 1.0;
+    double pitchPreviewSemis = 0.0, pitchApplied = 0.0;
+    bool frozenValid = false; double frozenLo = 0.0, frozenHi = 1.0; // rango fijo mientras se mueve Pitch
+    double zoomSpan = 0.0, pitchCenter = 0.0, autoSpan = 1.0, pitchLo = 0.0, pitchHi = 1.0;
     float pitchAreaBottom = 0.0f, pitchAreaH = 0.0f;
 
     // Curva de pitch sobre un carril: eje vertical en notas (escala logarítmica), con una línea por
@@ -184,7 +194,7 @@ private:
     // pitch (MIDI fraccionario) de la curva en un sample, interpolado
     double pitchMidiAt (double sample) const
     {
-        auto midiOf = [] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0); };
+        auto midiOf = [this] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0) + pitchPreviewSemis; };
         if (sample <= pitchPts.front().first) return midiOf (pitchPts.front().second);
         if (sample >= pitchPts.back().first) return midiOf (pitchPts.back().second);
         auto it = std::lower_bound (pitchPts.begin(), pitchPts.end(), sample,
@@ -197,18 +207,34 @@ private:
     void drawPitchCurve (juce::Graphics& g, juce::Rectangle<int> r)
     {
         if (pitchPts.size() < 2 || viewLen <= 0) return;
-        auto midiOf = [] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0); };
+        auto midiOf = [this] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0) + pitchPreviewSemis; };
         double lo = 1e9, hi = -1e9;
-        for (auto& p : pitchPts) { const double m = midiOf (p.second); lo = std::min (lo, m); hi = std::max (hi, m); }
+        // rango: la curva original (sin re-pitch) y la actual juntas, así al mover Pitch se mueve la línea y no la grilla
+        for (auto& p : pitchPts)
+        {
+            const double m = midiOf (p.second), m0 = m - pitchPreviewSemis - pitchApplied;
+            lo = std::min ({ lo, m, m0 }); hi = std::max ({ hi, m, m0 });
+        }
         const double mid = 0.5 * (lo + hi);
         if (hi - lo < 1.0) { lo = mid - 0.5; hi = mid + 0.5; }
         const double pad = (hi - lo) * 0.12;
         lo -= pad; hi += pad;
-        autoSpan = hi - lo;
-        if (pitchZoom > 1.0) // zoom vertical: rango más chico, centrado donde se hizo zoom
+        if (std::abs (pitchPreviewSemis) > 1e-9 && frozenValid)
         {
-            const double span = autoSpan / pitchZoom;
-            lo = pitchCenter - span * 0.5; hi = pitchCenter + span * 0.5;
+            // moviendo la barra Pitch: la grilla queda quieta y se mueve la línea;
+            // el rango sólo se agranda si la línea se sale
+            double clo = 1e9, chi = -1e9;
+            for (auto& p : pitchPts) { const double m = midiOf (p.second); clo = std::min (clo, m); chi = std::max (chi, m); }
+            const double margin = (frozenHi - frozenLo) * 0.05;
+            frozenLo = std::min (frozenLo, clo - margin);
+            frozenHi = std::max (frozenHi, chi + margin);
+            lo = frozenLo; hi = frozenHi;
+        }
+        else { frozenLo = lo; frozenHi = hi; frozenValid = true; }
+        autoSpan = hi - lo;
+        if (zoomSpan > 0.0) // zoom vertical: alto fijo en semitonos, centrado donde se hizo zoom
+        {
+            lo = pitchCenter - zoomSpan * 0.5; hi = pitchCenter + zoomSpan * 0.5;
         }
         const auto area = r.toFloat().reduced (0.0f, 22.0f);
         pitchLo = lo; pitchHi = hi; pitchAreaBottom = area.getBottom(); pitchAreaH = area.getHeight();
@@ -285,7 +311,8 @@ private:
             g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
         }
         g.setColour (juce::Colour (0xd0ffd34d));
-        g.drawText (pitchZoom > 1.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
+        const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
+        g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
                                     : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
                     juce::Rectangle<float> ((float) r.getRight() - 330.0f, (float) r.getY() + 4.0f, 286.0f, 13.0f), juce::Justification::centredRight);
     }
