@@ -799,6 +799,7 @@ private:
         auto& it = *items[(size_t) row];
         processItem (it);
         source.setBuffers (it.original, it.processed);
+        source.setFadeLength ((int) std::round (it.sampleRate * 0.010)); // fundidos de 10 ms (original/procesado, cambios)
         source.setEndSample ((juce::int64) it.endSample);
         source.setNextReadPosition (0);
         transport.setSource (&source, 0, nullptr, it.sampleRate, 2);

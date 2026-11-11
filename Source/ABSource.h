@@ -1,5 +1,6 @@
 // Fuente de reproducción con dos buffers (original / procesado). Se cambia entre los dos
-// sin cortar ni perder la posición.
+// sin cortar ni perder la posición, con un fundido corto (10 ms) para que no haga click. También
+// hay fundido cuando el procesado cambia mientras suena (al mover un control, el loop, etc.).
 #pragma once
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <atomic>
@@ -15,14 +16,21 @@ public:
         const juce::SpinLock::ScopedLockType sl (lock);
         a = std::move (original);
         b = std::move (processed);
+        prevB = nullptr;
+        swapFade = 1.0f;
+        mix = useB ? 1.0f : 0.0f;
         const auto len = b ? b->getNumSamples() : (a ? a->getNumSamples() : 0);
         if (pos.load() >= len) pos = 0;
     }
     void setProcessed (BufferPtr processed)
     {
         const juce::SpinLock::ScopedLockType sl (lock);
+        prevB = b;             // el que venía sonando, para fundirlo con el nuevo
         b = std::move (processed);
+        swapFade = prevB != nullptr ? 0.0f : 1.0f;
     }
+    // largo de los fundidos, en muestras del archivo (se llama al elegir un archivo: 10 ms)
+    void setFadeLength (int samples) { fadeStep = 1.0f / (float) juce::jmax (1, samples); }
     void setPlayProcessed (bool shouldPlayProcessed) { useB = shouldPlayProcessed; }
     // dónde termina la reproducción (la línea de Fin); 0 = hasta el final del archivo
     void setEndSample (juce::int64 e) { endSample = e; }
@@ -40,6 +48,9 @@ public:
         if (! sl.isLocked()) return;
         const auto& src = useB ? b : a;
         if (src == nullptr || src->getNumSamples() == 0) return;
+        if (a == nullptr) mix = 1.0f;
+        if (b == nullptr) mix = 0.0f;
+        const float target = useB ? 1.0f : 0.0f;
 
         const int full = src->getNumSamples();
         const juce::int64 e = endSample.load();
@@ -60,8 +71,36 @@ public:
             juce::int64 stop = len;
             if (region && p < le) stop = le;
             const int n = (int) juce::jmin ((juce::int64) (info.numSamples - done), stop - p);
-            for (int c = 0; c < info.buffer->getNumChannels(); ++c)
-                info.buffer->copyFrom (c, info.startSample + done, *src, juce::jmin (c, srcCh - 1), (int) p, n); // mono -> a los dos lados
+            const bool steady = std::abs (mix - target) < 1e-6f && (swapFade >= 1.0f || ! useB);
+            if (steady)
+            {
+                for (int c = 0; c < info.buffer->getNumChannels(); ++c)
+                    info.buffer->copyFrom (c, info.startSample + done, *src, juce::jmin (c, srcCh - 1), (int) p, n); // mono -> a los dos lados
+            }
+            else
+            {
+                // fundido: original <-> procesado (mix) y procesado viejo -> nuevo (swapFade)
+                const int outCh = info.buffer->getNumChannels();
+                for (int k = 0; k < n; ++k)
+                {
+                    const int idx = (int) p + k;
+                    mix = target > mix ? juce::jmin (target, mix + fadeStep) : juce::jmax (target, mix - fadeStep);
+                    const float sf = swapFade;
+                    if (swapFade < 1.0f) swapFade = juce::jmin (1.0f, swapFade + fadeStep);
+                    for (int c = 0; c < outCh; ++c)
+                    {
+                        auto sampleOf = [&] (const BufferPtr& buf) {
+                            if (buf == nullptr || idx >= buf->getNumSamples()) return 0.0f;
+                            return buf->getSample (juce::jmin (c, buf->getNumChannels() - 1), idx);
+                        };
+                        float vb = sampleOf (b);
+                        if (sf < 1.0f && prevB != nullptr) vb = sampleOf (prevB) * (1.0f - sf) + vb * sf;
+                        const float va = sampleOf (a);
+                        info.buffer->setSample (c, info.startSample + done + k, va * (1.0f - mix) + vb * mix);
+                    }
+                }
+            }
+            if (swapFade >= 1.0f) swapFade = 1.0f;
             p += n;
             done += n;
         }
@@ -82,7 +121,8 @@ public:
 
 private:
     mutable juce::SpinLock lock;
-    BufferPtr a, b;
+    BufferPtr a, b, prevB;
+    float mix = 1.0f, swapFade = 1.0f, fadeStep = 1.0f / 441.0f; // (solo los toca el hilo de audio, salvo al cambiar buffers)
     std::atomic<juce::int64> pos { 0 }, endSample { 0 }, loopStart { 0 }, loopEnd { 0 };
     std::atomic<bool> useB { true }, looping { false };
 };
