@@ -255,6 +255,8 @@ private:
             g.drawText (txt, lb, juce::Justification::centred);
         };
         const double spanSemis = hi - lo;
+        // columna de los nombres: las líneas (grilla y curva) se cortan antes de llegar
+        const float lineEnd = (float) r.getRight() - ((spanSemis >= 1.5 ? 30.0f : 58.0f) + 4.0f + 8.0f);
         if (spanSemis >= 1.5)
         {
             // semitonos (de a 2 si el rango es muy grande; siempre aparece C)
@@ -266,7 +268,7 @@ private:
             {
                 const float y = yOf ((double) m);
                 g.setColour (juce::Colour (0x28ffd34d));
-                g.drawHorizontalLine ((int) y, (float) r.getX(), (float) r.getRight());
+                g.drawHorizontalLine ((int) y, (float) r.getX(), lineEnd);
                 label (y, noteStr (m), true);
             }
         }
@@ -286,29 +288,33 @@ private:
                 const bool isNote = std::abs (dev) < 1e-6;
                 const float y = yOf (m);
                 g.setColour (juce::Colour (isNote ? 0x70ffd34d : 0x22ffd34d));
-                g.drawHorizontalLine ((int) y, (float) r.getX(), (float) r.getRight());
+                g.drawHorizontalLine ((int) y, (float) r.getX(), lineEnd);
                 const int dec = stepC < 1.0 ? 1 : 0;
                 label (y, isNote ? noteStr (note) : noteStr (note) + " " + (dev > 0 ? "+" : "") + juce::String (dev, dec) + "c", isNote);
             }
         }
-        // la curva
-        juce::Path path;
-        bool started = false;
-        for (auto& p : pitchPts)
         {
-            const float x = (float) r.getX() + (float) sampleToX (p.first);
-            const float y = yOf (midiOf (p.second));
-            if (! started) { path.startNewSubPath (x, y); started = true; }
-            else path.lineTo (x, y);
-        }
-        g.setColour (juce::Colour (0xffffd34d));
-        g.strokePath (path, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        for (auto& p : pitchPts)
-        {
-            const float x = (float) r.getX() + (float) sampleToX (p.first);
-            if (x < (float) r.getX() - 4 || x > (float) r.getRight() + 4) continue;
-            if (getWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
-            g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
+            // la curva (recortada antes de la columna de los nombres)
+            juce::Graphics::ScopedSaveState clipState (g);
+            g.reduceClipRegion (r.withRight ((int) lineEnd));
+            juce::Path path;
+            bool started = false;
+            for (auto& p : pitchPts)
+            {
+                const float x = (float) r.getX() + (float) sampleToX (p.first);
+                const float y = yOf (midiOf (p.second));
+                if (! started) { path.startNewSubPath (x, y); started = true; }
+                else path.lineTo (x, y);
+            }
+            g.setColour (juce::Colour (0xffffd34d));
+            g.strokePath (path, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            for (auto& p : pitchPts)
+            {
+                const float x = (float) r.getX() + (float) sampleToX (p.first);
+                if (x < (float) r.getX() - 4 || x > (float) r.getRight() + 4) continue;
+                if (getWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
+                g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
+            }
         }
         g.setColour (juce::Colour (0xd0ffd34d));
         const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
