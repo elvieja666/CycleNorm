@@ -139,35 +139,47 @@ public:
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
         if (totalLen() == 0) return;
-        // ⌥ Option + rueda sobre el carril de arriba: zoom vertical del pitch, centrado en el mouse
-        if (e.mods.isAltDown() && e.position.y < getHeight() / 2.0f && pitchPts.size() >= 2 && pitchAreaH > 1.0f)
+        const bool overPitch = e.position.y < getHeight() / 2.0f && pitchPts.size() >= 2 && pitchAreaH > 1.0f;
+        // ⌥ Option + rueda (o dos dedos) sobre el carril de arriba: zoom vertical del pitch
+        if (e.mods.isAltDown() && overPitch)
         {
             const float d = std::abs (w.deltaY) > std::abs (w.deltaX) ? w.deltaY : w.deltaX;
-            // ancla: el valor de la línea amarilla en la posición horizontal del mouse
-            // (con el mouse a 1 px de error ya serían ~5 cents; así la línea nunca se va de la pantalla)
-            const double mAtMouse = pitchMidiAt (xToSample (e.position.x));
-            const double frac = juce::jlimit (0.15, 0.85, (mAtMouse - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo));
-            // hasta ~0,5 cents de alto en todo el carril
-            const double cur = zoomSpan > 0.0 ? zoomSpan : autoSpan;
-            const double span = juce::jlimit (0.005, autoSpan, cur / std::pow (2.0, d * 3.0));
-            zoomSpan = span >= autoSpan * 0.999 ? 0.0 : span; // el alto se guarda en semitonos (no cambia al re-pitchear)
-            pitchCenter = (mAtMouse - frac * span) + span * 0.5; // la nota bajo el mouse queda en su lugar
-            pitchLo = pitchCenter - span * 0.5; pitchHi = pitchCenter + span * 0.5; // varias ruedas antes de repintar
-            dirty = true; repaint();
+            zoomPitch (e.position.x, std::pow (2.0, d * 3.0));
             return;
         }
-        if (std::abs (w.deltaX) > std::abs (w.deltaY))
+        if (w.isSmooth)
+        {
+            // trackpad: dos dedos = moverse por dentro (horizontal = en el tiempo, vertical = en el pitch)
+            viewStart -= w.deltaX * viewLen * 0.5;
+            if (zoomSpan > 0.0 && std::abs (w.deltaY) > 0.0f)
+            {
+                pitchCenter = juce::jlimit (frozenLo, frozenHi, pitchCenter + w.deltaY * zoomSpan * 0.8);
+                pitchLo = pitchCenter - zoomSpan * 0.5; pitchHi = pitchCenter + zoomSpan * 0.5;
+            }
+        }
+        else if (std::abs (w.deltaX) > std::abs (w.deltaY))
         {
             viewStart -= w.deltaX * viewLen * 0.5;
         }
         else
         {
-            zoomAround (e.position.x, std::pow (2.0, -w.deltaY * 3.0));
+            zoomAround (e.position.x, std::pow (2.0, -w.deltaY * 3.0)); // rueda del mouse: zoom horizontal
         }
         clampView(); dirty = true; repaint();
     }
+    // pellizco en el trackpad: abriendo los dedos en horizontal = zoom horizontal (tiempo),
+    // en vertical = zoom vertical (pitch). La dirección la da pinchAxis (dedos leídos en macOS).
+    std::function<int()> pinchAxis; // 1 = horizontal, 2 = vertical, 0 = no se sabe
     void mouseMagnify (const juce::MouseEvent& e, float scale) override
     {
+        if (totalLen() == 0) return;
+        const int axis = pinchAxis ? pinchAxis() : 0;
+        const bool overPitch = pitchPts.size() >= 2 && pitchAreaH > 1.0f;
+        if (overPitch && (axis == 2 || (axis == 0 && e.mods.isAltDown())))
+        {
+            zoomPitch (e.position.x, (double) juce::jmax (0.01f, scale));
+            return;
+        }
         zoomAround (e.position.x, 1.0 / juce::jmax (0.01f, scale));
         clampView(); dirty = true; repaint();
     }
@@ -449,6 +461,21 @@ private:
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
     double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * getWidth() : 0; }
     double xToSample (double x) const { return viewStart + x / juce::jmax (1, getWidth()) * viewLen; }
+
+    // zoom vertical del pitch: factor > 1 acerca. Ancla: la línea amarilla en la posición horizontal x
+    // (con el mouse a 1 px de error ya serían ~5 cents; así la línea nunca se va de la pantalla)
+    void zoomPitch (float x, double factor)
+    {
+        if (pitchPts.size() < 2 || pitchAreaH <= 1.0f) return;
+        const double mAtMouse = pitchMidiAt (xToSample (x));
+        const double frac = juce::jlimit (0.15, 0.85, (mAtMouse - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo));
+        const double cur = zoomSpan > 0.0 ? zoomSpan : autoSpan;
+        const double span = juce::jlimit (0.005, autoSpan, cur / factor); // hasta ~0,5 cents de alto
+        zoomSpan = span >= autoSpan * 0.999 ? 0.0 : span; // el alto se guarda en semitonos (no cambia al re-pitchear)
+        pitchCenter = (mAtMouse - frac * span) + span * 0.5; // la línea queda en su lugar
+        pitchLo = pitchCenter - span * 0.5; pitchHi = pitchCenter + span * 0.5; // varios eventos antes de repintar
+        dirty = true; repaint();
+    }
 
     void zoomAround (float x, double factor)
     {
