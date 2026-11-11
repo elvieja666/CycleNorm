@@ -35,6 +35,7 @@ struct Item
     size_t endSample = 0; // dónde se corta el final (la línea de Fin); 0 = hasta el final del archivo
     size_t loopStart = 0, loopEnd = 0; // zona de loop (0/0 = sin loop): de un cruce ascendente a otro
     double loopQuality = 0;
+    int xfadeCycles = 0; // crossfade del loop, en ondas enteras (0 = Off; como máximo, las ondas del loop)
     std::vector<cyclenorm::LoopResult> loopCands; // los mejores loops que encontró la búsqueda
     int loopCandIdx = -1;                        // cuál de ellos está puesto (-1 = uno movido a mano)
     bool hasLoop() const { return loopEnd > loopStart; }
@@ -182,10 +183,6 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Rampa", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
-        setupSlider (xfade, xfadeLabel, "Crossfade del loop", 0, 16, 1, "", props->getDoubleValue ("xfade", 0.0));
-        xfade.textFromValueFunction = [] (double v) { const int n = (int) v; return n == 0 ? juce::String ("Off") : juce::String (n) + (n == 1 ? " onda" : " ondas"); };
-        xfade.valueFromTextFunction = [] (const juce::String& t) { return t.trim().equalsIgnoreCase ("off") ? 0.0 : (double) t.getIntValue(); };
-        xfade.updateText();
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -213,6 +210,20 @@ public:
             updateInfo();
         };
         wave.onLoopDragged = [this] (size_t s0, size_t s1) { setLoopForCurrent (s0, s1); };
+        // la manija del crossfade: la muestra donde empieza el fundido -> ondas enteras hasta el fin del loop
+        wave.onXfadeDragged = [this] (size_t xfStart)
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            if (! it.hasLoop()) return;
+            const auto& B = it.analysis.bounds;
+            const size_t j = nearestBound (B, it.loopEnd), k = nearestBound (B, xfStart);
+            const int n = juce::jlimit (0, maxXfadeCycles (it), j > k ? (int) (j - k) : 0);
+            if (n == it.xfadeCycles) return;
+            it.xfadeCycles = n;
+            updateXfadeView();
+            processCurrent();
+        };
         wave.onSkipDragged = [this] (int n)
         {
             if (skipHalves == n) { wave.refresh(); return; }
@@ -300,7 +311,7 @@ public:
         progressBar.setBounds (bottomRow.reduced (0, 4).withTrimmedRight (12));
         progressLabel.setBounds (progressBar.getBounds());
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 3;
+        const int colW = c.getWidth() / 2;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -310,7 +321,6 @@ public:
         };
         place (amountLabel, amount, nullptr);
         place (rampLabel, ramp, nullptr);
-        place (xfadeLabel, xfade, nullptr);
         r.removeFromBottom (8);
 
         list.setBounds (r.removeFromLeft (230));
@@ -366,6 +376,10 @@ public:
             {
                 list.selectRow (0);
                 findLoopForCurrent();
+                if (loopJob != nullptr) { loopJob->waitForThreadToExit (20000); loopSearchFinished(); }
+                const int xf = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_XFADE", "0").getIntValue();
+                items.front()->xfadeCycles = juce::jmin (xf, maxXfadeCycles (*items.front()));
+                processCurrent();
             }
             const bool ok = writeItem (*items.front(), juce::File (testOut), err);
             std::printf ("test export: %s %s\n", ok ? "OK" : "FALLA", err.toRawUTF8());
@@ -410,10 +424,10 @@ private:
     juce::Label progressLabel;
     std::unique_ptr<LoopSearchJob> loopJob;
     juce::ComboBox formatBox;
-    juce::Slider amount, ramp, xfade;
+    juce::Slider amount, ramp;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 4;
-    juce::Label amountLabel, rampLabel, xfadeLabel, info;
+    juce::Label amountLabel, rampLabel, info;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -459,7 +473,6 @@ private:
         props->setValue ("amount", amount.getValue());
         props->setValue ("skipHalves", skipHalves);
         props->setValue ("ramp", ramp.getValue());
-        props->setValue ("xfade", xfade.getValue());
         props->saveIfNeeded();
     }
 
@@ -616,27 +629,57 @@ private:
         // crossfade del loop (metido en el audio, así suena igual al tocarlo que en el sampler)
         if (it.hasLoop() && it.loopEnd <= (size_t) out->getNumSamples())
         {
-            const int nx = (int) xfade.getValue();
-            if (nx > 0)
-            {
-                const auto& B = it.analysis.bounds;
-                const auto at = std::lower_bound (B.begin(), B.end(), it.loopEnd);
-                const long idx = (long) std::distance (B.begin(), at);
-                const size_t from = B[(size_t) juce::jmax (0L, idx - nx)];
-                std::vector<float*> chs;
-                for (int ch = 0; ch < out->getNumChannels(); ++ch) chs.push_back (out->getWritePointer (ch));
-                cyclenorm::applyLoopCrossfade (chs, it.loopStart, it.loopEnd, it.loopEnd - from);
-            }
+            // la calidad mide los puntos de loop (lo mismo que mide la búsqueda), antes del crossfade
             cyclenorm::AudioView v;
             for (int ch = 0; ch < out->getNumChannels(); ++ch) v.ch.push_back (out->getReadPointer (ch));
             v.n = (size_t) out->getNumSamples();
             it.loopQuality = cyclenorm::loopQuality (it.analysis, v, it.loopStart, it.loopEnd);
+            const size_t xfLen = xfadeSamples (it);
+            if (xfLen > 0)
+            {
+                std::vector<float*> chs;
+                for (int ch = 0; ch < out->getNumChannels(); ++ch) chs.push_back (out->getWritePointer (ch));
+                cyclenorm::applyLoopCrossfade (chs, it.loopStart, it.loopEnd, xfLen);
+            }
         }
         it.processed = out;
         it.outPeak = peak;
     }
 
     //== loop ==================================================================
+    // índice de la onda entera más cercana a una muestra (las puntas del loop pueden estar unas
+    // muestras corridas del cruce por el ajuste fino)
+    static size_t nearestBound (const std::vector<size_t>& B, size_t v)
+    {
+        size_t best = 0, bd = (size_t) -1;
+        for (size_t k = 0; k < B.size(); ++k) { const size_t d = B[k] > v ? B[k] - v : v - B[k]; if (d < bd) { bd = d; best = k; } }
+        return best;
+    }
+    // ondas de crossfade posibles: como mucho las ondas del loop, y las que hay antes del inicio
+    static int maxXfadeCycles (const Item& it)
+    {
+        if (! it.hasLoop()) return 0;
+        const auto& B = it.analysis.bounds;
+        if (B.empty()) return 0;
+        const size_t i = nearestBound (B, it.loopStart), j = nearestBound (B, it.loopEnd);
+        return (int) juce::jmin (j > i ? j - i : (size_t) 0, i);
+    }
+    // largo del crossfade en muestras (ondas enteras antes del fin del loop, en sus cruces por cero)
+    static size_t xfadeSamples (const Item& it)
+    {
+        const int n = juce::jmin (it.xfadeCycles, maxXfadeCycles (it));
+        if (n <= 0) return 0;
+        const auto& B = it.analysis.bounds;
+        const size_t j = nearestBound (B, it.loopEnd);
+        const size_t from = B[j - (size_t) n];
+        return it.loopEnd > from ? it.loopEnd - from : 0;
+    }
+    void updateXfadeView()
+    {
+        if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+        wave.setLoopXfade (xfadeSamples (*items[(size_t) current]));
+    }
+
     void findLoopForCurrent()
     {
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
@@ -728,8 +771,10 @@ private:
         it.loopStart = s0; it.loopEnd = s1;
         it.loopCandIdx = -1; // (applyLoopCandidate lo vuelve a poner)
         if (s1 == 0) it.loopCands.clear();
+        it.xfadeCycles = juce::jmin (it.xfadeCycles, maxXfadeCycles (it)); // si el loop se achicó
         source.setLoopRegion ((juce::int64) s0, (juce::int64) s1);
         wave.setLoop (s0, s1);
+        updateXfadeView();
         processCurrent();   // aplica el crossfade y mide la calidad
         updateButtons();
     }
@@ -762,6 +807,7 @@ private:
         wave.setEndSample (it.endSample);
         wave.setLoopBounds (it.analysis.bounds);
         wave.setLoop (it.loopStart, it.loopEnd);
+        wave.setLoopXfade (xfadeSamples (it));
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
         updateSkipView();
         if (wasPlaying) transport.start();
@@ -838,6 +884,7 @@ private:
             t << u8 (" · Loop: ") << juce::String ((double) it.loopStart / it.sampleRate, 3) << u8 ("–")
               << juce::String ((double) it.loopEnd / it.sampleRate, 3) << " s (" << (int) nCyc << u8 (" ondas, calidad ")
               << juce::String (it.loopQuality * 100.0, 1) << " %)";
+            t << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) + (it.xfadeCycles == 1 ? " onda" : " ondas") : juce::String ("Off"));
             if (it.loopCandIdx >= 0 && it.loopCands.size() > 1)
                 t << u8 (" · opción ") << (it.loopCandIdx + 1) << " de " << (int) it.loopCands.size();
         }

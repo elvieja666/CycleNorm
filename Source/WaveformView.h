@@ -18,6 +18,7 @@ public:
     std::function<void (int)> onSkipDragged;      // arrastrando la línea de Skip: nueva cantidad de semiciclos
     std::function<void (size_t)> onEndDragged;    // arrastrando la línea de Fin: nueva muestra final
     std::function<void (size_t, size_t)> onLoopDragged; // arrastrando una punta del loop: nuevo inicio y fin
+    std::function<void (size_t)> onXfadeDragged;  // arrastrando la manija del crossfade: dónde empieza el fundido
     int maxSkip = 64;
     std::function<bool()> isPlayingProcessed;     // para resaltar el carril que suena
 
@@ -45,6 +46,8 @@ public:
     // zona de loop (0/0 = sin loop) y los cruces ascendentes (ondas enteras) donde pueden caer sus puntas
     void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; dirty = true; repaint(); } }
     void setLoopBounds (std::vector<size_t> b) { loopBounds = std::move (b); }
+    // largo del crossfade del loop en muestras (0 = Off)
+    void setLoopXfade (size_t len) { if (len != xfadeLen) { xfadeLen = len; dirty = true; repaint(); } }
 
     void paint (juce::Graphics& g) override
     {
@@ -146,7 +149,8 @@ private:
     bool dirty = true;
     size_t skipEnd = 0, endSample = 0, loopStart = 0, loopEnd = 0;
     bool draggingSkip = false, draggingEnd = false;
-    int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop
+    int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop, 5 = manija del crossfade
+    size_t xfadeLen = 0;
     std::vector<size_t> loopBounds;
     bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
     float moveDownX = 0;
@@ -189,6 +193,19 @@ private:
     // las puntas del loop saltan de onda entera en onda entera (cruces ascendentes de la fundamental)
     void dragLoopTo (float x)
     {
+        if (draggingLoop == 5) // manija del crossfade: se engancha en las ondas enteras adentro del loop
+        {
+            const double target = xToSample (x);
+            size_t best = loopEnd; double bestD = std::abs ((double) loopEnd - target);
+            for (size_t v : loopBounds)
+            {
+                if (v + 16 < loopStart || v > loopEnd) continue;
+                const double d = std::abs ((double) v - target);
+                if (d < bestD) { bestD = d; best = v; }
+            }
+            if (onXfadeDragged) onXfadeDragged (best);
+            return;
+        }
         const double target = xToSample (x);
         const bool isStart = draggingLoop == 3;
         size_t best = isStart ? loopStart : loopEnd; double bestD = 1e300;
@@ -210,9 +227,14 @@ private:
     bool endLineVisible() const { const float x = endLineRawX(); return x >= -1.0f && x <= (float) getWidth() + 1.0f; }
     float endLineX() const { return juce::jlimit (1.0f, (float) getWidth() - 2.0f, endLineRawX()); }
     // 0 = ninguna, 1 = Skip, 2 = Fin (si las dos están cerca, la más cercana)
+    float xfadeHandleX() const { return (float) sampleToX ((double) (loopEnd - std::min (xfadeLen, loopEnd))); }
     int whichLine (juce::Point<float> p) const
     {
         if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
+        // la manija del crossfade: el cuadradito de abajo de todo
+        if (hasLoop() && onXfadeDragged != nullptr && p.y >= (float) getHeight() - 26.0f
+            && std::abs (p.x - xfadeHandleX()) <= 9.0f && xVisible ((double) (loopEnd - std::min (xfadeLen, loopEnd))))
+            return 5;
         const float dS = hasSkipLine() ? std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))) : 1e9f;
         const float dE = (hasEndLine() && endLineVisible()) ? std::abs (p.x - endLineX()) : 1e9f;
         const float dLs = (hasLoop() && xVisible ((double) loopStart)) ? std::abs (p.x - (float) sampleToX ((double) loopStart)) : 1e9f;
@@ -420,9 +442,48 @@ private:
                     g.setColour (juce::Colour (0xff3ddc84).withAlpha (grabbed ? 1.0f : 0.9f));
                     g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, grabbed ? 2.0f : 1.2f);
                     juce::Path handle;
-                    const float hy = (float) r.getBottom() - 30.0f;
+                    const float hy = (float) r.getBottom() - 38.0f;
                     handle.addTriangle (lx - 6.0f, hy + 8.0f, lx + 6.0f, hy + 8.0f, lx, hy);
                     g.fillPath (handle);
+                }
+                // crossfade (como en el Quick Sampler): lo que entra, antes del inicio, sube; lo que sale,
+                // antes del fin, baja. La manija ✕ (abajo) marca dónde empieza el fundido.
+                {
+                    const float top = (float) r.getY() + 2.0f, bot = (float) r.getBottom() - 2.0f;
+                    const size_t xl = std::min (xfadeLen, loopStart);
+                    if (xl > 0)
+                    {
+                        const float xs0 = (float) r.getX() + (float) sampleToX ((double) (loopStart - xl));
+                        const float xe0 = (float) r.getX() + (float) sampleToX ((double) (loopEnd - xl));
+                        juce::Path in, out;
+                        in.addTriangle (xs0, bot, x0, top, x0, bot);
+                        out.addTriangle (xe0, top, x1, bot, xe0, bot);
+                        juce::Graphics::ScopedSaveState ss (g);
+                        g.reduceClipRegion (r);
+                        g.setColour (juce::Colours::white.withAlpha (0.16f));
+                        g.fillPath (in);
+                        g.fillPath (out);
+                        g.setColour (juce::Colours::white.withAlpha (0.45f));
+                        g.drawLine (xs0, bot, x0, top, 1.0f);
+                        g.drawLine (xe0, top, x1, bot, 1.0f);
+                    }
+                    const float hx = (float) r.getX() + xfadeHandleX();
+                    if (onXfadeDragged != nullptr && hx >= (float) r.getX() - 1.0f && hx <= (float) r.getRight() + 1.0f)
+                    {
+                        const bool grabbedX = draggingLoop == 5;
+                        if (xl > 0)
+                        {
+                            g.setColour (juce::Colours::white.withAlpha (0.8f));
+                            g.drawVerticalLine ((int) hx, top, bot);
+                        }
+                        const auto box = juce::Rectangle<float> (hx - 8.0f, (float) r.getBottom() - 20.0f, 16.0f, 16.0f);
+                        g.setColour (grabbedX ? juce::Colours::white : juce::Colour (0xffe8ecf2));
+                        g.fillRoundedRectangle (box, 3.0f);
+                        g.setColour (juce::Colour (0xff1b1e23));
+                        const auto ib = box.reduced (4.5f);
+                        g.drawLine (ib.getX(), ib.getY(), ib.getRight(), ib.getBottom(), 1.6f);
+                        g.drawLine (ib.getRight(), ib.getY(), ib.getX(), ib.getBottom(), 1.6f);
+                    }
                 }
                 if (x0 >= (float) r.getX() && x0 + 44.0f < (float) r.getRight())
                 {
