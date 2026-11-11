@@ -4,8 +4,9 @@
 //
 // Búsqueda exhaustiva: prueba TODOS los pares inicio/fin posibles y a cada uno lo mide completo:
 //   1. El empalme, fino: 2 ondas a cada lado del corte, muestra a muestra y por canal (lo que se
-//      escucha al saltar del fin al inicio contra lo que se escucharía sin saltar), y la pendiente
-//      en el punto de corte (un cambio de pendiente se oye como un "tic" suave).
+//      escucha al saltar del fin al inicio contra lo que se escucharía sin saltar), la continuidad
+//      exacta en la muestra del salto (un salto ahí es un click) y la pendiente en el punto de
+//      corte (un cambio de pendiente se oye como un "tic" suave).
 //   2. La nota: que las ondas a los dos lados del empalme duren lo mismo (sin salto de pitch).
 //   3. La estabilidad de todo el loop (no solo del empalme): cuánto varía la nota onda a onda y del
 //      principio al final del loop, cuánto cambia el timbre (principio, medio y final), y cuánto
@@ -163,6 +164,25 @@ inline double slopeError (const AudioView& y, size_t start, size_t end)
     return ref > 1e-20 ? std::sqrt (d / ref) : 0.0;
 }
 
+// Continuidad exacta en el salto: después de la última muestra del loop suena la del inicio; sin
+// saltar sonaría la del fin. Esa diferencia, comparada con el paso normal de la onda alrededor del
+// fin (rms de la diferencia entre muestras vecinas). 0 = continuo; 2-3 o más = un click.
+inline double jumpError (const AudioView& y, size_t start, size_t end, size_t win)
+{
+    if (start >= y.n || end >= y.n || end < 1) return 10.0;
+    const size_t a0 = end > win ? end - win : 1, a1 = std::min (y.n, end + win);
+    double d = 0, step = 0;
+    size_t cnt = 0;
+    for (auto* c : y.ch)
+    {
+        const double x = (double) c[start] - (double) c[end];
+        d += x * x;
+        for (size_t i = a0; i < a1; ++i) { const double s = (double) c[i] - (double) c[i - 1]; step += s * s; ++cnt; }
+    }
+    step = cnt > 0 ? step / (double) cnt : 0.0;
+    return step > 1e-24 ? std::sqrt ((d / (double) y.ch.size()) / step) : 0.0;
+}
+
 // Puntaje completo del loop de la onda i a la onda j (loop = b[i] .. b[j]). Usa también las ondas
 // i-1 y j (las vecinas del empalme). Menos es mejor.
 // (s0/s1: dónde caen de verdad las puntas, si el ajuste fino las corrió unas muestras del cruce)
@@ -177,6 +197,7 @@ inline double score (const Features& f, const AudioView& y, size_t i, size_t j, 
     const size_t win = (size_t) std::max (16.0, 2.0 * meanL);
     const double splice = spliceError (y, s0, s1, win);
     const double slope = slopeError (y, s0, s1);
+    const double jump = jumpError (y, s0, s1, win);
     // 2. nota a los dos lados del empalme
     const double across = (std::abs (F[j - 1].len - F[i - 1].len) + std::abs (F[j].len - F[i].len)) / (2.0 * meanL);
     // 3. estabilidad adentro del loop
@@ -188,7 +209,7 @@ inline double score (const Features& f, const AudioView& y, size_t i, size_t j, 
     const double levelCv = f.cv (f.sR, f.sR2, i, j);
     const double noiseMismatch = std::abs (F[j - 1].irr - F[i - 1].irr) + std::abs (F[j].irr - F[i].irr);
 
-    return 1.0 * splice + 0.25 * slope
+    return 1.0 * splice + 0.25 * slope + 0.02 * jump * jump
          + 10.0 * across + 6.0 * pitchCv + 4.0 * pitchDrift
          + 0.6 * timbreDrift + 0.4 * hfCv + 1.0 * levelCv + 0.3 * noiseMismatch;
 }
@@ -264,7 +285,10 @@ inline std::vector<LoopResult> findLoops (const Analysis& a, const AudioView& y,
         const double meanL = f.mean (f.sL, p->i, p->j);
         const int reach = (int) std::clamp (meanL / 40.0, 0.0, 8.0);
         const size_t win = (size_t) std::max (16.0, 2.0 * meanL);
-        auto spliceCost = [&] (size_t s0, size_t s1) { return spliceError (y, s0, s1, win) + 0.25 * slopeError (y, s0, s1); };
+        auto spliceCost = [&] (size_t s0, size_t s1) {
+            const double j = jumpError (y, s0, s1, win);
+            return spliceError (y, s0, s1, win) + 0.25 * slopeError (y, s0, s1) + 0.02 * j * j;
+        };
         const double base = spliceCost (r.start, r.end);
         double bestSplice = base;
         size_t bs = r.start, be = r.end;
