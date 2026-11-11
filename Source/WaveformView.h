@@ -97,6 +97,12 @@ public:
         const int line = whichLine (e.position);
         // sobre la línea amarilla: arrastrando arriba/abajo se cambia el Pitch
         pitchDragArmed = pitchDragging = false;
+        // ⌥ Option + clic sobre la línea: vuelve al pitch original (0 cents)
+        if (line == 0 && e.mods.isAltDown() && nearPitchCurve (e.position) && onPitchDragged)
+        {
+            onPitchDragged (0.0);
+            return;
+        }
         if (line == 0 && nearPitchCurve (e.position) && onPitchDragged && getPitchCents)
         {
             pitchDragArmed = true;
