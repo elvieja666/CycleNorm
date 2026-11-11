@@ -1206,7 +1206,8 @@ private:
     {
         inLoop = it.hasLoop();
         if (inLoop) return cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8);
-        return cyclenorm::measurePitch (it.analysis, cyclenorm::skipEndSample (it.analysis, st), (size_t) it.lengthToWrite());
+        // sin loop: la parte estable (después del glide), entre Skip y End
+        return cyclenorm::measureSustainPitch (it.analysis, cyclenorm::skipEndSample (it.analysis, st), (size_t) it.lengthToWrite());
     }
     void updatePitch (const Item& it, double previewSemis = 0.0)
     {
@@ -1217,7 +1218,7 @@ private:
         if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); return; }
         const double cents = (p.midi - std::round (p.midi)) * 100.0;
         juce::String t;
-        t << "Pitch (" << (inLoop ? "loop" : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
+        t << "Pitch (" << (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding, approx." : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
           << " " << (cents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (cents), 1) << " cents  ·  "
           << juce::String (p.hz, 3) << " Hz";
         const double tuned = it.tuneSemis + previewSemis;

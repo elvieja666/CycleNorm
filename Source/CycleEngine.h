@@ -741,6 +741,9 @@ struct PitchInfo
     double hz = 0, midi = 0;  // midi con fracción (69 = A4 = 440 Hz)
     int    cycles = 0;
     double driftCents = 0;
+    bool   sustain = false;   // medido en la zona estable (después del glide)
+    bool   gliding = false;   // la nota nunca se asienta: el valor es un promedio aproximado
+    size_t zoneStart = 0;     // dónde empieza la zona estable (muestra)
 };
 
 inline PitchInfo measurePitch (const Analysis& a, size_t from, size_t to)
@@ -773,6 +776,94 @@ inline PitchInfo measurePitch (const Analysis& a, size_t from, size_t to)
         double s1 = 0, s2 = 0;
         for (size_t k = 0; k < q; ++k) { s1 += ok[k]; s2 += ok[ok.size() - 1 - k]; }
         p.driftCents = 1200.0 * std::log2 (s1 / s2); // (frecuencia final / inicial)
+    }
+    return p;
+}
+
+// Pitch de la parte estable: busca dónde termina el glide y mide sólo desde ahí.
+// Onda por onda (cents), suavizado con la mediana de 5; la zona estable es la primera
+// desde la que, hasta el final, al menos el 85 % de las ondas quedan a ±12 cents de su mediana,
+// y tiene que ocupar al menos la mitad de las ondas (y 8). Si no hay, la nota nunca se asienta
+// (glide continuo o modulación): devuelve el promedio de toda la zona, marcado como gliding.
+inline PitchInfo measureSustainPitch (const Analysis& a, size_t from, size_t to)
+{
+    const auto& bf = a.boundsFrac;
+    PitchInfo fallback = measurePitch (a, from, to);
+    if (bf.size() < 10 || a.sampleRate <= 0) return fallback;
+    constexpr double tol = 12.0;
+    auto centsOf = [&] (double per) { return 1200.0 * std::log2 (a.sampleRate / per / 440.0) + 6900.0; };
+
+    std::vector<size_t> idx; // ondas dentro de la zona
+    for (size_t k = 0; k + 1 < bf.size(); ++k)
+        if (bf[k] >= (double) from && bf[k + 1] <= (double) to) idx.push_back (k);
+    if (idx.size() < 10) return fallback;
+    std::vector<double> m (idx.size());
+    for (size_t i = 0; i < idx.size(); ++i) m[i] = centsOf (bf[idx[i] + 1] - bf[idx[i]]);
+
+    // fuera: ondas casi en silencio, saltos de más de 5 semitonos respecto de los vecinos, y el último 3 % (el corte)
+    float gpk = 0; for (float v : a.peaks) gpk = std::max (gpk, v);
+    std::vector<char> ok (idx.size(), 1);
+    for (size_t i = 0; i < idx.size(); ++i)
+    {
+        if (idx[i] < a.peaks.size() && a.peaks[idx[i]] < gpk * 0.003f) ok[i] = 0;
+        double nb = 0; int cnt = 0;
+        if (i > 0) { nb += m[i - 1]; ++cnt; }
+        if (i + 1 < idx.size()) { nb += m[i + 1]; ++cnt; }
+        if (cnt > 0 && std::abs (m[i] - nb / cnt) > 500.0) ok[i] = 0;
+    }
+    size_t end = idx.size();
+    while (end > 0 && ! ok[end - 1]) --end;
+    const size_t trim = std::max<size_t> (1, (size_t) std::lround ((double) idx.size() * 0.03));
+    if (end > trim) end -= trim;
+    std::vector<size_t> v; // posiciones (en idx/m) que cuentan
+    for (size_t i = 0; i < end; ++i) if (ok[i]) v.push_back (i);
+    const size_t N = v.size();
+    if (N < 10) return fallback;
+    std::vector<double> sm (N);
+    for (size_t i = 0; i < N; ++i)
+    {
+        double w[5]; int c = 0;
+        for (int d = -2; d <= 2; ++d) { const long j = (long) i + d; if (j >= 0 && j < (long) N) w[c++] = m[v[(size_t) j]]; }
+        std::sort (w, w + c);
+        sm[i] = w[c / 2];
+    }
+    long k0 = -1; double med = 0;
+    for (size_t i = 0; i + 1 < N; ++i)
+    {
+        std::vector<double> w (sm.begin() + (long) i, sm.end());
+        std::nth_element (w.begin(), w.begin() + (long) w.size() / 2, w.end());
+        const double md = w[w.size() / 2];
+        size_t in = 0;
+        for (size_t j = i; j < N; ++j) if (std::abs (sm[j] - md) <= tol) ++in;
+        if ((double) in >= 0.85 * (double) (N - i)) { k0 = (long) i; med = md; break; }
+    }
+    const size_t len = k0 >= 0 ? N - (size_t) k0 : 0;
+    if (k0 < 0 || len < std::max<size_t> (8, (N + 1) / 2)) { fallback.gliding = fallback.valid; return fallback; }
+
+    // el principio de la zona: mientras la curva todavía viene bajando (a más de 6 cents de la nota), afuera
+    while ((size_t) k0 + 8 < N && std::abs (sm[(size_t) k0] - med) > tol * 0.5) ++k0;
+    // promedio de los períodos de la zona estable (sin las ondas que se apartan)
+    std::vector<double> per;
+    for (size_t i = (size_t) k0; i < N; ++i)
+    {
+        const size_t k = idx[v[i]];
+        if (std::abs (m[v[i]] - med) > tol) continue;
+        per.push_back (bf[k + 1] - bf[k]);
+    }
+    if (per.size() < 4) { fallback.gliding = fallback.valid; return fallback; }
+    PitchInfo p;
+    double sum = 0; for (double x : per) sum += x;
+    p.hz = a.sampleRate * (double) per.size() / sum;
+    p.midi = 69.0 + 12.0 * std::log2 (p.hz / 440.0);
+    p.cycles = (int) per.size();
+    p.valid = p.sustain = true;
+    p.zoneStart = (size_t) bf[idx[v[(size_t) k0]]];
+    if (per.size() >= 8)
+    {
+        const size_t q = per.size() / 4;
+        double s1 = 0, s2 = 0;
+        for (size_t k = 0; k < q; ++k) { s1 += per[k]; s2 += per[per.size() - 1 - k]; }
+        p.driftCents = 1200.0 * std::log2 (s1 / s2);
     }
     return p;
 }

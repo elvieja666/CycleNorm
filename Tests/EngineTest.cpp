@@ -1,5 +1,6 @@
 // Prueba del motor con 808 sintéticos. Compilar:
 //   g++ -O2 -std=c++17 -fsanitize=address,undefined -I../Source EngineTest.cpp -o engine_test && ./engine_test
+#include <functional>
 #include "LoopFinder.h"
 #include "Resample.h"
 #include <cstdio>
@@ -375,6 +376,37 @@ int main()
         const double resDb = 10 * std::log10 (res / tot);
         const bool ok = std::abs (err) < 0.5 && resDb < -60.0;
         std::printf ("tune: C#1 -> %s %+.3f cents; re-sampleo de un seno: residuo %.1f dB  %s\n", noteName (p2.midi).c_str(), err, resDb, ok ? "OK" : "FALLA");
+        fails += ! ok;
+    }
+    // Pitch de la zona estable: glide lento (de +3 semitonos, se asienta en ~0,4 s) y la nota fija
+    // en C1 +12 cents; tiene que medir +12 (no más agudo por el glide). Y un glide que nunca para
+    // (de E1 a A#0 en todo el sonido) tiene que salir marcado como gliding.
+    {
+        const double fs = 44100;
+        auto synth = [&] (std::function<double (double)> freq, double secs) {
+            const size_t n = (size_t) (fs * secs);
+            Channels in (1, std::vector<float> (n));
+            double ph = 0;
+            for (size_t i = 0; i < n; ++i)
+            {
+                const double t = i / fs;
+                ph += 2 * M_PI * freq (t) / fs;
+                in[0][i] = (float) (std::exp (-t / 0.7) * (std::tanh (2.0 * std::sin (ph)) + 0.25 * std::sin (2 * ph + 0.3)));
+            }
+            return in;
+        };
+        const double fNote = 32.703 * std::pow (2.0, 12.0 / 1200.0); // C1 +12 cents
+        auto settle = synth ([&] (double t) { return fNote * std::pow (2.0, 3.0 * std::exp (-t / 0.08) / 12.0); }, 2.0);
+        auto a = analyse (settle, fs);
+        auto pS = measureSustainPitch (a, 0, settle[0].size());
+        auto pOld = measurePitch (a, 0, settle[0].size());
+        const double err = 1200.0 * std::log2 (pS.hz / fNote), errOld = 1200.0 * std::log2 (pOld.hz / fNote);
+        auto glide = synth ([&] (double t) { return 41.2 * std::pow (2.0, -6.0 * (t / 1.5) / 12.0); }, 1.5);
+        auto ag = analyse (glide, fs);
+        auto pG = measureSustainPitch (ag, 0, glide[0].size());
+        const bool ok = pS.valid && pS.sustain && std::abs (err) < 1.0 && pG.valid && pG.gliding && ! pG.sustain;
+        std::printf ("pitch de la zona estable: error %+.2f cents (todo el archivo: %+.1f), desde %.2f s; glide continuo -> %s  %s\n",
+                     err, errOld, pS.zoneStart / fs, pG.gliding ? "gliding" : "estable", ok ? "OK" : "FALLA");
         fails += ! ok;
     }
     // casos raros: silencio, archivo cortísimo, mono
