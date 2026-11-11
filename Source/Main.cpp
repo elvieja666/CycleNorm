@@ -23,14 +23,16 @@ cyclenorm::Channels toChannels (const juce::AudioBuffer<float>& b)
 } // namespace
 
 //==============================================================================
-// Barra que con la rueda del mouse se mueve de a un paso (1 semitono, 0,1 cents)
+// Barra que con la rueda del mouse se mueve de a un paso fijo (wheelStep; con Shift, el paso fino)
 struct StepSlider : public juce::Slider
 {
-    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
+    double wheelStep = 1.0, wheelStepFine = 0.1;
+    void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
         const float d = std::abs (w.deltaY) > std::abs (w.deltaX) ? w.deltaY : -w.deltaX;
         if (std::abs (d) < 1e-6f || ! isEnabled()) return;
-        setValue (getValue() + (d > 0 ? 1.0 : -1.0) * getInterval(), juce::sendNotificationAsync);
+        const double step = e.mods.isShiftDown() ? wheelStepFine : wheelStep;
+        setValue (getValue() + (d > 0 ? 1.0 : -1.0) * step, juce::sendNotificationAsync);
     }
 };
 
@@ -201,15 +203,19 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
-        // Re-pitch a mano: semitonos y cents (doble clic = 0). Se aplica un instante después de soltar.
-        setupSlider (transpose, transposeLabel, "Transpose", -12, 12, 1, " st", 0.0);
-        setupSlider (fine, fineLabel, "Fine", -50, 50, 0.1, " cents", 0.0);
-        for (auto* sl : { &transpose, &fine })
-        {
-            sl->setDoubleClickReturnValue (true, 0.0);
-            sl->setVelocityModeParameters (0.15, 1, 0.0, true, juce::ModifierKeys::shiftModifier); // Shift + arrastrar = fino
-            sl->onValueChange = [this] { pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter(); };
-        }
+        // Re-pitch a mano, en cents: de -600 a +600 (6 semitonos para cada lado). Doble clic = 0.
+        // Se aplica un instante después de moverla.
+        setupSlider (pitchShift, pitchShiftLabel, "Pitch", -600, 600, 0.1, "", 0.0);
+        pitchShift.textFromValueFunction = [] (double v) {
+            return juce::String (v, 1) + " cents  (" + (v > 0.0 ? "+" : "") + juce::String (v / 100.0, 2) + " st)";
+        };
+        pitchShift.valueFromTextFunction = [] (const juce::String& t) { return t.getDoubleValue(); };
+        pitchShift.updateText();
+        pitchShift.wheelStep = 1.0;       // rueda: de a 1 cent
+        pitchShift.wheelStepFine = 0.1;   // Shift + rueda: de a 0,1 cent
+        pitchShift.setDoubleClickReturnValue (true, 0.0);
+        pitchShift.setVelocityModeParameters (0.15, 1, 0.0, true, juce::ModifierKeys::shiftModifier); // Shift + arrastrar = fino
+        pitchShift.onValueChange = [this] { pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter(); };
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -343,7 +349,7 @@ public:
         progressBar.setBounds (bottomRow.reduced (0, 4).withTrimmedRight (12));
         progressLabel.setBounds (progressBar.getBounds());
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 4;
+        const int colW = c.getWidth() / 3;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -353,8 +359,7 @@ public:
         };
         place (amountLabel, amount, nullptr);
         place (rampLabel, ramp, nullptr);
-        place (transposeLabel, transpose, nullptr);
-        place (fineLabel, fine, nullptr);
+        place (pitchShiftLabel, pitchShift, nullptr);
         r.removeFromBottom (8);
 
         list.setBounds (r.removeFromLeft (230));
@@ -459,10 +464,10 @@ private:
     std::unique_ptr<LoopSearchJob> loopJob;
     juce::ComboBox formatBox;
     juce::Slider amount, ramp;
-    StepSlider transpose, fine;
+    StepSlider pitchShift;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 4;
-    juce::Label amountLabel, rampLabel, info, pitchLabel, transposeLabel, fineLabel;
+    juce::Label amountLabel, rampLabel, info, pitchLabel, pitchShiftLabel;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
@@ -530,7 +535,7 @@ private:
         if (pendingRetune && juce::Time::getMillisecondCounter() - lastRetuneChange > 150)
         {
             pendingRetune = false;
-            retuneCurrent ((int) transpose.getValue(), fine.getValue());
+            retuneCurrent (0, pitchShift.getValue());
         }
         if (pendingReprocess && juce::Time::getMillisecondCounter() - lastChange > 40)
         {
@@ -841,8 +846,7 @@ private:
         transport.stop();
         current = row;
         auto& it = *items[(size_t) row];
-        transpose.setValue (it.tuneSt, juce::dontSendNotification);
-        fine.setValue (it.tuneCents, juce::dontSendNotification);
+        pitchShift.setValue ((double) it.tuneSt * 100.0 + it.tuneCents, juce::dontSendNotification);
         pendingRetune = false;
         processItem (it);
         source.setBuffers (it.original, it.processed);
