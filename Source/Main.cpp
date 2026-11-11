@@ -390,6 +390,13 @@ public:
     bool keyPressed (const juce::KeyPress& k) override
     {
         if (k == juce::KeyPress::spaceKey) { togglePlay(); return true; }
+        // ⌘Z deshacer, ⇧⌘Z (o ⌘Y) rehacer
+        if (k.getModifiers().isCommandDown() && (k.getKeyCode() == 'Z' || k.getKeyCode() == 'z'))
+        {
+            if (k.getModifiers().isShiftDown()) redo(); else undo();
+            return true;
+        }
+        if (k.getModifiers().isCommandDown() && (k.getKeyCode() == 'Y' || k.getKeyCode() == 'y')) { redo(); return true; }
         if (k.getTextCharacter() == 'a' || k.getTextCharacter() == 'A')
         {
             abButton.setToggleState (! abButton.getToggleState(), juce::dontSendNotification);
@@ -487,6 +494,25 @@ private:
     StepSlider pitchShift;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 4;
+
+    // deshacer / rehacer: fotos del estado editable (por archivo + los controles globales)
+    struct EditState
+    {
+        Item* item = nullptr;
+        double amount = 0, ramp = 0, pitch = 0;
+        int skip = 0, xfade = 0, candIdx = -1;
+        size_t endS = 0, l0 = 0, l1 = 0;
+        std::vector<cyclenorm::LoopResult> cands;
+        bool same (const EditState& o) const
+        {
+            return item == o.item && amount == o.amount && ramp == o.ramp && std::abs (pitch - o.pitch) < 1e-9
+                && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS
+                && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size();
+        }
+    };
+    std::vector<EditState> undoStack, redoStack;
+    EditState lastState;
+    bool haveLastState = false;
     juce::Label amountLabel, rampLabel, info, pitchLabel, pitchShiftLabel;
     juce::ListBox list;
     WaveformView wave;
@@ -545,6 +571,7 @@ private:
 
     void timerCallback() override
     {
+        commitUndoStep (false);
         if (loopJob != nullptr)
         {
             progressValue = loopJob->progress.load();
@@ -663,6 +690,7 @@ private:
         transport.stop();
         transport.setSource (nullptr);
         const int removed = current;
+        forgetUndo (items[(size_t) current].get());
         items.erase (items.begin() + current);
         current = -1;
         list.updateContent();
@@ -847,6 +875,97 @@ private:
         updateXfadeView();
         processCurrent();   // aplica el crossfade y mide la calidad
         updateButtons();
+    }
+
+    //== deshacer / rehacer =====================================================
+    EditState captureState() const
+    {
+        EditState st;
+        st.amount = amount.getValue(); st.ramp = ramp.getValue(); st.skip = skipHalves;
+        if (juce::isPositiveAndBelow (current, (int) items.size()))
+        {
+            const auto& it = *items[(size_t) current];
+            st.item = items[(size_t) current].get();
+            st.pitch = (double) it.tuneSt * 100.0 + it.tuneCents; // el aplicado
+            st.endS = it.endSample; st.l0 = it.loopStart; st.l1 = it.loopEnd;
+            st.xfade = it.xfadeCycles; st.cands = it.loopCands; st.candIdx = it.loopCandIdx;
+        }
+        return st;
+    }
+    // Cuando el estado se asienta (nada pendiente y sin el mouse apretado) y cambió, guarda un paso.
+    // Así un arrastre entero (Skip, End, loop, Pitch) es un solo paso de deshacer.
+    void commitUndoStep (bool force)
+    {
+        if (! force && (pendingRetune || pendingReprocess || loopJob != nullptr || wave.isDraggingPitch()
+                        || juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown()))
+            return;
+        auto st = captureState();
+        if (! haveLastState || st.item != lastState.item) { lastState = std::move (st); haveLastState = true; return; } // cambio de archivo: no es un paso
+        if (st.same (lastState)) return;
+        undoStack.push_back (std::move (lastState));
+        if (undoStack.size() > 300) undoStack.erase (undoStack.begin());
+        redoStack.clear();
+        lastState = std::move (st);
+    }
+    void flushPendingEdits()
+    {
+        if (pendingRetune && juce::isPositiveAndBelow (current, (int) items.size())) { pendingRetune = false; retuneCurrent (0, pitchShift.getValue()); }
+        if (pendingReprocess) { pendingReprocess = false; processCurrent(); list.repaint(); }
+        commitUndoStep (true);
+    }
+    void undo()
+    {
+        flushPendingEdits();
+        if (undoStack.empty()) return;
+        auto st = std::move (undoStack.back()); undoStack.pop_back();
+        redoStack.push_back (captureState());
+        applyState (st);
+    }
+    void redo()
+    {
+        flushPendingEdits();
+        if (redoStack.empty()) return;
+        auto st = std::move (redoStack.back()); redoStack.pop_back();
+        undoStack.push_back (captureState());
+        applyState (st);
+    }
+    void applyState (const EditState& st)
+    {
+        if (loopJob != nullptr) cancelLoopSearch();
+        int row = -1;
+        for (size_t i = 0; i < items.size(); ++i) if (items[i].get() == st.item) row = (int) i;
+        if (row >= 0 && row != current) { list.selectRow (row); if (current != row) selectItem (row); }
+        amount.setValue (st.amount, juce::dontSendNotification);
+        ramp.setValue (st.ramp, juce::dontSendNotification);
+        skipHalves = st.skip;
+        saveSettings();
+        pendingReprocess = false;
+        if (row >= 0)
+        {
+            auto& it = *items[(size_t) row];
+            pitchShift.setValue (st.pitch, juce::dontSendNotification);
+            pendingRetune = false;
+            retuneCurrent (0, st.pitch);
+            it.endSample = st.endS; it.loopStart = st.l0; it.loopEnd = st.l1;
+            it.xfadeCycles = st.xfade; it.loopCands = st.cands; it.loopCandIdx = st.candIdx;
+            source.setEndSample ((juce::int64) it.endSample);
+            source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
+            wave.setEndSample (it.endSample);
+            wave.setLoop (it.loopStart, it.loopEnd);
+            updateXfadeView();
+            processCurrent();
+            updatePitch (it);
+        }
+        list.repaint();
+        updateButtons();
+        lastState = captureState(); haveLastState = true;
+    }
+    void forgetUndo (const Item* gone)
+    {
+        auto drop = [gone] (std::vector<EditState>& v) {
+            v.erase (std::remove_if (v.begin(), v.end(), [gone] (const EditState& e) { return e.item == gone; }), v.end()); };
+        drop (undoStack); drop (redoStack);
+        if (lastState.item == gone) haveLastState = false;
     }
 
     void processCurrent()
