@@ -48,6 +48,8 @@ public:
     void setLoopBounds (std::vector<size_t> b) { loopBounds = std::move (b); }
     // largo del crossfade del loop en muestras (0 = Off)
     void setLoopXfade (size_t len) { if (len != xfadeLen) { xfadeLen = len; dirty = true; repaint(); } }
+    // Curva de pitch: un punto por onda (muestra del centro de la onda, Hz). Se dibuja sobre el original.
+    void setPitchCurve (std::vector<std::pair<double, double>> pts) { pitchPts = std::move (pts); dirty = true; repaint(); }
 
     void paint (juce::Graphics& g) override
     {
@@ -151,6 +153,66 @@ private:
     bool draggingSkip = false, draggingEnd = false;
     int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop, 5 = manija del crossfade
     size_t xfadeLen = 0;
+    std::vector<std::pair<double, double>> pitchPts;
+
+    // Curva de pitch sobre un carril: eje vertical en notas (escala logarítmica), con una línea por
+    // semitono y su nombre. Si casi no cambia, muestra ±50 cents para que se vea el drift.
+    void drawPitchCurve (juce::Graphics& g, juce::Rectangle<int> r)
+    {
+        if (pitchPts.size() < 2 || viewLen <= 0) return;
+        auto midiOf = [] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0); };
+        double lo = 1e9, hi = -1e9;
+        for (auto& p : pitchPts) { const double m = midiOf (p.second); lo = std::min (lo, m); hi = std::max (hi, m); }
+        const double mid = 0.5 * (lo + hi);
+        if (hi - lo < 1.0) { lo = mid - 0.5; hi = mid + 0.5; }
+        const double pad = (hi - lo) * 0.12;
+        lo -= pad; hi += pad;
+        const auto area = r.toFloat().reduced (0.0f, 22.0f);
+        auto yOf = [&] (double m) { return area.getBottom() - (float) ((m - lo) / (hi - lo)) * area.getHeight(); };
+
+        juce::Graphics::ScopedSaveState ss (g);
+        g.reduceClipRegion (r);
+        // líneas de semitono, con nombre (si no son demasiadas)
+        static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+        const int s1 = (int) std::floor (hi);
+        const int stepS = (s1 - (int) std::ceil (lo)) > 14 ? 2 : 1;
+        int s0 = (int) std::ceil (lo);
+        while (((s0 % stepS) + stepS) % stepS != 0) ++s0; // de a 2: C, D, E... (siempre aparece C)
+        g.setFont (juce::FontOptions (10.5f));
+        for (int m = s0; m <= s1; m += stepS)
+        {
+            const float y = yOf ((double) m);
+            g.setColour (juce::Colour (0x28ffd34d));
+            g.drawHorizontalLine ((int) y, (float) r.getX(), (float) r.getRight());
+            // nombre centrado sobre su línea, con fondo para que se lea
+            const auto lb = juce::Rectangle<float> ((float) r.getRight() - 34.0f, y - 6.5f, 30.0f, 13.0f);
+            g.setColour (juce::Colour (0xcc15171b));
+            g.fillRoundedRectangle (lb, 2.0f);
+            g.setColour (juce::Colour (0xc8ffd34d));
+            g.drawText (juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1), lb, juce::Justification::centred);
+        }
+        // la curva
+        juce::Path path;
+        bool started = false;
+        for (auto& p : pitchPts)
+        {
+            const float x = (float) r.getX() + (float) sampleToX (p.first);
+            const float y = yOf (midiOf (p.second));
+            if (! started) { path.startNewSubPath (x, y); started = true; }
+            else path.lineTo (x, y);
+        }
+        g.setColour (juce::Colour (0xffffd34d));
+        g.strokePath (path, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        for (auto& p : pitchPts)
+        {
+            const float x = (float) r.getX() + (float) sampleToX (p.first);
+            if (x < (float) r.getX() - 4 || x > (float) r.getRight() + 4) continue;
+            if (getWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
+            g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
+        }
+        g.setColour (juce::Colour (0xd0ffd34d));
+        g.drawText ("Pitch", juce::Rectangle<float> ((float) r.getRight() - 90.0f, (float) r.getY() + 4.0f, 46.0f, 13.0f), juce::Justification::centredRight);
+    }
     std::vector<size_t> loopBounds;
     bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
     float moveDownX = 0;
@@ -536,6 +598,7 @@ private:
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
         drawLane (g, orig.get(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc);
+        drawPitchCurve (g, top);
         drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
     }
 };

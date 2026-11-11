@@ -35,6 +35,7 @@ Arriba a la derecha la app muestra el **pitch preciso** del 808: nota, cents y H
 - **Cómo lo mide:** con los cruces por cero de la fundamental (las líneas verticales finitas), ubicados entre muestras (donde el audio vale 0 exactamente) y promediando el período de todas las ondas de la zona. Descarta las ondas que se alejan más de un 15 % de la típica (el corte del final, el glide, un rulito). En las pruebas el error es menor a 0,01 cents.
 - **Nombre de la nota:** notación científica, C1 = 32,7 Hz = MIDI 24. En Logic esa misma nota aparece como **C0**, porque Logic llama C3 al do central.
 - **Nota raíz del WAV exportado** (para el sampler): usa esta misma medición.
+- **Curva de pitch:** sobre el gráfico de arriba (el original) hay una línea amarilla, con un punto por onda, que muestra cómo se mueve la nota. Se ve el glide del ataque bajando hasta quedar fijo en la nota, y el drift de la cola. El eje vertical está en notas, con una línea por semitono y su nombre a la derecha (de a dos si el glide es muy grande, siempre incluyendo C). Si la nota casi no cambia, muestra ±50 cents para que el drift se vea. No dibuja los puntos que no son de la nota: los que saltan más de un 35 % respecto de sus vecinos, las ondas casi en silencio y la cola del corte o fade final (más de un 3 % lejos de la nota que venía sonando).
 
 ## Loop
 

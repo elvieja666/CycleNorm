@@ -813,6 +813,7 @@ private:
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
         wave.setEndSample (it.endSample);
         wave.setLoopBounds (it.analysis.bounds);
+        wave.setPitchCurve (pitchCurveOf (it));
         wave.setLoop (it.loopStart, it.loopEnd);
         wave.setLoopXfade (xfadeSamples (it));
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
@@ -908,6 +909,44 @@ private:
         }
         else info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
         info.setText (t, juce::dontSendNotification);
+    }
+
+    // Curva de pitch para el visor: una onda = un punto (centro de la onda, Hz), con los cruces exactos.
+    // Fuera los puntos que no son de la nota: los que saltan más de un 35 % respecto de sus vecinos
+    // (el corte del final, un rulito) y las ondas casi en silencio.
+    static std::vector<std::pair<double, double>> pitchCurveOf (const Item& it)
+    {
+        std::vector<std::pair<double, double>> pts;
+        const auto& bf = it.analysis.boundsFrac;
+        const auto& src = *it.original;
+        if (bf.size() < 3) return pts;
+        float maxAbs = 0;
+        for (int ch = 0; ch < src.getNumChannels(); ++ch) maxAbs = juce::jmax (maxAbs, src.getMagnitude (ch, 0, src.getNumSamples()));
+        std::vector<double> hz;
+        for (size_t k = 0; k + 1 < bf.size(); ++k) hz.push_back (it.sampleRate / juce::jmax (1.0, bf[k + 1] - bf[k]));
+        for (size_t k = 0; k < hz.size(); ++k)
+        {
+            std::vector<double> nb;
+            for (size_t q = (k >= 2 ? k - 2 : 0); q <= juce::jmin (hz.size() - 1, k + 2); ++q) if (q != k) nb.push_back (hz[q]);
+            std::nth_element (nb.begin(), nb.begin() + (long) nb.size() / 2, nb.end());
+            if (! nb.empty() && std::abs (hz[k] - nb[nb.size() / 2]) > 0.35 * nb[nb.size() / 2]) continue;
+            const int s0 = (int) bf[k], s1 = juce::jmin ((int) bf[k + 1] + 1, src.getNumSamples());
+            float pk = 0;
+            for (int ch = 0; ch < src.getNumChannels(); ++ch) pk = juce::jmax (pk, src.getMagnitude (ch, s0, juce::jmax (1, s1 - s0)));
+            if (pk < maxAbs * 0.003f) continue; // casi silencio (-50 dB)
+            pts.push_back ({ 0.5 * (bf[k] + bf[k + 1]), hz[k] });
+        }
+        // la cola: desde el final hacia atrás, fuera los puntos que se alejan más de un 3 % de la
+        // nota que venía sonando (mediana de los 8 anteriores): es el corte o el fade del archivo
+        while (pts.size() > 10)
+        {
+            std::vector<double> prev;
+            for (size_t q = pts.size() - 9; q < pts.size() - 1; ++q) prev.push_back (pts[q].second);
+            std::nth_element (prev.begin(), prev.begin() + (long) prev.size() / 2, prev.end());
+            const double med = prev[prev.size() / 2];
+            if (std::abs (pts.back().second - med) > 0.03 * med) pts.pop_back(); else break;
+        }
+        return pts;
     }
 
     // Pitch preciso: en el loop si hay, si no entre la línea de Skip y la de End
