@@ -241,6 +241,15 @@ public:
         wave.isPlaying = [this] { return transport.isPlaying(); };
         wave.isPlayingProcessed = [this] { return abButton.getToggleState(); };
         wave.onSeek = [this] (double s) { transport.setPosition (s); wave.repaint(); };
+        wave.getPitchCents = [this] { return pitchShift.getValue(); };
+        wave.onPitchDragged = [this] (double cents) { pitchShift.setValue (cents, juce::sendNotificationSync); };
+        wave.getPitchReference = [this] {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return 0.0;
+            const auto& it = *items[(size_t) current];
+            bool inLoop = false;
+            const auto p = pitchOf (it, readSettings(), inLoop);
+            return p.valid ? p.midi + (pitchShift.getValue() / 100.0 - it.tuneSemis) : 0.0;
+        };
         wave.maxSkip = kMaxSkip;
         wave.onEndDragged = [this] (size_t e)
         {
@@ -543,7 +552,8 @@ private:
                                    juce::dontSendNotification);
             if (loopJob->finished.load()) loopSearchFinished();
         }
-        if (pendingRetune && juce::Time::getMillisecondCounter() - lastRetuneChange > 150)
+        // arrastrando la línea amarilla: sólo vista previa; el re-sampleo, al soltar
+        if (pendingRetune && ! wave.isDraggingPitch() && juce::Time::getMillisecondCounter() - lastRetuneChange > 150)
         {
             pendingRetune = false;
             retuneCurrent (0, pitchShift.getValue());

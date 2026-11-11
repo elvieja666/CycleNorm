@@ -54,6 +54,12 @@ public:
     // appliedSemis: re-pitch que ya tiene la curva (para que el rango vertical quede fijo y la línea se mueva)
     void setPitchCurve (std::vector<std::pair<double, double>> pts, double appliedSemis = 0.0)
     { pitchPts = std::move (pts); pitchApplied = appliedSemis; pitchPreviewSemis = 0.0; frozenValid = false; dirty = true; repaint(); }
+    // arrastrar la línea amarilla cambia el Pitch (en cents, como la barra)
+    std::function<double()> getPitchCents;
+    std::function<void (double)> onPitchDragged;
+    std::function<double()> getPitchReference; // pitch medido (el de arriba), en MIDI; el imán lo pega a la nota
+    bool isDraggingPitch() const { return pitchDragArmed; }
+
     // vista previa mientras se mueve la barra Pitch: corre la curva estos semitonos sin re-samplear
     void setPitchPreview (double semis)
     {
@@ -82,12 +88,27 @@ public:
     void mouseMove (const juce::MouseEvent& e) override
     {
         if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+        else if (nearPitchCurve (e.position)) setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         else if (insideLoop (e.position)) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         else setMouseCursor (juce::MouseCursor::NormalCursor);
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
         const int line = whichLine (e.position);
+        // sobre la línea amarilla: arrastrando arriba/abajo se cambia el Pitch
+        pitchDragArmed = pitchDragging = false;
+        if (line == 0 && nearPitchCurve (e.position) && onPitchDragged && getPitchCents)
+        {
+            pitchDragArmed = true;
+            pitchDragLastY = pitchDownY = e.position.y;
+            pitchDragStartCents = getPitchCents();
+            pitchDragAnchor = pitchMidiAt (xToSample (e.position.x));
+            pitchDragAccum = 0.0;
+            pitchDragRef = getPitchReference ? getPitchReference() : pitchDragAnchor;
+            if (! std::isfinite (pitchDragRef) || pitchDragRef <= 0.0) pitchDragRef = pitchDragAnchor;
+            pitchSemisPerPx = (pitchHi - pitchLo) / juce::jmax (1.0f, pitchAreaH);
+            return;
+        }
         // adentro de la zona del loop (no sobre una punta): se prepara para mover el loop entero.
         // Si se suelta sin arrastrar, es un clic normal (mueve el cursor de reproducción).
         movingLoop = false;
@@ -109,6 +130,12 @@ public:
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
+        if (pitchDragArmed)
+        {
+            if (! pitchDragging && std::abs (e.position.y - pitchDownY) >= 2.0f) pitchDragging = true;
+            if (pitchDragging) dragPitchTo (e.position.y, e.mods.isShiftDown());
+            return;
+        }
         if (pendingLoopMove)
         {
             if (! movingLoop && e.getDistanceFromDragStartX() != 0 && std::abs (e.position.x - moveDownX) >= 3.0f) movingLoop = true;
@@ -124,6 +151,9 @@ public:
     {
         if (pendingLoopMove && ! movingLoop && totalLen() > 0 && onSeek) // clic sin arrastrar: mover el cursor
             onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
+        if (pitchDragArmed && ! pitchDragging && totalLen() > 0 && onSeek) // clic sobre la línea sin arrastrar: mover el cursor
+            onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
+        pitchDragArmed = pitchDragging = false;
         pendingLoopMove = movingLoop = false;
         draggingSkip = draggingEnd = false;
         draggingLoop = 0;
@@ -188,6 +218,9 @@ private:
     std::vector<std::pair<double, double>> pitchPts;
     // zoom vertical del pitch (1 = rango automático) y lo último dibujado (para el zoom con el mouse)
     double pitchPreviewSemis = 0.0, pitchApplied = 0.0;
+    bool pitchDragArmed = false, pitchDragging = false;
+    float pitchDownY = 0.0f, pitchDragLastY = 0.0f, pitchLineEnd = 0.0f;
+    double pitchDragStartCents = 0.0, pitchDragAnchor = 0.0, pitchDragRef = 0.0, pitchDragAccum = 0.0, pitchSemisPerPx = 0.0;
     bool frozenValid = false; double frozenLo = 0.0, frozenHi = 1.0; // rango fijo mientras se mueve Pitch
     double zoomSpan = 0.0, pitchCenter = 0.0, autoSpan = 1.0, pitchLo = 0.0, pitchHi = 1.0;
     float pitchAreaBottom = 0.0f, pitchAreaH = 0.0f;
@@ -260,6 +293,7 @@ private:
         const double spanSemis = hi - lo;
         // columna de los nombres: las líneas (grilla y curva) se cortan antes de llegar
         const float lineEnd = (float) r.getRight() - ((spanSemis >= 1.5 ? 30.0f : 58.0f) + 4.0f + 8.0f);
+        pitchLineEnd = lineEnd;
         if (spanSemis >= 1.5)
         {
             // semitonos (de a 2 si el rango es muy grande; siempre aparece C)
@@ -452,6 +486,33 @@ private:
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
     double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * getWidth() : 0; }
     double xToSample (double x) const { return viewStart + x / juce::jmax (1, getWidth()) * viewLen; }
+
+    // ¿el mouse está sobre la línea amarilla? (carril de arriba, a pocos píxeles de la curva)
+    bool nearPitchCurve (juce::Point<float> p) const
+    {
+        if (pitchPts.size() < 2 || pitchAreaH <= 1.0f || p.y >= getHeight() / 2.0f || p.x > pitchLineEnd) return false;
+        const double s = xToSample (p.x);
+        if (s < pitchPts.front().first - 2.0 * sr / 30.0 || s > pitchPts.back().first) return false;
+        const double m = pitchMidiAt (s);
+        const float y = pitchAreaBottom - (float) ((m - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo)) * pitchAreaH;
+        return std::abs (p.y - y) <= 7.0f;
+    }
+    // arrastre de la línea: Shift = fino (10 veces más lento) y sin imán.
+    // Sin Shift, el punto agarrado se pega a la línea de la nota cuando pasa a menos de 5 píxeles.
+    void dragPitchTo (float y, bool fine)
+    {
+        pitchDragAccum += (double) (pitchDragLastY - y) * pitchSemisPerPx * (fine ? 0.1 : 1.0);
+        pitchDragLastY = y;
+        double target = pitchDragRef + pitchDragAccum; // el pitch medido, movido por el arrastre
+        if (! fine)
+        {
+            const double note = std::round (target);
+            if (std::abs (target - note) / juce::jmax (1e-9, pitchSemisPerPx) <= 5.0) target = note;
+        }
+        double cents = pitchDragStartCents + (target - pitchDragRef) * 100.0;
+        cents = std::round (cents * 10.0) / 10.0;
+        onPitchDragged (cents);
+    }
 
     // zoom vertical del pitch: factor > 1 acerca. Ancla: la línea amarilla en la posición horizontal x
     // (con el mouse a 1 px de error ya serían ~5 cents; así la línea nunca se va de la pantalla)
