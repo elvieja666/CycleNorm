@@ -23,6 +23,18 @@ cyclenorm::Channels toChannels (const juce::AudioBuffer<float>& b)
 } // namespace
 
 //==============================================================================
+// Barra que con la rueda del mouse se mueve de a un paso (1 semitono, 0,1 cents)
+struct StepSlider : public juce::Slider
+{
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) override
+    {
+        const float d = std::abs (w.deltaY) > std::abs (w.deltaX) ? w.deltaY : -w.deltaX;
+        if (std::abs (d) < 1e-6f || ! isEnabled()) return;
+        setValue (getValue() + (d > 0 ? 1.0 : -1.0) * getInterval(), juce::sendNotificationAsync);
+    }
+};
+
+//==============================================================================
 struct Item
 {
     juce::File file;
@@ -33,8 +45,9 @@ struct Item
     cyclenorm::Analysis analysis;
     std::shared_ptr<juce::AudioBuffer<float>> loaded; // el archivo tal como se abrió (antes de Tune)
     cyclenorm::Analysis loadedAnalysis;
-    int tuneMode = 1;       // id del selector Tune: 1 = Off, 2 = nota más cercana (solo cents), 3..14 = C..B
-    double tuneSemis = 0.0; // cuánto se movió (semitonos, con fracción)
+    int tuneSt = 0;          // Transpose (semitonos) puesto a mano
+    double tuneCents = 0.0;  // Fine (cents) puesto a mano
+    double tuneSemis = 0.0;  // lo aplicado: semitonos + cents/100
     double targetUsedDb = 0.0;
     float outPeak = 0.0f;
     size_t endSample = 0; // dónde se corta el final (la línea de Fin); 0 = hasta el final del archivo
@@ -188,20 +201,15 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
-        tuneBox.addItem ("Off (as recorded)", 1);
-        tuneBox.addItem ("Nearest note (fix cents)", 2);
+        // Re-pitch a mano: semitonos y cents (doble clic = 0). Se aplica un instante después de soltar.
+        setupSlider (transpose, transposeLabel, "Transpose", -12, 12, 1, " st", 0.0);
+        setupSlider (fine, fineLabel, "Fine", -50, 50, 0.1, " cents", 0.0);
+        for (auto* sl : { &transpose, &fine })
         {
-            static const char* notes[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-            for (int k = 0; k < 12; ++k) tuneBox.addItem (juce::String ("To ") + notes[k], 3 + k);
+            sl->setDoubleClickReturnValue (true, 0.0);
+            sl->setVelocityModeParameters (0.15, 1, 0.0, true, juce::ModifierKeys::shiftModifier); // Shift + arrastrar = fino
+            sl->onValueChange = [this] { pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter(); };
         }
-        tuneBox.setSelectedId (1, juce::dontSendNotification);
-        tuneBox.onChange = [this] { retuneCurrent (tuneBox.getSelectedId()); };
-        tuneBox.setWantsKeyboardFocus (false);
-        addAndMakeVisible (tuneBox);
-        tuneLabel.setText ("Tune", juce::dontSendNotification);
-        tuneLabel.setFont (juce::FontOptions (13.0f));
-        tuneLabel.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
-        addAndMakeVisible (tuneLabel);
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
         source.setLooping (loopButton.getToggleState());
@@ -335,7 +343,7 @@ public:
         progressBar.setBounds (bottomRow.reduced (0, 4).withTrimmedRight (12));
         progressLabel.setBounds (progressBar.getBounds());
         c.removeFromBottom (6);
-        const int colW = c.getWidth() / 3;
+        const int colW = c.getWidth() / 4;
         auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
             auto col = c.removeFromLeft (colW).reduced (6, 0);
             auto head = col.removeFromTop (20);
@@ -345,11 +353,8 @@ public:
         };
         place (amountLabel, amount, nullptr);
         place (rampLabel, ramp, nullptr);
-        {
-            auto col = c.removeFromLeft (colW).reduced (6, 0);
-            tuneLabel.setBounds (col.removeFromTop (20));
-            tuneBox.setBounds (col.removeFromTop (28));
-        }
+        place (transposeLabel, transpose, nullptr);
+        place (fineLabel, fine, nullptr);
         r.removeFromBottom (8);
 
         list.setBounds (r.removeFromLeft (230));
@@ -452,16 +457,18 @@ private:
     juce::ProgressBar progressBar { progressValue };
     juce::Label progressLabel;
     std::unique_ptr<LoopSearchJob> loopJob;
-    juce::ComboBox formatBox, tuneBox;
+    juce::ComboBox formatBox;
     juce::Slider amount, ramp;
+    StepSlider transpose, fine;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 4;
-    juce::Label amountLabel, rampLabel, info, pitchLabel, tuneLabel;
+    juce::Label amountLabel, rampLabel, info, pitchLabel, transposeLabel, fineLabel;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
     juce::Rectangle<int> titleArea, controlsArea;
-    bool pendingReprocess = false;
+    bool pendingReprocess = false, pendingRetune = false;
+    juce::uint32 lastRetuneChange = 0;
     int outputCheckTicks = 0;
     juce::String lastFailedOutput;
     juce::uint32 lastChange = 0;
@@ -519,6 +526,11 @@ private:
             progressLabel.setText (u8 ("Finding the best loop (trying every pair)…  ") + juce::String ((int) std::round (progressValue * 100.0)) + " %",
                                    juce::dontSendNotification);
             if (loopJob->finished.load()) loopSearchFinished();
+        }
+        if (pendingRetune && juce::Time::getMillisecondCounter() - lastRetuneChange > 150)
+        {
+            pendingRetune = false;
+            retuneCurrent ((int) transpose.getValue(), fine.getValue());
         }
         if (pendingReprocess && juce::Time::getMillisecondCounter() - lastChange > 40)
         {
@@ -829,7 +841,9 @@ private:
         transport.stop();
         current = row;
         auto& it = *items[(size_t) row];
-        tuneBox.setSelectedId (it.tuneMode, juce::dontSendNotification);
+        transpose.setValue (it.tuneSt, juce::dontSendNotification);
+        fine.setValue (it.tuneCents, juce::dontSendNotification);
+        pendingRetune = false;
         processItem (it);
         source.setBuffers (it.original, it.processed);
         source.setFadeLength ((int) std::round (it.sampleRate * 0.010)); // fundidos de 10 ms (original/procesado, cambios)
@@ -939,17 +953,15 @@ private:
     }
 
     //== Tune ==================================================================
-    // Afina el archivo re-sampleándolo (como un sampler al tocar otra tecla): cambia el tono y el
-    // largo juntos. La referencia es el pitch medido del archivo cargado, entre Skip y End.
-    // El loop, End y Skip quedan en las mismas ondas (se mueven con el audio).
-    void retuneCurrent (int mode)
+    // Re-pitch a mano (Transpose + Fine): re-samplea el archivo, como un sampler al tocar otra tecla:
+    // cambia el tono y el largo juntos. El loop, End y Skip quedan en las mismas ondas.
+    void retuneCurrent (int st, double cents)
     {
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
         auto& it = *items[(size_t) current];
-        if (mode == it.tuneMode) return;
+        if (st == it.tuneSt && std::abs (cents - it.tuneCents) < 1e-9) return;
         if (loopJob != nullptr) cancelLoopSearch();
 
-        const auto st = readSettings();
         // posiciones actuales, como índices de onda (para llevarlas al audio afinado)
         const auto& B = it.analysis.bounds;
         const auto& HB = it.analysis.halfBounds;
@@ -957,33 +969,8 @@ private:
         const size_t li = hadLoop ? nearestBound (B, it.loopStart) : 0, lj = hadLoop ? nearestBound (B, it.loopEnd) : 0;
         const bool hadEnd = it.endSample > 0;
         const size_t ei = hadEnd ? nearestBound (HB, it.endSample) : 0;
-
-        // referencia: el pitch del loop si hay (es lo que va a sonar sostenido), si no entre Skip y End
-        const auto& LB = it.loadedAnalysis.bounds;
-        const auto ref = (hadLoop && lj < LB.size() && li < lj)
-            ? cyclenorm::measurePitch (it.loadedAnalysis, LB[li] > 8 ? LB[li] - 8 : 0, LB[lj] + 8)
-            : cyclenorm::measurePitch (it.loadedAnalysis, cyclenorm::skipEndSample (it.loadedAnalysis, st),
-                                       (size_t) it.loaded->getNumSamples());
-        double semis = 0.0;
-        if (mode >= 2 && ref.valid)
-        {
-            if (mode == 2) semis = std::round (ref.midi) - ref.midi;
-            else
-            {
-                const int pc = mode - 3; // 0 = C
-                double d = std::fmod ((double) pc - ref.midi, 12.0);
-                if (d < -6.0) d += 12.0;
-                if (d >= 6.0) d -= 12.0; // el camino más corto (C# -> C baja 1, no sube 11)
-                semis = d;
-            }
-        }
-        else if (mode >= 2)
-        {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Tune",
-                                                    "Could not measure the pitch of this file.");
-            tuneBox.setSelectedId (it.tuneMode, juce::dontSendNotification);
-            return;
-        }
+        const double semis = (double) st + cents / 100.0;
+        const double oldSpeed = std::pow (2.0, it.tuneSemis / 12.0), newSpeed = std::pow (2.0, semis / 12.0);
 
         if (std::abs (semis) < 1e-9)
         {
@@ -1000,7 +987,8 @@ private:
             it.original = buf;
             it.analysis = cyclenorm::analyse (out, it.sampleRate);
         }
-        it.tuneMode = mode;
+        it.tuneSt = st;
+        it.tuneCents = cents;
         it.tuneSemis = semis;
 
         const auto& B2 = it.analysis.bounds;
@@ -1010,7 +998,25 @@ private:
         it.loopCands.clear();
         it.loopCandIdx = -1;
         it.endSample = (hadEnd && ei < HB2.size()) ? HB2[ei] : 0;
-        selectItem (current); // vuelve a armar el visor, la reproducción y el procesado
+
+        // refrescar sin cortar: sigue sonando desde el mismo punto del sonido y mantiene el zoom
+        const double factor = oldSpeed / newSpeed; // cuánto se estiró el audio
+        const double pos = transport.getCurrentPosition() * factor;
+        processItem (it);
+        source.setBuffers (it.original, it.processed);
+        source.setEndSample ((juce::int64) it.endSample);
+        source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
+        transport.setPosition (pos);
+        wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, false);
+        wave.scaleView (factor);
+        wave.setEndSample (it.endSample);
+        wave.setLoopBounds (it.analysis.bounds);
+        wave.setPitchCurve (pitchCurveOf (it));
+        wave.setLoop (it.loopStart, it.loopEnd);
+        wave.setLoopXfade (xfadeSamples (it));
+        updateSkipView();
+        updateInfo();
+        updateButtons();
     }
 
     // Curva de pitch para el visor: una onda = un punto (centro de la onda, Hz), con los cruces exactos.

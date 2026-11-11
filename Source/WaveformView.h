@@ -38,6 +38,8 @@ public:
     void setProcessed (BufferPtr processed) { proc = std::move (processed); dirty = true; repaint(); }
     void clear() { setData (nullptr, nullptr, {}, 44100.0, true); }
     void refresh() { dirty = true; repaint(); }
+    // el audio se estiró (re-pitch): la vista se estira igual, así se sigue viendo la misma parte del sonido
+    void scaleView (double factor) { viewStart *= factor; viewLen *= factor; clampView(); dirty = true; repaint(); }
     void setMarkers (std::vector<size_t> cycleBounds) { bounds = std::move (cycleBounds); dirty = true; repaint(); }
     // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirty = true; repaint(); } }
