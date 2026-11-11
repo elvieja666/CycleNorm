@@ -1206,8 +1206,9 @@ private:
     {
         inLoop = it.hasLoop();
         if (inLoop) return cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8);
-        // sin loop: la parte estable (después del glide), entre Skip y End
-        return cyclenorm::measureSustainPitch (it.analysis, cyclenorm::skipEndSample (it.analysis, st), (size_t) it.lengthToWrite());
+        // sin loop: la parte estable (después del glide), en todo el sonido hasta End (el Skip es sólo para la normalización)
+        juce::ignoreUnused (st);
+        return cyclenorm::measureSustainPitch (it.analysis, 0, (size_t) it.lengthToWrite());
     }
     void updatePitch (const Item& it, double previewSemis = 0.0)
     {
