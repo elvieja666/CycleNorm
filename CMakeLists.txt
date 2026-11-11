@@ -29,13 +29,6 @@ target_sources(CycleNorm PRIVATE
     Source/LoopFinder.h
     Source/Resample.h)
 
-# macOS: dirección del pellizco en el trackpad (horizontal / vertical)
-if(APPLE)
-    enable_language(OBJCXX)
-    target_sources(CycleNorm PRIVATE Source/PinchAxis.mm)
-    target_compile_definitions(CycleNorm PRIVATE CYCLENORM_PINCH_AXIS=1)
-endif()
-
 target_compile_definitions(CycleNorm PRIVATE
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0

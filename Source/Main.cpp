@@ -6,11 +6,6 @@
 #include "ABSource.h"
 #include "WaveformView.h"
 
-#if CYCLENORM_PINCH_AXIS
-int  cyclenormPinchAxis();          // PinchAxis.mm (macOS)
-void cyclenormInstallPinchMonitor();
-#endif
-
 namespace
 {
 const juce::Colour kAccent (0xff4fb3ff);
@@ -246,10 +241,6 @@ public:
         wave.isPlaying = [this] { return transport.isPlaying(); };
         wave.isPlayingProcessed = [this] { return abButton.getToggleState(); };
         wave.onSeek = [this] (double s) { transport.setPosition (s); wave.repaint(); };
-       #if CYCLENORM_PINCH_AXIS
-        cyclenormInstallPinchMonitor();
-        wave.pinchAxis = [] { return cyclenormPinchAxis(); };
-       #endif
         wave.maxSkip = kMaxSkip;
         wave.onEndDragged = [this] (size_t e)
         {

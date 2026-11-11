@@ -167,19 +167,10 @@ public:
         }
         clampView(); dirty = true; repaint();
     }
-    // pellizco en el trackpad: abriendo los dedos en horizontal = zoom horizontal (tiempo),
-    // en vertical = zoom vertical (pitch). La dirección la da pinchAxis (dedos leídos en macOS).
-    std::function<int()> pinchAxis; // 1 = horizontal, 2 = vertical, 0 = no se sabe
+    // pellizco en el trackpad: zoom horizontal (en el tiempo)
     void mouseMagnify (const juce::MouseEvent& e, float scale) override
     {
         if (totalLen() == 0) return;
-        const int axis = pinchAxis ? pinchAxis() : 0;
-        const bool overPitch = pitchPts.size() >= 2 && pitchAreaH > 1.0f;
-        if (overPitch && (axis == 2 || (axis == 0 && e.mods.isAltDown())))
-        {
-            zoomPitch (e.position.x, (double) juce::jmax (0.01f, scale));
-            return;
-        }
         zoomAround (e.position.x, 1.0 / juce::jmax (0.01f, scale));
         clampView(); dirty = true; repaint();
     }
