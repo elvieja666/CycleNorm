@@ -30,7 +30,7 @@ public:
         proc = std::move (processed);
         bounds = std::move (cycleBounds);
         sr = sampleRate;
-        if (resetView || viewLen <= 0) { viewStart = 0; viewLen = (double) totalLen(); }
+        if (resetView || viewLen <= 0) { viewStart = 0; viewLen = (double) totalLen(); pitchZoom = 1.0; }
         clampView();
         dirty = true;
         repaint();
@@ -124,11 +124,30 @@ public:
     }
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
-        viewStart = 0; viewLen = (double) totalLen(); dirty = true; repaint();
+        viewStart = 0; viewLen = (double) totalLen();
+        pitchZoom = 1.0; // también el zoom vertical del pitch
+        dirty = true; repaint();
     }
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
         if (totalLen() == 0) return;
+        // ⌥ Option + rueda sobre el carril de arriba: zoom vertical del pitch, centrado en el mouse
+        if (e.mods.isAltDown() && e.position.y < getHeight() / 2.0f && pitchPts.size() >= 2 && pitchAreaH > 1.0f)
+        {
+            const float d = std::abs (w.deltaY) > std::abs (w.deltaX) ? w.deltaY : w.deltaX;
+            // ancla: el valor de la línea amarilla en la posición horizontal del mouse
+            // (con el mouse a 1 px de error ya serían ~5 cents; así la línea nunca se va de la pantalla)
+            const double mAtMouse = pitchMidiAt (xToSample (e.position.x));
+            const double frac = juce::jlimit (0.15, 0.85, (mAtMouse - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo));
+            // hasta ~0,5 cents de alto en todo el carril
+            pitchZoom = juce::jlimit (1.0, juce::jmax (1.0, autoSpan / 0.005), pitchZoom * std::pow (2.0, d * 3.0));
+            const double span = autoSpan / pitchZoom;
+            pitchCenter = (mAtMouse - frac * span) + span * 0.5; // la nota bajo el mouse queda en su lugar
+            if (pitchZoom <= 1.0) pitchCenter = 0.0;
+            pitchLo = pitchCenter - span * 0.5; pitchHi = pitchCenter + span * 0.5; // varias ruedas antes de repintar
+            dirty = true; repaint();
+            return;
+        }
         if (std::abs (w.deltaX) > std::abs (w.deltaY))
         {
             viewStart -= w.deltaX * viewLen * 0.5;
@@ -156,9 +175,25 @@ private:
     int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop, 5 = manija del crossfade
     size_t xfadeLen = 0;
     std::vector<std::pair<double, double>> pitchPts;
+    // zoom vertical del pitch (1 = rango automático) y lo último dibujado (para el zoom con el mouse)
+    double pitchZoom = 1.0, pitchCenter = 0.0, autoSpan = 1.0, pitchLo = 0.0, pitchHi = 1.0;
+    float pitchAreaBottom = 0.0f, pitchAreaH = 0.0f;
 
     // Curva de pitch sobre un carril: eje vertical en notas (escala logarítmica), con una línea por
     // semitono y su nombre. Si casi no cambia, muestra ±50 cents para que se vea el drift.
+    // pitch (MIDI fraccionario) de la curva en un sample, interpolado
+    double pitchMidiAt (double sample) const
+    {
+        auto midiOf = [] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0); };
+        if (sample <= pitchPts.front().first) return midiOf (pitchPts.front().second);
+        if (sample >= pitchPts.back().first) return midiOf (pitchPts.back().second);
+        auto it = std::lower_bound (pitchPts.begin(), pitchPts.end(), sample,
+                                    [] (const std::pair<double, double>& p, double v) { return p.first < v; });
+        const auto& b = *it; const auto& a = *(it - 1);
+        const double t = (sample - a.first) / juce::jmax (1e-9, b.first - a.first);
+        return midiOf (a.second) + t * (midiOf (b.second) - midiOf (a.second));
+    }
+
     void drawPitchCurve (juce::Graphics& g, juce::Rectangle<int> r)
     {
         if (pitchPts.size() < 2 || viewLen <= 0) return;
@@ -169,29 +204,66 @@ private:
         if (hi - lo < 1.0) { lo = mid - 0.5; hi = mid + 0.5; }
         const double pad = (hi - lo) * 0.12;
         lo -= pad; hi += pad;
+        autoSpan = hi - lo;
+        if (pitchZoom > 1.0) // zoom vertical: rango más chico, centrado donde se hizo zoom
+        {
+            const double span = autoSpan / pitchZoom;
+            lo = pitchCenter - span * 0.5; hi = pitchCenter + span * 0.5;
+        }
         const auto area = r.toFloat().reduced (0.0f, 22.0f);
+        pitchLo = lo; pitchHi = hi; pitchAreaBottom = area.getBottom(); pitchAreaH = area.getHeight();
         auto yOf = [&] (double m) { return area.getBottom() - (float) ((m - lo) / (hi - lo)) * area.getHeight(); };
 
         juce::Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (r);
         // líneas de semitono, con nombre (si no son demasiadas)
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-        const int s1 = (int) std::floor (hi);
-        const int stepS = (s1 - (int) std::ceil (lo)) > 14 ? 2 : 1;
-        int s0 = (int) std::ceil (lo);
-        while (((s0 % stepS) + stepS) % stepS != 0) ++s0; // de a 2: C, D, E... (siempre aparece C)
         g.setFont (juce::FontOptions (10.5f));
-        for (int m = s0; m <= s1; m += stepS)
-        {
-            const float y = yOf ((double) m);
-            g.setColour (juce::Colour (0x28ffd34d));
-            g.drawHorizontalLine ((int) y, (float) r.getX(), (float) r.getRight());
-            // nombre centrado sobre su línea, con fondo para que se lea
-            const auto lb = juce::Rectangle<float> ((float) r.getRight() - 34.0f, y - 6.5f, 30.0f, 13.0f);
+        auto noteStr = [&] (int m) { return juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1); };
+        auto label = [&] (float y, const juce::String& txt, bool strong) {
+            const float w = strong ? 30.0f : 58.0f;
+            const auto lb = juce::Rectangle<float> ((float) r.getRight() - w - 4.0f, y - 6.5f, w, 13.0f);
             g.setColour (juce::Colour (0xcc15171b));
             g.fillRoundedRectangle (lb, 2.0f);
-            g.setColour (juce::Colour (0xc8ffd34d));
-            g.drawText (juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1), lb, juce::Justification::centred);
+            g.setColour (juce::Colour (strong ? 0xe8ffd34d : 0xa0ffd34d));
+            g.drawText (txt, lb, juce::Justification::centred);
+        };
+        const double spanSemis = hi - lo;
+        if (spanSemis >= 1.5)
+        {
+            // semitonos (de a 2 si el rango es muy grande; siempre aparece C)
+            const int s1 = (int) std::floor (hi);
+            const int stepS = (s1 - (int) std::ceil (lo)) > 14 ? 2 : 1;
+            int s0 = (int) std::ceil (lo);
+            while (((s0 % stepS) + stepS) % stepS != 0) ++s0;
+            for (int m = s0; m <= s1; m += stepS)
+            {
+                const float y = yOf ((double) m);
+                g.setColour (juce::Colour (0x28ffd34d));
+                g.drawHorizontalLine ((int) y, (float) r.getX(), (float) r.getRight());
+                label (y, noteStr (m), true);
+            }
+        }
+        else
+        {
+            // zoom fino: líneas de cents (paso para que entren unas 4 a 10), la nota más fuerte
+            const double spanC = spanSemis * 100.0;
+            double stepC = 0.1;
+            for (double cand : { 50.0, 25.0, 10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1 })
+                if (spanC / cand >= 4.0) { stepC = cand; break; }
+            const double c0 = std::ceil (lo * 100.0 / stepC) * stepC, c1 = hi * 100.0;
+            for (double cc = c0; cc <= c1 + 1e-9; cc += stepC)
+            {
+                const double m = cc / 100.0;
+                const int note = (int) std::lround (m);
+                const double dev = (m - note) * 100.0;
+                const bool isNote = std::abs (dev) < 1e-6;
+                const float y = yOf (m);
+                g.setColour (juce::Colour (isNote ? 0x70ffd34d : 0x22ffd34d));
+                g.drawHorizontalLine ((int) y, (float) r.getX(), (float) r.getRight());
+                const int dec = stepC < 1.0 ? 1 : 0;
+                label (y, isNote ? noteStr (note) : noteStr (note) + " " + (dev > 0 ? "+" : "") + juce::String (dev, dec) + "c", isNote);
+            }
         }
         // la curva
         juce::Path path;
@@ -213,7 +285,9 @@ private:
             g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
         }
         g.setColour (juce::Colour (0xd0ffd34d));
-        g.drawText ("Pitch", juce::Rectangle<float> ((float) r.getRight() - 90.0f, (float) r.getY() + 4.0f, 46.0f, 13.0f), juce::Justification::centredRight);
+        g.drawText (pitchZoom > 1.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
+                                    : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
+                    juce::Rectangle<float> ((float) r.getRight() - 330.0f, (float) r.getY() + 4.0f, 286.0f, 13.0f), juce::Justification::centredRight);
     }
     std::vector<size_t> loopBounds;
     bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
