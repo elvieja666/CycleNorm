@@ -23,7 +23,9 @@ struct Settings
     double targetDb    = -1.0;   // nivel objetivo en dBFS (si autoTarget = false)
     bool   halfCycles  = true;   // true: cada semiciclo (positivo y negativo) por separado; false: la onda entera
     int    skipCycles  = 0;      // ondas del principio que no se tocan (el ataque)
-    int    skipHalves  = -1;     // si es 0 o más: semiciclos que no se tocan (manda sobre skipCycles)
+    int    skipHalves  = -1;     // si es 0 o más: pedazos que no se tocan, contando el pedacito antes del primer
+                                 // cruce como el primero (1 = solo ese pedacito, 2 = ese y el 1er semiciclo...).
+                                 // Manda sobre skipCycles. Es lo que maneja la línea de Skip.
     double thresholdDb = -200.0; // ondas con pico por debajo de esto mantienen la ganancia anterior (-200 = apagado)
     double maxBoostDb  = 60.0;   // límite de subida, para no llevar el silencio digital a 0 dB
     double ramp        = 0.0;    // 0 = rampa mínima en cada cambio de ganancia (1 ms como mucho, o el 6% del tramo)
@@ -508,17 +510,98 @@ inline Analysis analyse (const Channels& in, double sampleRate)
         for (size_t k = 0; k + 1 < b.size(); ++k) a.peaks[k] = peakOf (b[k], b[k + 1]);
     }
 
+    // El pedazo antes del primer corte (el arranque del ataque) también se corta en semiciclos:
+    // desde el primer corte hacia atrás se buscan los cruces reales (bajando, subiendo, ...), si el
+    // semiciclo que forman es de verdad (largo y nivel parecidos al que sigue), no un rulito chico.
+    // Solo si el sonido arranca dentro del archivo (empieza bajito: los primeros 2 ms por debajo del
+    // 30 % del semiciclo que sigue). Si el archivo ya empieza a todo volumen, en la mitad de una onda,
+    // ese pedazo no es un ataque y sus cruces pueden ser de armónicos.
+    bool soundStartsHere = false;
+    if (hb.size() >= 2)
+    {
+        double ref = 0, start = 0;
+        for (size_t i = hb[0]; i < hb[1]; ++i) ref = std::max (ref, std::abs (raw[i]));
+        for (size_t i = 0; i < std::min (hb[0], (size_t) (0.002 * sampleRate)); ++i) start = std::max (start, std::abs (raw[i]));
+        soundStartsHere = start < 0.3 * ref;
+    }
+    if (hb.size() >= 2 && soundStartsHere)
+    {
+        std::vector<size_t> pre; // cortes nuevos, de atrás para adelante
+        size_t right = hb[0];
+        double refLen = (double) (hb[1] - hb[0]);
+        double refPeak = 0;
+        for (size_t i = hb[0]; i < hb[1]; ++i) refPeak = std::max (refPeak, std::abs (raw[i]));
+        // hb[0] es un cruce ascendente: el anterior tiene que ser descendente, y así alternando
+        bool wantRising = false;
+        while (right > 2)
+        {
+            const size_t minLen = (size_t) std::max (2.0, 0.4 * refLen);
+            if (right < minLen) break;
+            // el cruce del tipo buscado más cercano a donde debería estar (un semiciclo un poco más
+            // corto que el siguiente: hacia el principio del ataque la nota es más aguda), entre el
+            // 40 % y el 160 % de ese largo. Así no agarra cruces de armónicos.
+            size_t found = 0;
+            const double expect = (double) right - 0.85 * refLen;
+            double bestD = 1e300;
+            const size_t lo = (size_t) std::max (1.0, (double) right - 1.6 * refLen);
+            for (size_t i = right - minLen; i >= lo; --i)
+            {
+                const bool up = raw[i - 1] < 0.0 && raw[i] >= 0.0, down = raw[i - 1] >= 0.0 && raw[i] < 0.0;
+                if ((wantRising && up) || (! wantRising && down))
+                {
+                    const size_t z = std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i;
+                    const double d = std::abs ((double) z - expect);
+                    if (d < bestD) { bestD = d; found = z; }
+                }
+                if (i == lo) break;
+            }
+            if (found < (size_t) std::max (2.0, 0.0005 * sampleRate)) break; // nada, o pegado al principio del archivo
+            double pk = 0;
+            for (size_t i = found; i < right; ++i) pk = std::max (pk, std::abs (raw[i]));
+            if (pk < 0.15 * refPeak) break; // un rulito chico, no un semiciclo
+            pre.push_back (found);
+            refLen = (double) (right - found);
+            refPeak = pk;
+            right = found;
+            wantRising = ! wantRising;
+        }
+        if (! pre.empty())
+        {
+            std::reverse (pre.begin(), pre.end());
+            hb.insert (hb.begin(), pre.begin(), pre.end());
+            // los ascendentes nuevos también son inicios de onda entera. Por la alternancia (contando
+            // hacia atrás desde el primer corte, que es ascendente): el 1º es descendente, el 2º
+            // ascendente, ... -> después de dar vuelta la lista, los de índice con (pre.size()-k) par
+            std::vector<size_t> rise;
+            for (size_t k = 0; k < pre.size(); ++k)
+                if (((pre.size() - k) % 2) == 0) rise.push_back (pre[k]);
+            if (! rise.empty())
+            {
+                b.insert (b.begin(), rise.begin(), rise.end());
+                a.peaks.resize (b.size() - 1);
+                for (size_t k = 0; k + 1 < b.size(); ++k) a.peaks[k] = peakOf (b[k], b[k + 1]);
+            }
+            a.preRollPeak = peakOf (0, hb.front());
+        }
+    }
+
     a.halfPeaks.resize (hb.size() - 1);
     for (size_t k = 0; k + 1 < hb.size(); ++k) a.halfPeaks[k] = peakOf (hb[k], hb[k + 1]);
     return a;
 }
 
 // Los tramos que se normalizan según el modo: ondas enteras o semiciclos.
-// Cuántos tramos (semiciclos u ondas) del principio no se tocan.
+// Cuántos tramos (semiciclos u ondas) del principio no se tocan, sin contar el pedacito antes del
+// primer cruce.
 inline size_t skipSegments (const Settings& s)
 {
-    if (s.skipHalves >= 0) return (size_t) s.skipHalves;
+    if (s.skipHalves >= 0) return (size_t) std::max (0, s.skipHalves - 1);
     return (size_t) std::max (0, s.skipCycles) * (s.halfCycles ? 2u : 1u);
+}
+// ¿Se saltea el pedacito antes del primer cruce?
+inline bool skipsPreRoll (const Settings& s)
+{
+    return s.skipHalves >= 0 ? s.skipHalves > 0 : s.skipCycles > 0;
 }
 
 inline const std::vector<size_t>& segmentBounds (const Analysis& a, const Settings& s) { return s.halfCycles ? a.halfBounds : a.bounds; }
@@ -589,7 +672,7 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
         if (peak <= 1e-9f || pDb < s.thresholdDb) return fallback;
         return std::min (fallback, std::clamp (s.amount * (target - pDb), -s.maxBoostDb, s.maxBoostDb));
     };
-    const double gPre  = skipSegments (s) > 0 ? 0.0 : ownGain (a.preRollPeak, g.front());
+    const double gPre  = skipsPreRoll (s) ? 0.0 : ownGain (a.preRollPeak, g.front());
     const double gTail = ownGain (a.tailPeak, s.maxBoostDb);
     const double gPost = (toDb (a.tailPeak) < s.thresholdDb || a.tailPeak <= 1e-9f) ? g.back() : gTail;
 
@@ -632,8 +715,8 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
 // Dónde termina lo salteado con Skip (de ahí en adelante se normaliza).
 inline size_t skipEndSample (const Analysis& a, const Settings& s)
 {
+    if (! skipsPreRoll (s)) return 0;
     const size_t idx = skipSegments (s);
-    if (idx == 0) return 0;
     const auto& B = segmentBounds (a, s);
     return idx < B.size() ? B[idx] : a.numSamples;
 }

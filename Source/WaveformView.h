@@ -184,12 +184,13 @@ private:
     bool hasSkipLine() const { return totalLen() > 0 && ! bounds.empty() && onSkipDragged != nullptr; }
     void dragSkipTo (float x)
     {
-        // salta de semiciclo en semiciclo: 0 = el principio del archivo, N = donde empieza el semiciclo N
+        // salta de corte en corte: 0 = el principio del archivo, N = el corte número N (bounds[N-1]).
+        // Así puede pararse en todos los cortes, incluido el primero.
         const double target = xToSample (x);
         int best = 0; double bestD = std::abs (target);
-        for (int k = 1; k <= maxSkip && (size_t) k < bounds.size(); ++k)
+        for (int k = 1; k <= maxSkip && (size_t) (k - 1) < bounds.size(); ++k)
         {
-            const double d = std::abs ((double) bounds[(size_t) k] - target);
+            const double d = std::abs ((double) bounds[(size_t) (k - 1)] - target);
             if (d < bestD) { bestD = d; best = k; }
         }
         if (onSkipDragged) onSkipDragged (best);

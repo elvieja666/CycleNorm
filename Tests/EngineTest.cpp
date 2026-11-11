@@ -180,11 +180,13 @@ int main()
         Settings w = s; w.halfCycles = false;
         // en modo onda entera el negativo NO llega al objetivo (es lo que se quería arreglar)
         double target = 0; auto out = render (in, a, w, &target);
-        float negPeak = 0; const size_t k = 60;
-        for (size_t i = a.halfBounds[2 * k + 1]; i < a.halfBounds[2 * k + 2]; ++i) negPeak = std::max (negPeak, std::abs (out[0][i]));
+        // el semiciclo negativo de la onda 60: el que sigue al corte donde empieza esa onda
+        const size_t h60 = (size_t) std::distance (a.halfBounds.begin(), std::find (a.halfBounds.begin(), a.halfBounds.end(), a.bounds[60]));
+        float negPeak = 0;
+        for (size_t i = a.halfBounds[h60 + 1]; i < a.halfBounds[h60 + 2]; ++i) negPeak = std::max (negPeak, std::abs (out[0][i]));
         double target2 = 0; auto out2 = render (in, a, s, &target2);
         float negPeak2 = 0;
-        for (size_t i = a.halfBounds[2 * k + 1]; i < a.halfBounds[2 * k + 2]; ++i) negPeak2 = std::max (negPeak2, std::max (std::abs (out2[0][i]), std::abs (out2[1][i])));
+        for (size_t i = a.halfBounds[h60 + 1]; i < a.halfBounds[h60 + 2]; ++i) negPeak2 = std::max (negPeak2, std::max (std::abs (out2[0][i]), std::abs (out2[1][i])));
         const bool ok = detail::toDb (negPeak) < target - 2.0 && std::abs (detail::toDb (negPeak2) - target2) < 0.05;
         std::printf ("negativo onda 60: modo onda %.2f dB / modo semiciclo %.2f dB (objetivo %.2f)  %s\n",
                      detail::toDb (negPeak), detail::toDb (negPeak2), target2, ok ? "OK" : "FALLA");
@@ -212,16 +214,47 @@ int main()
         std::printf ("amount 50%%: ganancia onda 50 = %.2f dB (100%% = %.2f dB) %s\n", g[50], gf[50], ok ? "OK" : "FALLA");
         fails += !ok;
     }
-    // Skip en semiciclos: con 3 salteados, se normaliza desde el 4º semiciclo (que arranca en un cruce descendente)
+    // Skip (la línea): N = cuántos pedazos se saltean, contando el pedacito antes del primer cruce.
+    // 1 = solo ese pedacito (termina en el primer corte), 4 = ese y 3 semiciclos.
     {
         auto in = make808 (44100, 1.0, 140, 45, 0.08, 0.35, 2.0, 0.0, -100, false);
         auto a = analyse (in, 44100);
-        Settings h; h.skipHalves = 3; h.autoTarget = false; h.targetDb = 0;
+        Settings h; h.skipHalves = 4; h.autoTarget = false; h.targetDb = 0;
         auto g = cycleGainsDb (a, h);
+        Settings one = h; one.skipHalves = 1;
+        auto g1 = cycleGainsDb (a, one);
+        Settings zero = h; zero.skipHalves = 0;
         const bool ok = skipEndSample (a, h) == a.halfBounds[3] && g[0] == 0 && g[1] == 0 && g[2] == 0 && g[3] != 0
-                        && skipEndSample (a, [] { Settings z; z.skipHalves = 0; return z; }()) == 0;
-        std::printf ("skip en semiciclos (3): termina en el semiciclo 3, ganancias %.1f %.1f %.1f | %.1f dB  %s\n", g[0], g[1], g[2], g[3], ok ? "OK" : "FALLA");
+                        && skipEndSample (a, one) == a.halfBounds[0] && g1[0] != 0
+                        && skipEndSample (a, zero) == 0;
+        std::printf ("skip: 4 -> termina en el corte 4 (%.1f %.1f %.1f | %.1f dB), 1 -> en el primer corte, 0 -> al principio  %s\n",
+                     g[0], g[1], g[2], g[3], ok ? "OK" : "FALLA");
         fails += ! ok;
+    }
+    // Ataque que arranca con un rulito chico para arriba y después el glide: el primer semiciclo
+    // grande tiene que tener su corte (la línea de Skip tiene que poder pararse ahí)
+    {
+        const double fs = 44100;
+        const size_t n = (size_t) (fs * 1.2);
+        Channels in (1, std::vector<float> (n, 0.0f));
+        const size_t pre = (size_t) (0.003 * fs); // 3 ms de rulito
+        for (size_t i = 0; i < pre; ++i) in[0][i] = (float) (0.04 * std::sin (M_PI * (double) i / (double) pre));
+        double ph = 0;
+        for (size_t i = pre; i < n; ++i)
+        {
+            const double t = (double) (i - pre) / fs, f = t < 0.06 ? 85.0 - 50.0 * (t / 0.06) : 35.0;
+            ph += 2 * M_PI * f / fs;
+            in[0][i] = (float) (std::exp (-t / 0.5) * std::tanh (2.5 * std::sin (ph)) / std::tanh (2.5));
+        }
+        auto a = analyse (in, fs);
+        // el primer cruce real (donde termina el primer semiciclo grande, positivo) tiene que ser un corte:
+        // así la línea de Skip se puede parar después del primer semiciclo y no saltea varios juntos
+        size_t firstCross = 0;
+        for (size_t i = pre + 1; i < n && firstCross == 0; ++i) if ((in[0][i - 1] < 0) != (in[0][i] < 0)) firstCross = i;
+        const bool found = ! a.halfBounds.empty() && std::abs ((double) a.halfBounds.front() - (double) firstCross) < 0.001 * fs;
+        std::printf ("ataque con rulito para arriba: primer corte a %.1f ms (primer cruce real a %.1f ms)  %s\n",
+                     a.halfBounds.empty() ? -1.0 : a.halfBounds.front() * 1000.0 / fs, firstCross * 1000.0 / fs, found ? "OK" : "FALLA");
+        fails += ! found;
     }
     // Loop: en un 808 normalizado con armónicos y un poco de ruido, el buscador tiene que encontrar un
     // loop de ondas enteras, que empalme sin salto (en fase) y con buena calidad. Con crossfade, el
