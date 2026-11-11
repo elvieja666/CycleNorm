@@ -189,7 +189,7 @@ public:
             viewStart -= w.deltaX * viewLen * 0.5;
             if (zoomSpan > 0.0 && std::abs (w.deltaY) > 0.0f)
             {
-                pitchCenter = juce::jlimit (frozenLo, frozenHi, pitchCenter + w.deltaY * zoomSpan * 0.8);
+                pitchCenter = clampPitchCenter (pitchCenter + w.deltaY * zoomSpan * 0.8, zoomSpan);
                 pitchLo = pitchCenter - zoomSpan * 0.5; pitchHi = pitchCenter + zoomSpan * 0.5;
             }
         }
@@ -522,16 +522,26 @@ private:
 
     // zoom vertical del pitch: factor > 1 acerca. Ancla: la línea amarilla en la posición horizontal x
     // (con el mouse a 1 px de error ya serían ~5 cents; así la línea nunca se va de la pantalla)
+    double clampPitchCenter (double c, double span) const
+    {
+        if (! frozenValid) return c;
+        const double lo = frozenLo + span * 0.5, hi = frozenHi - span * 0.5;
+        return lo <= hi ? juce::jlimit (lo, hi, c) : 0.5 * (frozenLo + frozenHi);
+    }
     void zoomPitch (float x, double factor)
     {
         if (pitchPts.size() < 2 || pitchAreaH <= 1.0f) return;
-        const double mAtMouse = pitchMidiAt (xToSample (x));
-        const double frac = juce::jlimit (0.15, 0.85, (mAtMouse - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo));
         const double cur = zoomSpan > 0.0 ? zoomSpan : autoSpan;
+        if (zoomSpan <= 0.0 && factor <= 1.0) return; // ya está todo a la vista: alejar no hace nada
+        const double mAtMouse = pitchMidiAt (xToSample (x));
+        const double frac = juce::jlimit (0.0, 1.0, (mAtMouse - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo));
         const double span = juce::jlimit (0.005, autoSpan, cur / factor); // hasta ~0,5 cents de alto
         zoomSpan = span >= autoSpan * 0.999 ? 0.0 : span; // el alto se guarda en semitonos (no cambia al re-pitchear)
-        pitchCenter = (mAtMouse - frac * span) + span * 0.5; // la línea queda en su lugar
-        pitchLo = pitchCenter - span * 0.5; pitchHi = pitchCenter + span * 0.5; // varios eventos antes de repintar
+        // la línea queda donde estaba, pero la vista nunca sale del rango completo: así, al alejar del todo,
+        // empalma justo con la vista sin zoom (sin saltos ni vibración)
+        pitchCenter = clampPitchCenter ((mAtMouse - frac * span) + span * 0.5, span);
+        if (zoomSpan <= 0.0) { pitchLo = frozenLo; pitchHi = frozenHi; }
+        else { pitchLo = pitchCenter - span * 0.5; pitchHi = pitchCenter + span * 0.5; } // varios eventos antes de repintar
         dirty = true; repaint();
     }
 
