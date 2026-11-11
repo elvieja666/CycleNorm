@@ -25,7 +25,9 @@ target_sources(CycleNorm PRIVATE
     Source/Main.cpp
     Source/CycleEngine.h
     Source/ABSource.h
-    Source/WaveformView.h)
+    Source/WaveformView.h
+    Source/LoopFinder.h
+    Source/Resample.h)
 
 target_compile_definitions(CycleNorm PRIVATE
     JUCE_WEB_BROWSER=0

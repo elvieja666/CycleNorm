@@ -1,6 +1,7 @@
 // Prueba del motor con 808 sintéticos. Compilar:
 //   g++ -O2 -std=c++17 -fsanitize=address,undefined -I../Source EngineTest.cpp -o engine_test && ./engine_test
 #include "LoopFinder.h"
+#include "Resample.h"
 #include <cstdio>
 #include <random>
 
@@ -338,6 +339,42 @@ int main()
             std::printf ("pitch %.3f Hz: medido %.4f Hz (%s), error %.3f cents  %s\n", f, p.hz, noteName (p.midi).c_str(), err, std::abs (err) < 0.5 ? "OK" : "FALLA");
             ok = ok && p.valid && std::abs (err) < 0.5;
         }
+        fails += ! ok;
+    }
+    // Tune: un 808 en C#1 llevado a C1 con el re-sampleo tiene que quedar exacto; y el re-sampleo
+    // de un seno no tiene que agregar casi nada (ruido/distorsión < -60 dB)
+    {
+        const double fs = 44100, f = 34.648; // C#1
+        const size_t n = (size_t) (fs * 2.0);
+        Channels in (1, std::vector<float> (n));
+        double ph = 0;
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double t = i / fs, fr = t < 0.06 ? f * 2.2 - f * 1.2 * (t / 0.06) : f;
+            ph += 2 * M_PI * fr / fs;
+            in[0][i] = (float) (std::exp (-t / 0.6) * (std::tanh (2.5 * std::sin (ph)) + 0.3 * std::sin (2 * ph + 0.4)));
+        }
+        auto a = analyse (in, fs);
+        auto p = measurePitch (a, (size_t) (0.2 * fs), (size_t) (1.9 * fs));
+        const double speed = std::pow (2.0, (24.0 - p.midi) / 12.0);
+        auto out = resample (in, speed);
+        auto a2 = analyse (out, fs);
+        auto p2 = measurePitch (a2, (size_t) (0.2 * fs / speed), (size_t) (1.9 * fs / speed));
+        const double err = 100.0 * (p2.midi - 24.0);
+        // seno 1 kHz subido 1 semitono
+        std::vector<std::vector<float>> sn (1, std::vector<float> (44100));
+        for (size_t i = 0; i < sn[0].size(); ++i) sn[0][i] = 0.5f * (float) std::sin (2 * M_PI * 1000 * i / fs);
+        auto so = resample (sn, std::pow (2.0, 1.0 / 12.0));
+        const double fr2 = 1000 * std::pow (2.0, 1.0 / 12.0);
+        const size_t s0 = 3000, s1 = so[0].size() - 3000;
+        double re = 0, im = 0;
+        for (size_t i = s0; i < s1; ++i) { re += so[0][i] * std::sin (2 * M_PI * fr2 * i / fs); im += so[0][i] * std::cos (2 * M_PI * fr2 * i / fs); }
+        re *= 2.0 / (double) (s1 - s0); im *= 2.0 / (double) (s1 - s0);
+        double res = 0, tot = 0;
+        for (size_t i = s0; i < s1; ++i) { const double fit = re * std::sin (2 * M_PI * fr2 * i / fs) + im * std::cos (2 * M_PI * fr2 * i / fs); res += (so[0][i] - fit) * (so[0][i] - fit); tot += so[0][i] * so[0][i]; }
+        const double resDb = 10 * std::log10 (res / tot);
+        const bool ok = std::abs (err) < 0.5 && resDb < -60.0;
+        std::printf ("tune: C#1 -> %s %+.3f cents; re-sampleo de un seno: residuo %.1f dB  %s\n", noteName (p2.midi).c_str(), err, resDb, ok ? "OK" : "FALLA");
         fails += ! ok;
     }
     // casos raros: silencio, archivo cortísimo, mono
