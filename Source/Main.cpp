@@ -748,6 +748,7 @@ private:
         auto& it = *items[(size_t) current];
         if (! juce::isPositiveAndBelow (idx, (int) it.loopCands.size())) return;
         const auto& c = it.loopCands[(size_t) idx];
+        it.xfadeCycles = 0; // cada opción (Next loop o una búsqueda nueva) arranca sin crossfade
         setLoopForCurrent (c.start, c.end);
         it.loopCandIdx = idx;
         updateInfo();
