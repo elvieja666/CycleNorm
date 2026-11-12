@@ -252,16 +252,32 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        // pastilla clara con borde azul (como Scope en UNISON)
+        // botón azul en relieve (paleta de UNISON): degradé de celeste (arriba) a azul (abajo),
+        // sombrita y un brillo fino arriba; se aclara con el mouse encima, gris si no hay 808
         auto r = getLocalBounds().toFloat().reduced (1.0f);
         const float radius = r.getHeight() * 0.5f;
-        g.setColour (isEnabled() ? (hover ? Theme::raisedTop : Theme::raisedTop.darker (0.015f)) : Theme::pill);
-        g.fillRoundedRectangle (r, radius);
-        g.setColour (isEnabled() ? Theme::accent.withAlpha (hover ? 0.8f : 0.45f) : Theme::track);
-        g.drawRoundedRectangle (r, radius, 1.0f);
-        g.setColour (isEnabled() ? Theme::accent : Theme::inkFaint);
-        g.setFont (Theme::font (13.5f, 400));
-        g.drawText ("Drag to DAW", getLocalBounds(), juce::Justification::centred);
+        juce::Colour text = juce::Colours::white;
+        if (! isEnabled())
+        {
+            g.setColour (Theme::pill); g.fillRoundedRectangle (r, radius);
+            text = Theme::inkFaint;
+        }
+        else
+        {
+            const juce::Colour blue = Theme::accent, blueLight = Theme::accentBright;
+            auto body = r.withTrimmedBottom (2.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.18f));
+            g.fillRoundedRectangle (body.translated (0.0f, 2.0f), radius);
+            g.setGradientFill (juce::ColourGradient (hover ? blueLight.brighter (0.05f) : blueLight, 0.0f, body.getY(),
+                                                     hover ? blue.brighter (0.08f) : blue, 0.0f, body.getBottom(), false));
+            g.fillRoundedRectangle (body, radius);
+            g.setColour (juce::Colours::white.withAlpha (0.28f));
+            g.drawLine (body.getX() + radius, body.getY() + 1.0f, body.getRight() - radius, body.getY() + 1.0f, 1.0f);
+            r = body;
+        }
+        g.setColour (text);
+        g.setFont (Theme::font (13.5f, 500));
+        g.drawText ("Drag to DAW", r.toNearestInt(), juce::Justification::centred);
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
