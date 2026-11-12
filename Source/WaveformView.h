@@ -54,7 +54,7 @@ public:
     // appliedSemis: re-pitch que ya tiene la curva (para que el rango vertical quede fijo y la línea se mueva)
     void setPitchCurve (std::vector<std::pair<double, double>> pts, double appliedSemis = 0.0)
     { pitchPts = std::move (pts); pitchApplied = appliedSemis; pitchPreviewSemis = 0.0; frozenValid = false; dirty = true; repaint(); }
-    // arrastrar la línea amarilla cambia el Pitch (en cents, como la barra)
+    // arrastrar la línea celeste cambia el Pitch (en cents, como la barra)
     std::function<double()> getPitchCents;
     std::function<void (double)> onPitchDragged;
     std::function<double()> getPitchReference; // pitch medido (el de arriba), en MIDI; el imán lo pega a la nota
@@ -95,7 +95,7 @@ public:
     void mouseDown (const juce::MouseEvent& e) override
     {
         const int line = whichLine (e.position);
-        // sobre la línea amarilla: arrastrando arriba/abajo se cambia el Pitch
+        // sobre la línea celeste: arrastrando arriba/abajo se cambia el Pitch
         pitchDragArmed = pitchDragging = false;
         // ⌥ Option + clic sobre la línea: vuelve al pitch original (0 cents)
         if (line == 0 && e.mods.isAltDown() && nearPitchCurve (e.position) && onPitchDragged)
@@ -288,13 +288,13 @@ private:
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
         g.setFont (juce::FontOptions (10.5f));
         auto noteStr = [&] (int m) { return juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1); };
-        // nombres: las notas en amarillo fuerte y negrita; los cents más apagados
+        // nombres: las notas en gris claro y negrita; los cents más apagados
         auto label = [&] (float y, const juce::String& txt, bool strong) {
             const float w = strong ? 30.0f : 58.0f;
             const auto lb = juce::Rectangle<float> ((float) r.getRight() - w - 4.0f, y - 6.5f, w, 13.0f);
             g.setColour (juce::Colour (0xdd0b0c0e));
             g.fillRoundedRectangle (lb, 2.0f);
-            g.setColour (juce::Colour (strong ? 0xffffd34d : 0x99ffd34d));
+            g.setColour (juce::Colour (strong ? 0xffd5d7da : 0xff8b9096));
             g.setFont (juce::FontOptions (strong ? 11.0f : 10.5f, strong ? juce::Font::bold : juce::Font::plain));
             g.drawText (txt, lb, juce::Justification::centred);
         };
@@ -302,11 +302,11 @@ private:
         // la de cents, punteada y tenue
         auto noteLine = [&] (float y, int midiNote, float x1) {
             const bool isC = ((midiNote % 12) + 12) % 12 == 0;
-            g.setColour (juce::Colour (isC ? 0x99ffd34d : 0x66ffd34d));
+            g.setColour (juce::Colour (isC ? 0x80ffffff : 0x4dffffff));
             g.fillRect (juce::Rectangle<float> ((float) r.getX(), std::round (y) - 0.5f, x1 - (float) r.getX(), isC ? 1.5f : 1.0f));
         };
         auto centsLine = [&] (float y, float x1) {
-            g.setColour (juce::Colour (0x4dffd34d));
+            g.setColour (juce::Colour (0x33ffffff));
             const float dashes[] = { 3.0f, 4.0f };
             g.drawDashedLine (juce::Line<float> ((float) r.getX(), std::round (y), x1, std::round (y)), dashes, 2, 1.0f);
         };
@@ -363,7 +363,7 @@ private:
                 if (! started) { path.startNewSubPath (x, y); started = true; }
                 else path.lineTo (x, y);
             }
-            g.setColour (juce::Colour (0xffffd34d));
+            g.setColour (juce::Colour (0xff6fd6ff));
             g.strokePath (path, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             for (auto& p : pitchPts)
             {
@@ -373,7 +373,7 @@ private:
                 g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
             }
         }
-        g.setColour (juce::Colour (0xd0ffd34d));
+        g.setColour (juce::Colour (0xff8b9096));
         const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
                                     : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
@@ -507,7 +507,7 @@ private:
     double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * getWidth() : 0; }
     double xToSample (double x) const { return viewStart + x / juce::jmax (1, getWidth()) * viewLen; }
 
-    // ¿el mouse está sobre la línea amarilla? (carril de arriba, a pocos píxeles de la curva)
+    // ¿el mouse está sobre la línea celeste? (carril de arriba, a pocos píxeles de la curva)
     bool nearPitchCurve (juce::Point<float> p) const
     {
         if (pitchPts.size() < 2 || pitchAreaH <= 1.0f || p.y >= getHeight() / 2.0f || p.x > pitchLineEnd) return false;
@@ -534,7 +534,7 @@ private:
         onPitchDragged (cents);
     }
 
-    // zoom vertical del pitch: factor > 1 acerca. Ancla: la línea amarilla en la posición horizontal x
+    // zoom vertical del pitch: factor > 1 acerca. Ancla: la línea celeste en la posición horizontal x
     // (con el mouse a 1 px de error ya serían ~5 cents; así la línea nunca se va de la pantalla)
     double clampPitchCenter (double c, double span) const
     {

@@ -388,7 +388,7 @@ public:
         pitchShift.setVelocityModeParameters (0.15, 1, 0.0, true, juce::ModifierKeys::shiftModifier); // Shift + arrastrar = fino
         pitchShift.onValueChange = [this] {
             pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter();
-            // al toque: la curva amarilla y el pitch de arriba se corren mientras movés la barra;
+            // al toque: la curva celeste y el pitch de arriba se corren mientras movés la barra;
             // el re-sampleo de verdad se hace cuando la soltás / dejás de moverla
             if (juce::isPositiveAndBelow (current, (int) items.size()))
             {
@@ -766,7 +766,7 @@ private:
                                    juce::dontSendNotification);
             if (loopJob->finished.load()) loopSearchFinished();
         }
-        // arrastrando la línea amarilla: sólo vista previa; el re-sampleo, al soltar
+        // arrastrando la línea celeste: sólo vista previa; el re-sampleo, al soltar
         if (pendingRetune && ! wave.isDraggingPitch() && juce::Time::getMillisecondCounter() - lastRetuneChange > 150)
         {
             pendingRetune = false;
