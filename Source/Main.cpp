@@ -138,35 +138,16 @@ public:
             const bool L = seg == "left", R = seg == "right";
             juce::Path p;
             p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
-            // la pieza entera mantiene su sombra (así no se "rompe" al apretar una parte); la parte
-            // apretada, o prendida (sonando / loop de escucha), queda hundida: más oscura arriba, sin brillo
-            juce::DropShadow (juce::Colours::black.withAlpha (0.2f), 5, { 0, 2 }).drawForPath (g, p);
-            const bool sunk = down || b.getToggleState() || (bool) b.getProperties()["lit"];
-            if (sunk)
-            {
-                g.setGradientFill (juce::ColourGradient (Theme::raisedBot.darker (down ? 0.10f : 0.07f), 0.0f, shape.getY(),
-                                                         Theme::raisedBot.darker (0.01f), 0.0f, shape.getBottom(), false));
-                g.fillPath (p);
-                juce::Graphics::ScopedSaveState ss (g); // sombrita interna arriba (hundido)
-                g.reduceClipRegion (p);
-                g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.10f), 0.0f, shape.getY(),
-                                                         juce::Colours::transparentBlack, 0.0f, shape.getY() + 6.0f, false));
-                g.fillRect (shape);
-            }
-            else
-            {
-                const float lift = over && b.isEnabled() ? 0.02f : 0.0f;
-                g.setGradientFill (juce::ColourGradient (Theme::raisedTop.brighter (lift), 0.0f, shape.getY(),
-                                                         Theme::raisedBot.brighter (lift), 0.0f, shape.getBottom(), false));
-                g.fillPath (p);
-                g.setColour (juce::Colours::white.withAlpha (0.9f));
-                g.drawLine (shape.getX() + (L ? rad : 0.0f), shape.getY() + 0.75f, shape.getRight() - (R ? rad : 0.0f), shape.getY() + 0.75f, 1.0f);
-            }
-            if (! R) // la rayita que separa de la parte de al lado
-            {
-                g.setColour (juce::Colours::black.withAlpha (0.12f));
-                g.fillRect (shape.getRight() - 1.0f, shape.getY() + 6.0f, 1.0f, shape.getHeight() - 12.0f);
-            }
+            // plano (como el Loop de antes): fondo claro, borde oscuro; la parte prendida (sonando /
+            // loop de escucha) o apretada, con el borde azul (y el ícono azul)
+            const bool active = down || b.getToggleState() || (bool) b.getProperties()["lit"];
+            g.setColour (down ? Theme::raisedBot.darker (0.04f) : Theme::raisedTop.brighter (over && b.isEnabled() ? 0.02f : 0.0f));
+            g.fillPath (p);
+            const auto edge = shape.reduced (0.5f);
+            juce::Path outline;
+            outline.addRoundedRectangle (edge.getX(), edge.getY(), edge.getWidth(), edge.getHeight(), rad, rad, L, R, L, R);
+            g.setColour (active ? Theme::accent : Theme::inkStrong.withAlpha (0.8f));
+            g.strokePath (outline, juce::PathStrokeType (1.0f));
             return;
         }
         // los que se prenden (Processed, Normalize, Loop): iguales a los demás (en relieve);
@@ -185,11 +166,10 @@ public:
         if (b.getProperties().contains ("icon")) // ▶ ■ ⟲, en azul cuando está prendido (sonando / loop de escucha)
         {
             const auto icon = b.getProperties()["icon"].toString();
-            const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"];
+            const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"] || b.isDown();
             auto colour = lit ? Theme::accent : Theme::ink;
             if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
-            const bool sunk = b.isDown() || lit;
-            const auto box = segmentShape (b).translated (0.0f, sunk ? 1.0f : 0.0f); // hundido: el ícono baja 1 px
+            const auto box = segmentShape (b); // plano: el ícono no se mueve
             const float s = box.getHeight() * 0.36f;
             const auto c = box.getCentre();
             g.setColour (colour);
