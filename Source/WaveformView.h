@@ -789,10 +789,25 @@ private:
         else if (len - (viewStart + viewLen) < viewLen * 0.005) viewStart = juce::jmax (0.0, len - viewLen); // idem al final
     }
 
+    // sonando: sólo se redibuja la franjita del cursor (donde estaba y donde está), no todo el visor
     void timerCallback() override
     {
-        if (isPlaying && isPlaying()) repaint();
+        const bool playing = isPlaying && isPlaying();
+        int x = -1;
+        if (totalLen() > 0 && getPlayheadSeconds)
+        {
+            const double px = sampleToX (getPlayheadSeconds() * sr);
+            if (px >= 0 && px <= plotWidth()) x = (int) std::floor (px);
+        }
+        if (! playing && x == lastPlayheadX) return;
+        if (x != lastPlayheadX)
+        {
+            if (lastPlayheadX >= 0) repaint (lastPlayheadX - 2, 0, 5, getHeight());
+            if (x >= 0) repaint (x - 2, 0, 5, getHeight());
+            lastPlayheadX = x;
+        }
     }
+    int lastPlayheadX = -1;
 
     void drawLane (juce::Graphics& g, const juce::AudioBuffer<float>* buf, juce::Rectangle<int> r,
                    juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0, bool showSkipLine = false,
@@ -823,7 +838,8 @@ private:
             g.fillRect (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), skipX - (float) r.getX(), (float) r.getHeight()));
         }
 
-        auto drawWave = [&] (juce::Colour waveColour)
+        // greyBefore: hasta esta x (el Skip) las columnas van en gris; así se arma la onda una sola vez
+        auto drawWave = [&] (juce::Colour waveColour, float greyBefore = -1.0e9f)
         {
             const int w = juce::jmin (r.getWidth(), plotWidth()); // (sin la columna del teclado)
             const double spp = viewLen / juce::jmax (1, w);
@@ -852,9 +868,13 @@ private:
                     for (int c = 0; c < nCh; ++c) { const float x = buf->getSample (c, s); if (std::abs (x) > std::abs (v)) v = x; }
                     return v;
                 };
-                const int cols = w * 2;
+                // una columna por píxel real de la pantalla (Retina incluida), alineada a la grilla: la
+                // máxima resolución posible, sin columnas superpuestas (la mitad de trabajo que antes)
+                const float colW = 1.0f / juce::jmax (1.0f, cacheScale);
+                const int cols = juce::jmax (1, juce::roundToInt ((float) w / colW));
                 const double spc = viewLen / juce::jmax (1, cols);
-                juce::RectangleList<float> peaks;
+                juce::RectangleList<float> peaks, greyPeaks;
+                peaks.ensureStorageAllocated (cols);
                 for (int x = 0; x < cols; ++x)
                 {
                     const int s0 = juce::jmax (0, (int) (viewStart + x * spc)), s1 = juce::jmin (n, (int) (viewStart + (x + 1) * spc) + 1);
@@ -863,15 +883,20 @@ private:
                     for (int s = juce::jmax (0, s0 - 1); s < s1; ++s) { const float v = valueAt (s); lo = juce::jmin (lo, v); hi = juce::jmax (hi, v); }
                     if (hi < lo) continue;
                     const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
-                    peaks.addWithoutMerging ({ (float) r.getX() + (float) x * 0.5f, y0, 0.85f, juce::jmax (0.9f, y1 - y0) });
+                    const juce::Rectangle<float> cr { (float) r.getX() + (float) x * colW, y0, colW, juce::jmax (0.9f, y1 - y0) };
+                    (cr.getX() < greyBefore ? greyPeaks : peaks).addWithoutMerging (cr);
                 }
                 g.fillRectList (peaks);
+                if (! greyPeaks.isEmpty()) { g.setColour (juce::Colour (0xff8f98a6)); g.fillRectList (greyPeaks); }
             }
         };
 
         if (buf != nullptr && buf->getNumSamples() > 0 && viewLen > 0)
         {
-            if (greyUntil > 0 && skipX > (float) r.getX())
+            const bool columns = viewLen / juce::jmax (1, juce::jmin (r.getWidth(), plotWidth())) >= 1.0;
+            if (greyUntil > 0 && skipX > (float) r.getX() && columns)
+                drawWave (col, skipX); // las ondas salteadas, en el gris del original (en la misma pasada)
+            else if (greyUntil > 0 && skipX > (float) r.getX())
             {
                 {   // las ondas salteadas, en el gris del original
                     juce::Graphics::ScopedSaveState ss (g);
