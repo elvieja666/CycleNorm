@@ -68,16 +68,45 @@ public:
 
     // zona visible del botón en relieve (deja lugar para la sombra)
     static juce::Rectangle<float> raisedShape (juce::Rectangle<float> b) { return b.reduced (4.0f, 2.0f).withTrimmedBottom (4.0f); }
+    // transporte pegado (Play | Stop | Loop): cada parte llega hasta el borde de la de al lado;
+    // sólo las puntas de afuera dejan lugar para la sombra
+    static juce::Rectangle<float> segmentShape (const juce::Button& b)
+    {
+        const auto seg = b.getProperties()["segment"].toString();
+        auto r = b.getLocalBounds().toFloat().withTrimmedTop (2.0f).withTrimmedBottom (6.0f);
+        if (seg == "left")  r.removeFromLeft (4.0f);
+        if (seg == "right") r.removeFromRight (4.0f);
+        return r;
+    }
+    // la forma del botón grande PRE / POST FX de UNISON (esquinas suaves, no píldora): radio 18 sobre 74 de alto
+    static float bigCorner (float height) { return height * 18.0f / 74.0f; }
 
     juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (14.0f, 400); } // como Measure / Bypass / Scope
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
     {
         auto r = b.getLocalBounds().toFloat();
-        if (b.getProperties().contains ("icon")) // transporte (▶ ■ ⟲): siempre en relieve, como un botón
+        if (b.getProperties().contains ("segment")) // transporte pegado: una sola pieza en relieve, con rayitas entre partes
         {
-            const auto shape = raisedShape (r);
-            Theme::drawRaised (g, shape, shape.getHeight() * 0.5f, over && b.isEnabled(), down);
+            const auto seg = b.getProperties()["segment"].toString();
+            const auto shape = segmentShape (b);
+            const float rad = bigCorner (shape.getHeight()); // la proporción del PRE / POST FX (≈ 8 con 33 de alto)
+            const bool L = seg == "left", R = seg == "right";
+            juce::Path p;
+            p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
+            if (! down)
+                juce::DropShadow (juce::Colours::black.withAlpha (0.2f), 5, { 0, 2 }).drawForPath (g, p);
+            const float lift = over && ! down && b.isEnabled() ? 0.02f : 0.0f;
+            g.setGradientFill (juce::ColourGradient (Theme::raisedTop.brighter (lift), 0.0f, shape.getY(),
+                                                     down ? Theme::raisedBot.darker (0.04f) : Theme::raisedBot.brighter (lift), 0.0f, shape.getBottom(), false));
+            g.fillPath (p);
+            g.setColour (juce::Colours::white.withAlpha (down ? 0.3f : 0.9f));
+            g.drawLine (shape.getX() + (L ? rad : 0.0f), shape.getY() + 0.75f, shape.getRight() - (R ? rad : 0.0f), shape.getY() + 0.75f, 1.0f);
+            if (! R) // la rayita que separa de la parte de al lado
+            {
+                g.setColour (juce::Colours::black.withAlpha (0.12f));
+                g.fillRect (shape.getRight() - 1.0f, shape.getY() + 6.0f, 1.0f, shape.getHeight() - 12.0f);
+            }
             return;
         }
         if (b.getClickingTogglesState()) // Loop / Hearing: pastilla; prendido = clara con borde azul
@@ -102,7 +131,7 @@ public:
             const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"];
             auto colour = lit ? Theme::accent : Theme::ink;
             if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
-            const auto box = raisedShape (b.getLocalBounds().toFloat()).translated (0.0f, b.isDown() ? 1.0f : 0.0f);
+            const auto box = segmentShape (b).translated (0.0f, b.isDown() ? 1.0f : 0.0f);
             const float s = box.getHeight() * 0.36f;
             const auto c = box.getCentre();
             g.setColour (colour);
@@ -412,6 +441,9 @@ public:
         setupButton (repeatButton, "Loop");
         // transporte con íconos (como un DAW): el texto queda para el menú / accesibilidad
         playButton.getProperties().set ("icon", "play");
+        playButton.getProperties().set ("segment", "left");
+        stopButton.getProperties().set ("segment", "mid");
+        repeatButton.getProperties().set ("segment", "right");
         stopButton.getProperties().set ("icon", "stop");
         repeatButton.getProperties().set ("icon", "repeat");
         repeatButton.setClickingTogglesState (true);
@@ -679,7 +711,11 @@ public:
             return (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, b.getButtonText()) + 2.0f * 14.0f + extra) + 8;
         };
         auto place = [&] (juce::Button& b, float extra) { b.setBounds (row.removeFromLeft (widthFor (b, extra))); };
-        auto placeIcon = [&] (juce::Button& b) { b.setBounds (row.removeFromLeft (kButtonH + 18 + 8)); };
+        // transporte pegado: cada parte de 50 de ancho visible; las puntas de afuera llevan 4 más (la sombra)
+        auto placeIcon = [&] (juce::Button& b) {
+            const auto seg = b.getProperties()["segment"].toString();
+            b.setBounds (row.removeFromLeft (50 + (seg == "mid" ? 0 : 4)));
+        };
         auto divider = [&] { row.removeFromLeft (kGap); groupDividers.push_back (row.getX()); row.removeFromLeft (kGap + 1); };
         groupDividers.clear();
         // 1) transporte: ▶ ■ ⟲ (el loop de escucha)
