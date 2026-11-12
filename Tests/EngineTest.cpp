@@ -409,6 +409,42 @@ int main()
                      err, errOld, pS.zoneStart / fs, pG.gliding ? "gliding" : "estable", ok ? "OK" : "FALLA");
         fails += ! ok;
     }
+    // 808 con un "rulo" al pasar por cero (un armónico agudo fuerte: sube, baja y vuelve a subir)
+    // y piquitos chicos sueltos: antes el corte saltaba de un cruce a otro y el largo de las ondas
+    // salía en zigzag (±130 cents). Tienen que salir todas parejas (C1, a menos de 5 cents).
+    {
+        const double fs = 44100, f = 32.703;
+        const size_t n = (size_t) (fs * 2.0);
+        Channels in (1, std::vector<float> (n));
+        PortableNoise nz (7, 0.004);
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double t = i / fs, ph = 2 * M_PI * f * t;
+            // el 7º armónico, al revés, es más empinado que la fundamental en el cruce:
+            // cruza bajando justo en el medio y subiendo a cada lado (~100 muestras)
+            double v = std::sin (ph) + 0.2 * std::sin (7.0 * ph + M_PI);
+            v += nz();
+            in[0][i] = (float) (0.8 * std::exp (-t / 1.5) * v);
+        }
+        // piquitos chicos justo en el medio de algunos cruces (agregan un cruce subiendo ahí)
+        for (int k = 12; k < 60; k += 3)
+            for (int d = 1; d <= 3; ++d)
+            {
+                const size_t i = (size_t) std::llround (k * fs / f) + (size_t) d;
+                if (i < n) in[0][i] += 0.02f;
+            }
+        auto a = analyse (in, fs);
+        int bad = 0, total = 0;
+        for (size_t k = 3; k + 2 < a.boundsFrac.size(); ++k) // (las primeras: el arranque)
+        {
+            const double hz = fs / (a.boundsFrac[k + 1] - a.boundsFrac[k]);
+            const double c = 1200.0 * std::log2 (hz / f);
+            ++total; if (std::abs (c) > 5.0) ++bad;
+        }
+        const bool ok = total > 40 && bad == 0;
+        std::printf ("ondas con rulo al cruzar por cero: %d de %d fuera de +-5 cents  %s\n", bad, total, ok ? "OK" : "FALLA");
+        fails += ! ok;
+    }
     // casos raros: silencio, archivo cortísimo, mono
     {
         Channels z (1, std::vector<float> (1000, 0.0f));

@@ -179,6 +179,54 @@ inline double toLin (double db)  { return std::pow (10.0, db / 20.0); }
 } // namespace detail
 
 // ---------------------------------------------------------------------------------------------
+// Elección consistente del cruce real: cuando cerca de un corte hay varios cruces candidatos
+// (808s con un "rulo" al pasar por cero: sube, baja y vuelve a subir), el más cercano puede
+// saltar de uno a otro entre ondas y el largo de las ondas sale en zigzag (una más larga, la
+// siguiente más corta). Se van eligiendo en orden: cada corte, el candidato que cae un período
+// después del corte anterior (el período lo da la fundamental: la mediana de los saltos de la
+// referencia alrededor). Así todos caen en el mismo lugar de la onda.
+inline std::vector<long> consistentPicks (const std::vector<size_t>& ref, const std::vector<std::vector<size_t>>& cand)
+{
+    const size_t N = ref.size();
+    std::vector<long> out (N, -1);
+    long prev = -1; size_t prevK = 0;
+    for (size_t k = 0; k < N; ++k)
+    {
+        if (cand[k].empty()) continue;
+        double want = (double) ref[k];
+        if (prev >= 0 && k - prevK <= 2)
+        {
+            std::vector<double> d;
+            for (long j = (long) k - 4; j <= (long) k + 3; ++j)
+                if (j >= 0 && j + 1 < (long) N && ref[(size_t) j + 1] > ref[(size_t) j]) d.push_back ((double) (ref[(size_t) j + 1] - ref[(size_t) j]));
+            if (! d.empty())
+            {
+                std::nth_element (d.begin(), d.begin() + (long) d.size() / 2, d.end());
+                const double period = d[d.size() / 2];
+                const double w = (double) prev + period * (double) (k - prevK);
+                // sólo para decidir entre cruces muy cerca de la fundamental (a menos del 12 % de una
+                // onda): los que están más lejos son de armónicos, y ahí manda el más cercano, como siempre
+                const double tol = 0.12 * period;
+                if (std::abs (w - (double) ref[k]) <= tol)
+                {
+                    double bd = 1e300; long best = -1;
+                    for (size_t z : cand[k])
+                    {
+                        if (std::abs ((double) z - (double) ref[k]) > tol) continue;
+                        const double dd = std::abs ((double) z - w);
+                        if (dd < bd) { bd = dd; best = (long) z; }
+                    }
+                    if (best >= 0) { out[k] = best; prev = best; prevK = k; continue; }
+                }
+            }
+        }
+        double bd = 1e300; long best = -1;
+        for (size_t z : cand[k]) { const double dd = std::abs ((double) z - want); if (dd < bd) { bd = dd; best = (long) z; } }
+        out[k] = best; prev = best; prevK = k;
+    }
+    return out;
+}
+
 inline Analysis analyse (const Channels& in, double sampleRate)
 {
     using namespace detail;
@@ -278,29 +326,30 @@ inline Analysis analyse (const Channels& in, double sampleRate)
     // ganancia cae donde la onda vale ~0 y no hace click).
     std::vector<size_t>& b = a.bounds;
     b.reserve (rough.size());
-    for (size_t k = 0; k < rough.size(); ++k)
     {
-        const size_t c = rough[k];
-        const size_t prevGap = k > 0 ? c - rough[k - 1] : minPeriod * 4;
-        const size_t nextGap = k + 1 < rough.size() ? rough[k + 1] - c : prevGap;
-        const size_t win = std::max<size_t> (1, std::min (prevGap, nextGap) / 4);
-        const size_t lo = c > win ? c - win : 1;
-        const size_t hi = std::min (n - 1, c + win);
-        size_t pick = c; size_t bestDist = (size_t) -1;
-        for (size_t i = std::max<size_t> (lo, 1); i <= hi; ++i)
+        std::vector<std::vector<size_t>> cand (rough.size());
+        for (size_t k = 0; k < rough.size(); ++k)
         {
-            if (raw[i - 1] < 0.0 && raw[i] >= 0.0)
-            {
-                const size_t z = std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i;
-                const size_t d = z > c ? z - c : c - z;
-                if (d < bestDist) { bestDist = d; pick = z; }
-            }
+            const size_t c = rough[k];
+            const size_t prevGap = k > 0 ? c - rough[k - 1] : minPeriod * 4;
+            const size_t nextGap = k + 1 < rough.size() ? rough[k + 1] - c : prevGap;
+            const size_t win = std::max<size_t> (1, std::min (prevGap, nextGap) / 4);
+            const size_t lo = c > win ? c - win : 1;
+            const size_t hi = std::min (n - 1, c + win);
+            for (size_t i = std::max<size_t> (lo, 1); i <= hi; ++i)
+                if (raw[i - 1] < 0.0 && raw[i] >= 0.0)
+                    cand[k].push_back (std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i);
         }
-        // sin un cruce real cerca (pasa en el arranque de un golpe nuevo) no se corta acá:
-        // esa onda se une con la siguiente, así no hay un cambio de ganancia donde la onda no vale 0
-        if (bestDist == (size_t) -1) continue;
-        if (b.empty() || pick > b.back() + minPeriod / 2)
-            b.push_back (pick);
+        const auto picks = consistentPicks (rough, cand);
+        for (size_t k = 0; k < rough.size(); ++k)
+        {
+            // sin un cruce real cerca (pasa en el arranque de un golpe nuevo) no se corta acá:
+            // esa onda se une con la siguiente, así no hay un cambio de ganancia donde la onda no vale 0
+            if (picks[k] < 0) continue;
+            const size_t pick = (size_t) picks[k];
+            if (b.empty() || pick > b.back() + minPeriod / 2)
+                b.push_back (pick);
+        }
     }
 
     // Ataques: al arrancar un golpe la nota baja rápido (el glide) y el medidor de nota, que mira
@@ -394,28 +443,37 @@ inline Analysis analyse (const Channels& in, double sampleRate)
     // filtrada (el más cercano a la mitad de la onda), después el cruce real del audio más cercano.
     auto& hb = a.halfBounds;
     hb.reserve (b.size() * 2);
-    for (size_t k = 0; k + 1 < b.size(); ++k)
     {
-        const size_t s0 = b[k], s1 = b[k + 1], len = s1 - s0, midIdx = s0 + len / 2;
-        hb.push_back (s0);
-        if (len < 4) continue;
-        size_t m = midIdx; size_t bestD = (size_t) -1;
-        for (size_t i = s0 + std::max<size_t> (1, len / 8); i < s1 - len / 8; ++i)
-            if (det[i - 1] >= 0.0 && det[i] < 0.0)
-            {
-                const size_t d = i > midIdx ? i - midIdx : midIdx - i;
-                if (d < bestD) { bestD = d; m = i; }
-            }
-        const size_t win = std::max<size_t> (1, len / 4);
-        size_t pick = m; bestD = (size_t) -1;
-        for (size_t i = std::max (s0 + 1, m > win ? m - win : 1); i <= std::min (s1 - 1, m + win); ++i)
-            if (raw[i - 1] >= 0.0 && raw[i] < 0.0)
-            {
-                const size_t z = std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i;
-                const size_t d = z > m ? z - m : m - z;
-                if (d < bestD) { bestD = d; pick = z; }
-            }
-        if (bestD != (size_t) -1 && pick > s0 && pick < s1) hb.push_back (pick); // si no hay cruce real, la onda queda entera
+        // referencia (cruce descendente de la señal filtrada) y candidatos (cruces reales) de cada onda
+        std::vector<size_t> mref (b.size() > 0 ? b.size() - 1 : 0);
+        std::vector<std::vector<size_t>> cand (mref.size());
+        for (size_t k = 0; k + 1 < b.size(); ++k)
+        {
+            const size_t s0 = b[k], s1 = b[k + 1], len = s1 - s0, midIdx = s0 + len / 2;
+            mref[k] = midIdx;
+            if (len < 4) continue;
+            size_t m = midIdx; size_t bestD = (size_t) -1;
+            for (size_t i = s0 + std::max<size_t> (1, len / 8); i < s1 - len / 8; ++i)
+                if (det[i - 1] >= 0.0 && det[i] < 0.0)
+                {
+                    const size_t d = i > midIdx ? i - midIdx : midIdx - i;
+                    if (d < bestD) { bestD = d; m = i; }
+                }
+            mref[k] = m;
+            const size_t win = std::max<size_t> (1, len / 4);
+            for (size_t i = std::max (s0 + 1, m > win ? m - win : 1); i <= std::min (s1 - 1, m + win); ++i)
+                if (raw[i - 1] >= 0.0 && raw[i] < 0.0)
+                {
+                    const size_t z = std::abs (raw[i - 1]) < std::abs (raw[i]) ? i - 1 : i;
+                    if (z > s0 && z < s1) cand[k].push_back (z);
+                }
+        }
+        const auto picks = consistentPicks (mref, cand);
+        for (size_t k = 0; k + 1 < b.size(); ++k)
+        {
+            hb.push_back (b[k]);
+            if (picks[k] >= 0) hb.push_back ((size_t) picks[k]); // si no hay cruce real, la onda queda entera
+        }
     }
     hb.push_back (b.back());
 
