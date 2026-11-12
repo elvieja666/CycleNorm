@@ -166,7 +166,7 @@ public:
         {
             const auto icon = b.getProperties()["icon"].toString();
             const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"] || b.isDown();
-            auto colour = lit ? Theme::accent : Theme::ink;
+            auto colour = lit ? Theme::accent : Theme::inkDim; // (apagado: el gris de "Ramp", como el borde)
             if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
             const auto box = segmentShape (b); // plano: el ícono no se mueve
             const float s = box.getHeight() * 0.36f;
