@@ -36,23 +36,23 @@ public:
         dirty = true;
         repaint();
     }
-    void setProcessed (BufferPtr processed) { proc = std::move (processed); dirty = true; repaint(); }
+    void setProcessed (BufferPtr processed) { proc = std::move (processed); dirtyProc = true; repaint(); }
     void clear() { setData (nullptr, nullptr, {}, 44100.0, true); }
     void refresh() { dirty = true; repaint(); }
     // el audio se estiró (re-pitch): la vista se estira igual, así se sigue viendo la misma parte del sonido
     void scaleView (double factor) { viewStart *= factor; viewLen *= factor; clampView(); dirty = true; repaint(); }
     void setMarkers (std::vector<size_t> cycleBounds) { bounds = std::move (cycleBounds); dirty = true; repaint(); }
     // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
-    void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirty = true; repaint(); } }
+    void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirtyProc = true; repaint(); } }
     // dónde se corta el final (la línea de Fin); el largo total = sin cortar
-    void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; dirty = true; repaint(); } }
+    void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; repaint(); } } // (las líneas y zonas se dibujan encima de la imagen: no hace falta rehacerla)
     // dónde empieza (la línea de Start); 0 = desde el principio del archivo
-    void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; dirty = true; repaint(); } }
+    void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; repaint(); } }
     // zona de loop (0/0 = sin loop) y los cruces ascendentes (ondas enteras) donde pueden caer sus puntas
-    void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; dirty = true; repaint(); } }
+    void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; repaint(); } }
     void setLoopBounds (std::vector<size_t> b) { loopBounds = std::move (b); }
     // largo del crossfade del loop en muestras (0 = Off)
-    void setLoopXfade (size_t len) { if (len != xfadeLen) { xfadeLen = len; dirty = true; repaint(); } }
+    void setLoopXfade (size_t len) { if (len != xfadeLen) { xfadeLen = len; repaint(); } }
     // Curva de pitch: un punto por onda (muestra del centro de la onda, Hz). Se dibuja sobre el original.
     // appliedSemis: re-pitch que ya tiene la curva (para que el rango vertical quede fijo y la línea se mueva)
     void setPitchCurve (std::vector<std::pair<double, double>> pts, double appliedSemis = 0.0)
@@ -76,7 +76,20 @@ public:
         const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
         const int pw = juce::roundToInt ((float) getWidth() * scale), ph = juce::roundToInt ((float) getHeight() * scale);
         if (dirty || cache.getWidth() != pw || cache.getHeight() != ph) { cacheScale = scale; renderCache(); }
+        else if (dirtyProc) renderProcLane();
         g.drawImage (cache, getLocalBounds().toFloat());
+        // encima de la imagen: las líneas (Start, Skip, End, loop), las zonas oscurecidas y los títulos.
+        // Se dibujan cada vez (son baratas), así arrastrar una línea no rehace las ondas.
+        if (totalLen() > 0)
+        {
+            juce::Graphics::ScopedSaveState ss (g);
+            g.reduceClipRegion (0, 0, plotWidth(), getHeight()); // sin pisar el teclado
+            const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
+            const bool hasPitch = pitchPts.size() >= 2;
+            drawLane (g, orig.get(), topLaneRect(), juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
+                      hasPitch ? std::function<void()> ([] {}) : std::function<void()>(), 1);
+            drawLane (g, proc.get(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
+        }
 
         if (totalLen() > 0 && getPlayheadSeconds)
         {
@@ -342,7 +355,8 @@ private:
     std::vector<int> ambiguousLines; // líneas pegadas: se elige al arrastrar
     float ambiguousDownX = 0.0f, ambiguousDownY = 0.0f;
     float cacheScale = 1.0f;
-    bool dirty = true;
+    bool dirty = true;      // rehacer toda la imagen de las ondas
+    bool dirtyProc = false; // rehacer sólo el carril de abajo (el procesado cambió)
     size_t skipEnd = 0, endSample = 0, startSample = 0, loopStart = 0, loopEnd = 0;
     bool draggingSkip = false, draggingEnd = false, draggingStart = false;
     int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop, 5 = manija del crossfade
@@ -811,15 +825,19 @@ private:
 
     void drawLane (juce::Graphics& g, const juce::AudioBuffer<float>* buf, juce::Rectangle<int> r,
                    juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0, bool showSkipLine = false,
-                   std::function<void()> underlay = {})
+                   std::function<void()> underlay = {}, int pass = 0) // pass 0: el fondo y la onda (en la imagen); 1: lo de encima
     {
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
-        g.setColour (juce::Colour (0xff0f1114));
-        g.fillRect (r);
+        if (pass == 0)
+        {
+            g.setColour (juce::Colour (0xff0f1114));
+            g.fillRect (r);
+        }
         const float mid = (float) r.getCentreY(), half = r.getHeight() * 0.46f;
 
-        if (underlay) underlay(); // el carril de arriba: el fondo del piano roll (debajo de la onda)
+        if (pass == 1) {}
+        else if (underlay) underlay(); // el carril de arriba: el fondo del piano roll (debajo de la onda)
         else
         {
             // líneas de -6 dB y centro
@@ -832,7 +850,7 @@ private:
 
         // zona salteada con Skip: fondo apenas distinto y una línea donde empieza a normalizar
         const float skipX = greyUntil > 0 ? (float) r.getX() + (float) sampleToX ((double) greyUntil) : (float) r.getX();
-        if (greyUntil > 0 && skipX > (float) r.getX())
+        if (pass == 0 && greyUntil > 0 && skipX > (float) r.getX())
         {
             g.setColour (juce::Colour (0xff1d2025));
             g.fillRect (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), skipX - (float) r.getX(), (float) r.getHeight()));
@@ -894,7 +912,8 @@ private:
         if (buf != nullptr && buf->getNumSamples() > 0 && viewLen > 0)
         {
             const bool columns = viewLen / juce::jmax (1, juce::jmin (r.getWidth(), plotWidth())) >= 1.0;
-            if (greyUntil > 0 && skipX > (float) r.getX() && columns)
+            if (pass == 1) {}
+            else if (greyUntil > 0 && skipX > (float) r.getX() && columns)
                 drawWave (col, skipX); // las ondas salteadas, en el gris del original (en la misma pasada)
             else if (greyUntil > 0 && skipX > (float) r.getX())
             {
@@ -911,6 +930,7 @@ private:
             }
             else
                 drawWave (col);
+            if (pass == 0) return; // lo que sigue va encima de la imagen (paint)
 
             if (showSkipLine)
             {
@@ -1057,6 +1077,7 @@ private:
             g.drawHorizontalLine ((int) (mid + half), (float) r.getX(), x1);
         }
 
+        if (pass == 0) return;
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
         g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
         g.drawText (title + (active ? "  (playing)" : ""), r.reduced (8, 4), juce::Justification::topLeft);
@@ -1079,6 +1100,7 @@ private:
             g.drawText (juce::String::fromUTF8 ("Drop your 808s here (WAV / AIFF)  ·  or File ▸ Open… (⌘O)"), getLocalBounds(), juce::Justification::centred);
             return;
         }
+        dirtyProc = false;
         const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
@@ -1087,9 +1109,28 @@ private:
                   hasPitch ? std::function<void()> ([&] { drawPitchCurve (g, top, 0); }) : std::function<void()>());
         drawPitchCurve (g, top, 1);
         drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
+        drawKeyboardStrip (g);
+    }
+    juce::Rectangle<int> topLaneRect() const { return getLocalBounds().removeFromTop (getHeight() / 2).withTrimmedBottom (1); }
+    juce::Rectangle<int> procLaneRect() const { auto r = getLocalBounds(); r.removeFromTop (getHeight() / 2); return r.withTrimmedTop (1); }
+    // sólo cambió el procesado (Ramp, Skip, el crossfade...): se rehace nada más el carril de abajo
+    void renderProcLane()
+    {
+        dirtyProc = false;
+        juce::Graphics g (cache);
+        g.addTransform (juce::AffineTransform::scale (cacheScale));
+        g.reduceClipRegion (procLaneRect());
+        g.fillAll (juce::Colour (0xff0b0c0e));
+        const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
+        drawLane (g, proc.get(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
+        drawKeyboardStrip (g);
+    }
+    void drawKeyboardStrip (juce::Graphics& g)
+    {
+        auto r = procLaneRect();
         if (plotWidth() < getWidth()) // debajo del teclado: vacío, así las dos ondas terminan en la misma línea
         {
-            const auto strip = r.withTrimmedTop (1).withTrimmedLeft (plotWidth());
+            const auto strip = r.withTrimmedLeft (plotWidth());
             g.setColour (juce::Colour (0xff0b0c0e));
             g.fillRect (strip);
             g.setColour (juce::Colour (0x66000000));
