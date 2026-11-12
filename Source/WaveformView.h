@@ -853,7 +853,7 @@ private:
                 const float lx = juce::jmax ((float) r.getX() + 1.0f, rawX);
                 if (rawX >= (float) r.getX() - 1.0f && lx <= (float) r.getRight())
                 {
-                    g.setColour (juce::Colour (0xffd0a040).withAlpha (draggingSkip ? 1.0f : 0.85f));
+                    g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingSkip ? 1.0f : 0.85f));
                     const float dashes[] = { 4.0f, 3.0f };
                     g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, draggingSkip ? 2.0f : 1.2f);
                     juce::Path handle;
@@ -949,7 +949,7 @@ private:
             {
                 const float ex = (float) r.getX() + endLineX();
                 {
-                    g.setColour (juce::Colour (0xffe0605a).withAlpha (draggingEnd ? 1.0f : 0.9f));
+                    g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingEnd ? 1.0f : 0.9f));
                     const float dashes[] = { 4.0f, 3.0f };
                     g.drawDashedLine (juce::Line<float> (ex, (float) r.getY(), ex, (float) r.getBottom()), dashes, 2, draggingEnd ? 2.0f : 1.2f);
                     juce::Path handle;
