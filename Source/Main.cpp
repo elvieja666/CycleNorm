@@ -393,13 +393,18 @@ public:
         else
         {
             const juce::Colour blue = Theme::accent, blueLight = Theme::accentBright;
-            auto body = r.withTrimmedBottom (2.0f);
-            g.setColour (juce::Colours::black.withAlpha (0.18f));
-            g.fillRoundedRectangle (body.translated (0.0f, 2.0f), radius);
-            g.setGradientFill (juce::ColourGradient (hover ? blueLight.brighter (0.05f) : blueLight, 0.0f, body.getY(),
-                                                     hover ? blue.brighter (0.08f) : blue, 0.0f, body.getBottom(), false));
+            // apretado: se hunde (sin sombra, 2 px más abajo, un poco más oscuro), como los otros botones
+            auto body = r.withTrimmedBottom (2.0f).translated (0.0f, pressed ? 2.0f : 0.0f);
+            if (! pressed)
+            {
+                g.setColour (juce::Colours::black.withAlpha (0.18f));
+                g.fillRoundedRectangle (body.translated (0.0f, 2.0f), radius);
+            }
+            const float lift = hover && ! pressed ? 0.05f : 0.0f;
+            g.setGradientFill (juce::ColourGradient (pressed ? blueLight.darker (0.06f) : blueLight.brighter (lift), 0.0f, body.getY(),
+                                                     pressed ? blue.darker (0.08f) : blue.brighter (lift * 1.6f), 0.0f, body.getBottom(), false));
             g.fillRoundedRectangle (body, radius);
-            g.setColour (juce::Colours::white.withAlpha (0.28f));
+            g.setColour (juce::Colours::white.withAlpha (pressed ? 0.12f : 0.28f));
             g.drawLine (body.getX() + radius, body.getY() + 1.0f, body.getRight() - radius, body.getY() + 1.0f, 1.0f);
             r = body;
         }
@@ -409,18 +414,21 @@ public:
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
-    void mouseDown (const juce::MouseEvent&) override { started = false; }
+    void mouseDown (const juce::MouseEvent&) override { started = false; if (isEnabled()) { pressed = true; repaint(); } }
+    void mouseUp (const juce::MouseEvent&) override { pressed = false; repaint(); }
     void mouseDrag (const juce::MouseEvent& e) override
     {
         if (started || e.getDistanceFromDragStart() < 6 || ! makeFile) return;
         started = true;
         const auto f = makeFile();
         if (f.existsAsFile())
-            juce::DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this);
+            juce::DragAndDropContainer::performExternalDragDropOfFiles ({ f.getFullPathName() }, false, this,
+                                                                         [safe = juce::Component::SafePointer<DragOut> (this)] {
+                                                                             if (safe != nullptr) { safe->pressed = false; safe->repaint(); } });
     }
 
 private:
-    bool hover = false, started = false;
+    bool hover = false, started = false, pressed = false;
 };
 
 //==============================================================================
