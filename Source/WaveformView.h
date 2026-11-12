@@ -78,7 +78,7 @@ public:
         if (totalLen() > 0 && getPlayheadSeconds)
         {
             const double x = sampleToX (getPlayheadSeconds() * sr);
-            if (x >= 0 && x <= getWidth())
+            if (x >= 0 && x <= plotWidth())
             {
                 g.setColour (juce::Colours::white.withAlpha (0.85f));
                 g.fillRect ((float) x, 0.0f, 1.5f, (float) getHeight());
@@ -363,9 +363,9 @@ private:
         auto isBlack = [] (int m) { const int pc = ((m % 12) + 12) % 12; return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10; };
         const double spanSemis = hi - lo;
         // el teclado (a la derecha) y donde terminan las líneas
-        constexpr float kbW = 34.0f;
+        constexpr float kbW = (float) kKeyboardW;
         const float kbX = (float) r.getRight() - kbW;
-        const float lineEnd = kbX - 2.0f;
+        const float lineEnd = kbX;
         pitchLineEnd = lineEnd;
         // la nota del pitch medido (la de arriba a la derecha), para resaltarla
         const double ref = getPitchReference ? getPitchReference() : 0.0;
@@ -478,7 +478,7 @@ private:
             {
                 const float x = (float) r.getX() + (float) sampleToX (p.first);
                 if (x < (float) r.getX() - 4 || x > (float) r.getRight() + 4) continue;
-                if (getWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
+                if (plotWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
                 g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
             }
         }
@@ -526,7 +526,7 @@ private:
     {
         if (moveCycles <= 0 || loopBounds.empty() || ! onLoopDragged) return;
         const double from = (double) loopBounds[std::min (moveStartIdx, loopBounds.size() - 1)];
-        const double target = from + (double) dx / juce::jmax (1, getWidth()) * viewLen;
+        const double target = from + (double) dx / plotWidth() * viewLen;
         size_t best = moveStartIdx; double bestD = 1e300;
         for (size_t k = 0; k + (size_t) moveCycles < loopBounds.size(); ++k)
         {
@@ -541,7 +541,7 @@ private:
     }
 
     bool hasLoop() const { return loopEnd > loopStart && onLoopDragged != nullptr; }
-    bool xVisible (double sample) const { const double x = sampleToX (sample); return x >= -1.0 && x <= getWidth() + 1.0; }
+    bool xVisible (double sample) const { const double x = sampleToX (sample); return x >= -1.0 && x <= plotWidth() + 1.0; }
     // las puntas del loop saltan de onda entera en onda entera (cruces ascendentes de la fundamental)
     void dragLoopTo (float x)
     {
@@ -576,8 +576,8 @@ private:
     // x de la línea de Fin; si con el zoom quedó fuera de la vista, no se ve (como la de Skip).
     // Pegada al borde derecho (el final del archivo con la vista completa) se corre 2 píxeles para que se vea.
     float endLineRawX() const { return (float) sampleToX ((double) endOrLen()); }
-    bool endLineVisible() const { const float x = endLineRawX(); return x >= -1.0f && x <= (float) getWidth() + 1.0f; }
-    float endLineX() const { return juce::jlimit (1.0f, (float) getWidth() - 2.0f, endLineRawX()); }
+    bool endLineVisible() const { const float x = endLineRawX(); return x >= -1.0f && x <= (float) plotWidth() + 1.0f; }
+    float endLineX() const { return juce::jlimit (1.0f, (float) plotWidth() - 2.0f, endLineRawX()); }
     // 0 = ninguna, 1 = Skip, 2 = Fin (si las dos están cerca, la más cercana)
     float xfadeHandleX() const { return (float) sampleToX ((double) (loopEnd - std::min (xfadeLen, loopEnd))); }
     int whichLine (juce::Point<float> p) const
@@ -628,8 +628,11 @@ private:
     }
 
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
-    double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * getWidth() : 0; }
-    double xToSample (double x) const { return viewStart + x / juce::jmax (1, getWidth()) * viewLen; }
+    // ancho del gráfico (el tiempo): sin la columna del teclado, así las dos ondas terminan justo donde empieza
+    static constexpr int kKeyboardW = 34;
+    int plotWidth() const { return juce::jmax (1, getWidth() - (pitchPts.size() >= 2 ? kKeyboardW : 0)); }
+    double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * plotWidth() : 0; }
+    double xToSample (double x) const { return viewStart + x / plotWidth() * viewLen; }
 
     // ¿el mouse está sobre la línea celeste? (carril de arriba, a pocos píxeles de la curva)
     bool nearPitchCurve (juce::Point<float> p) const
@@ -686,9 +689,9 @@ private:
     void zoomAround (float x, double factor)
     {
         const double anchor = xToSample (x);
-        const double minLen = juce::jmin ((double) totalLen(), juce::jmax (32.0, (double) getWidth() / 8.0));
+        const double minLen = juce::jmin ((double) totalLen(), juce::jmax (32.0, (double) plotWidth() / 8.0));
         viewLen = juce::jlimit (minLen, (double) totalLen(), viewLen * factor);
-        viewStart = anchor - (x / juce::jmax (1, getWidth())) * viewLen;
+        viewStart = anchor - (x / plotWidth()) * viewLen;
     }
     void clampView()
     {
@@ -735,7 +738,7 @@ private:
 
         auto drawWave = [&] (juce::Colour waveColour)
         {
-            const int w = r.getWidth();
+            const int w = juce::jmin (r.getWidth(), plotWidth()); // (sin la columna del teclado)
             const double spp = viewLen / juce::jmax (1, w);
             const int nCh = buf->getNumChannels(), n = buf->getNumSamples();
             g.setColour (waveColour);
@@ -949,5 +952,13 @@ private:
                   hasPitch ? std::function<void()> ([&] { drawPitchCurve (g, top, 0); }) : std::function<void()>());
         drawPitchCurve (g, top, 1);
         drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
+        if (plotWidth() < getWidth()) // debajo del teclado: vacío, así las dos ondas terminan en la misma línea
+        {
+            const auto strip = r.withTrimmedTop (1).withTrimmedLeft (plotWidth());
+            g.setColour (juce::Colour (0xff0b0c0e));
+            g.fillRect (strip);
+            g.setColour (juce::Colour (0x66000000));
+            g.fillRect (strip.withWidth (1));
+        }
     }
 };
