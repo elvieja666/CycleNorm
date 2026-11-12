@@ -14,6 +14,25 @@ const juce::Colour kAccent = Theme::accent;
 const juce::Colour kBg = Theme::topLight;
 
 //==============================================================================
+// El texto del valor de las barras (Ramp, Pitch): en estas barras un clic empieza a escribir un
+// valor, así que el ⌥ Option + clic (volver a 0) se agarra acá. La barra dice a qué valor volver
+// con la propiedad "resetValue".
+struct ResetLabel : juce::Label
+{
+    bool altClick = false;
+    juce::Slider* slider() const { return dynamic_cast<juce::Slider*> (getParentComponent()); }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        altClick = e.mods.isAltDown() && slider() != nullptr && slider()->getProperties().contains ("resetValue");
+        if (altClick) { slider()->setValue ((double) slider()->getProperties()["resetValue"], juce::sendNotificationSync); return; }
+        juce::Label::mouseDown (e);
+    }
+    void mouseDrag (const juce::MouseEvent& e) override { if (! altClick) juce::Label::mouseDrag (e); }
+    void mouseUp (const juce::MouseEvent& e) override { if (altClick) { altClick = false; return; } juce::Label::mouseUp (e); }
+    void mouseDoubleClick (const juce::MouseEvent& e) override { if (! e.mods.isAltDown()) juce::Label::mouseDoubleClick (e); }
+};
+
+//==============================================================================
 // Look & feel con la estética de UNISON: botones claros en relieve, pastillas,
 // recuadros hundidos, azul de acento y letra Inter.
 class CycleNormLookAndFeel : public juce::LookAndFeel_V4
@@ -233,7 +252,11 @@ public:
     }
     juce::Label* createSliderTextBox (juce::Slider& s) override
     {
-        auto* l = LookAndFeel_V4::createSliderTextBox (s);
+        auto* base = LookAndFeel_V4::createSliderTextBox (s);
+        auto* l = new ResetLabel();                      // igual que el de JUCE, más el ⌥ + clic
+        l->setJustificationType (base->getJustificationType());
+        l->setEditable (base->isEditableOnSingleClick(), base->isEditableOnDoubleClick(), base->doesLossOfFocusDiscardChanges());
+        delete base;
         l->setFont (Theme::font (14.0f, 400)); // como el valor de Window (3000 ms)
         l->setColour (juce::Label::textColourId, Theme::inkStrong);
         l->setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
@@ -269,6 +292,17 @@ cyclenorm::Channels toChannels (const juce::AudioBuffer<float>& b)
 struct StepSlider : public juce::Slider
 {
     double wheelStep = 1.0, wheelStepFine = 0.1;
+    double resetValue = 0.0;   // ⌥ Option + clic vuelve a este valor
+    bool resetClick = false;
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        resetClick = e.mods.isAltDown() && isEnabled();
+        if (resetClick) { setValue (resetValue, juce::sendNotificationSync); return; }
+        juce::Slider::mouseDown (e);
+    }
+    void mouseDrag (const juce::MouseEvent& e) override { if (! resetClick) juce::Slider::mouseDrag (e); }
+    void mouseUp (const juce::MouseEvent& e) override { if (resetClick) { resetClick = false; return; } juce::Slider::mouseUp (e); }
+    void mouseDoubleClick (const juce::MouseEvent& e) override { if (! e.mods.isAltDown()) juce::Slider::mouseDoubleClick (e); }
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
     {
         const float d = std::abs (w.deltaY) > std::abs (w.deltaX) ? w.deltaY : -w.deltaX;
@@ -517,6 +551,7 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
+        ramp.getProperties().set ("resetValue", 0.0);      // ⌥ + clic: 0 %
         // Amount ya no está en la ventana: lo maneja el botón Normalize (100 % o 0 %)
         amount.setValue (props->getDoubleValue ("amount", 100.0) >= 50.0 ? 100.0 : 0.0, juce::dontSendNotification);
         normButton.setToggleState (amount.getValue() >= 50.0, juce::dontSendNotification);
@@ -533,6 +568,7 @@ public:
         pitchShift.wheelStep = 1.0;       // rueda: de a 1 cent
         pitchShift.wheelStepFine = 0.1;   // Shift + rueda: de a 0,1 cent
         pitchShift.setDoubleClickReturnValue (true, 0.0);
+        pitchShift.getProperties().set ("resetValue", 0.0); // ⌥ + clic: 0 cents
         pitchShift.setVelocityModeParameters (0.15, 1, 0.0, true, juce::ModifierKeys::shiftModifier); // Shift + arrastrar = fino
         pitchShift.onValueChange = [this] {
             pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter();
@@ -867,7 +903,8 @@ private:
     std::unique_ptr<LoopSearchJob> loopJob;
     juce::ComboBox formatBox;
     juce::ApplicationCommandManager commandManager;
-    juce::Slider amount, ramp;
+    juce::Slider amount;
+    StepSlider ramp; // (⌥ + clic = 0 %)
     StepSlider pitchShift;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 4;
