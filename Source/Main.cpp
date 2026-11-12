@@ -153,18 +153,15 @@ public:
             }
             return;
         }
-        if (b.getClickingTogglesState()) // Loop / Hearing: pastilla; prendido = clara con borde azul
-        {
-            auto p = raisedShape (r).expanded (0.0f, 1.0f);
-            const float radius = pillCorner (p.getHeight());
-            const bool on = b.getToggleState();
-            g.setColour (on ? Theme::raisedTop : Theme::pill.brighter (over ? 0.03f : 0.0f));
-            g.fillRoundedRectangle (p, radius);
-            if (on) { g.setColour (Theme::accent.withAlpha (0.45f)); g.drawRoundedRectangle (p.reduced (0.5f), radius, 1.0f); }
-            return;
-        }
+        // los que se prenden (Processed, Normalize, Loop): iguales a los demás (en relieve);
+        // prendidos, además con borde y texto azul
         const auto shape = raisedShape (r);
         Theme::drawRaised (g, shape, pillCorner (shape.getHeight()), over && b.isEnabled(), down);
+        if (b.getClickingTogglesState() && b.getToggleState())
+        {
+            g.setColour (Theme::accent.withAlpha (0.7f));
+            g.drawRoundedRectangle (shape.reduced (0.5f), pillCorner (shape.getHeight()), 1.2f);
+        }
     }
 
     void drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool) override
@@ -203,10 +200,9 @@ public:
             }
             return;
         }
-        auto colour = b.getClickingTogglesState() ? (b.getToggleState() ? Theme::accent : Theme::inkDim) : Theme::ink;
+        auto colour = (b.getClickingTogglesState() && b.getToggleState()) ? Theme::accent : Theme::ink;
         if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
-        auto r = raisedShape (b.getLocalBounds().toFloat()).toNearestInt();
-        if (! b.getClickingTogglesState()) r = r.translated (0, b.isDown() ? 1 : 0);
+        auto r = raisedShape (b.getLocalBounds().toFloat()).toNearestInt().translated (0, b.isDown() ? 1 : 0);
         g.setColour (colour);
         g.setFont (getTextButtonFont (b, b.getHeight()));
         if (b.getProperties().contains ("speaker")) // Hearing: parlante + texto, centrados juntos
