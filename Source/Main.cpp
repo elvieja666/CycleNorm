@@ -138,15 +138,14 @@ public:
             const bool L = seg == "left", R = seg == "right";
             juce::Path p;
             p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
-            // plano (como el Loop de antes): fondo claro, borde oscuro; la parte prendida (sonando /
-            // loop de escucha) o apretada, con el borde azul (y el ícono azul)
-            const bool active = down || b.getToggleState() || (bool) b.getProperties()["lit"];
+            // plano: fondo claro y borde oscuro (siempre igual); prendido (sonando / loop de escucha)
+            // o apretado, sólo el ícono se pone azul
             g.setColour (down ? Theme::raisedBot.darker (0.04f) : Theme::raisedTop.brighter (over && b.isEnabled() ? 0.02f : 0.0f));
             g.fillPath (p);
             const auto edge = shape.reduced (0.5f);
             juce::Path outline;
             outline.addRoundedRectangle (edge.getX(), edge.getY(), edge.getWidth(), edge.getHeight(), rad, rad, L, R, L, R);
-            g.setColour (active ? Theme::accent : Theme::inkStrong.withAlpha (0.8f));
+            g.setColour (Theme::inkStrong.withAlpha (0.8f)); // el borde siempre igual (sólo el ícono se pone azul)
             g.strokePath (outline, juce::PathStrokeType (1.0f));
             return;
         }
