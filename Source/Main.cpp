@@ -1780,6 +1780,8 @@ private:
         t << u8 ("  ·  tuned ") << (tuned >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (tuned * 100.0), 1) << " cents";
         if (p.cycles >= 8)
             t << u8 ("  ·  drift ") << (p.driftCents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (p.driftCents), 1) << " cents";
+        // midiendo el loop: azul; la parte estable (sustain) u otra: gris, como la info del loop
+        pitchLabel.setColour (juce::Label::textColourId, inLoop ? kAccent : Theme::inkDim);
         pitchLabel.setText (t, juce::dontSendNotification);
         layoutTitleRow();
     }
