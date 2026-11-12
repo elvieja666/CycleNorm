@@ -433,14 +433,7 @@ public:
         list.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
         list.setWantsKeyboardFocus (false);
         addChildComponent (list); // oculta: queda como modelo de la selección (el 808 se elige con el selector de arriba)
-        fileBox.setWantsKeyboardFocus (false);
-        fileBox.setTextWhenNothingSelected ("No 808s loaded");
-        fileBox.setTextWhenNoChoicesAvailable ("No 808s loaded");
-        fileBox.onChange = [this] {
-            const int row = fileBox.getSelectedItemIndex();
-            if (row >= 0 && row != current) list.selectRow (row);
-        };
-        addAndMakeVisible (fileBox);
+
 
         wave.getPlayheadSeconds = [this] { return transport.getCurrentPosition(); };
         wave.isPlaying = [this] { return transport.isPlaying(); };
@@ -546,6 +539,13 @@ public:
         const float titleW = juce::GlyphArrangement::getStringWidth (tf, "CYCLENORM");
         g.drawText ("CYCLENORM", titleArea.toFloat(), juce::Justification::centredLeft);
         juce::ignoreUnused (titleW);
+        // el 808 abierto, al lado del título
+        if (juce::isPositiveAndBelow (current, (int) items.size()))
+        {
+            g.setColour (Theme::ink);
+            g.setFont (Theme::font (14.0f, 500));
+            g.drawText (items[(size_t) current]->file.getFileName(), fileName, juce::Justification::centredLeft, true);
+        }
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
         g.setColour (Theme::darkBg);
         g.fillRoundedRectangle (waveArea.toFloat(), 12.0f);
@@ -564,7 +564,7 @@ public:
             const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (15.0f), "CYCLENORM");
             t.removeFromLeft ((int) titleW + 18);
             pitchLabel.setBounds (t.removeFromRight (juce::jmin (430, t.getWidth() / 2)));
-            fileBox.setBounds (t.removeFromLeft (juce::jmin (280, t.getWidth() / 2)).withTrimmedTop (0).translated (0, 2));
+            fileName = t.removeFromLeft (juce::jmin (300, t.getWidth() / 2));
             t.removeFromLeft (12);
             info.setBounds (t);
             progressBar.setBounds (t.reduced (0, 6).withTrimmedRight (12));
@@ -612,12 +612,6 @@ public:
         {
             abButton.setToggleState (! abButton.getToggleState(), juce::dontSendNotification);
             updateAB();
-            return true;
-        }
-        if (k == juce::KeyPress::upKey || k == juce::KeyPress::downKey)
-        {
-            const int row = list.getSelectedRow() + (k == juce::KeyPress::upKey ? -1 : 1);
-            if (juce::isPositiveAndBelow (row, (int) items.size())) list.selectRow (row);
             return true;
         }
         return false;
@@ -700,7 +694,7 @@ private:
     juce::ProgressBar progressBar { progressValue };
     juce::Label progressLabel;
     std::unique_ptr<LoopSearchJob> loopJob;
-    juce::ComboBox formatBox, fileBox;
+    juce::ComboBox formatBox;
     juce::ApplicationCommandManager commandManager;
     juce::Slider amount, ramp;
     StepSlider pitchShift;
@@ -731,7 +725,7 @@ private:
     DragOut dragOut;
     juce::Rectangle<int> titleArea, controlsArea;
     int separatorY = 0;
-    juce::Rectangle<int> waveArea;
+    juce::Rectangle<int> waveArea, fileName;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
     int outputCheckTicks = 0;
@@ -852,27 +846,38 @@ private:
     {
         chooser = std::make_unique<juce::FileChooser> ("Choose audio", juce::File (props->getValue ("lastDir")),
                                                        "*.wav;*.aif;*.aiff;*.flac;*.mp3;*.m4a;*.caf");
-        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles
-                                  | juce::FileBrowserComponent::canSelectMultipleItems,
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [this] (const juce::FileChooser& fc) { addFiles (fc.getResults()); });
     }
 
+    // Un 808 por vez: el que se abre (o se suelta) reemplaza al que estaba.
+    // Si llegan varios (o una carpeta), se abre el primero que se pueda leer.
     void addFiles (const juce::Array<juce::File>& files)
     {
         juce::StringArray failed;
-        int firstNew = -1;
+        std::unique_ptr<Item> item;
         for (auto& f : files)
         {
             if (! f.existsAsFile() || ! isAudioFile (f)) continue;
-            auto item = loadItem (f);
+            item = loadItem (f);
             if (item == nullptr) { failed.add (f.getFileName()); continue; }
             props->setValue ("lastDir", f.getParentDirectory().getFullPathName());
-            items.push_back (std::move (item));
-            if (firstNew < 0) firstNew = (int) items.size() - 1;
+            break;
         }
-        list.updateContent();
-        refreshFileBox();
-        if (firstNew >= 0) list.selectRow (firstNew);
+        if (item != nullptr)
+        {
+            if (loopJob != nullptr) cancelLoopSearch();
+            transport.stop();
+            transport.setSource (nullptr);
+            for (auto& old : items) forgetUndo (old.get());
+            items.clear();
+            current = -1;
+            items.push_back (std::move (item));
+            list.updateContent();
+            list.deselectAllRows();
+            list.selectRow (0);
+            if (current != 0) selectItem (0);
+        }
         if (! failed.isEmpty())
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open",
                                                     failed.joinIntoString ("\n"));
@@ -908,7 +913,6 @@ private:
         items.erase (items.begin() + current);
         current = -1;
         list.updateContent();
-        refreshFileBox();
         list.deselectAllRows();
         if (! items.empty()) list.selectRow (juce::jmin (removed, (int) items.size() - 1));
         else { wave.clear(); source.setBuffers (nullptr, nullptr); }
@@ -1196,16 +1200,8 @@ private:
         updateInfo();
     }
 
-    void refreshFileBox()
-    {
-        fileBox.clear (juce::dontSendNotification);
-        for (size_t i = 0; i < items.size(); ++i) fileBox.addItem (items[i]->file.getFileName(), (int) i + 1);
-        if (juce::isPositiveAndBelow (current, (int) items.size())) fileBox.setSelectedItemIndex (current, juce::dontSendNotification);
-    }
-
     void selectItem (int row)
     {
-        fileBox.setSelectedItemIndex (row, juce::dontSendNotification);
         if (! juce::isPositiveAndBelow (row, (int) items.size())) return;
         const bool wasPlaying = transport.isPlaying();
         transport.stop();
@@ -1289,6 +1285,7 @@ private:
 
     void updateInfo()
     {
+        repaint (titleArea); // el nombre del 808 abierto
         if (! juce::isPositiveAndBelow (current, (int) items.size()))
         {
             info.setText ({}, juce::dontSendNotification);
@@ -1587,7 +1584,7 @@ private:
     juce::ApplicationCommandTarget* getNextCommandTarget() override { return nullptr; }
     void getAllCommands (juce::Array<juce::CommandID>& c) override
     {
-        c.addArray ({ cmdOpen, cmdRemove, cmdExport, cmdExportAll, cmdFmtSame, cmdFmt24, cmdFmtFloat,
+        c.addArray ({ cmdOpen, cmdRemove, cmdExport, cmdFmtSame, cmdFmt24, cmdFmtFloat,
                       cmdUndo, cmdRedo, cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView,
                       cmdFindLoop, cmdNextLoop, cmdClearLoop });
     }
@@ -1598,7 +1595,7 @@ private:
         switch (id)
         {
             case cmdOpen:      info.setInfo (u8 ("Open…"), "Add 808s", "File", 0); info.addDefaultKeypress ('o', cmd); break;
-            case cmdRemove:    info.setInfo ("Remove from List", "", "File", 0); info.addDefaultKeypress (juce::KeyPress::backspaceKey, cmd); info.setActive (has); break;
+            case cmdRemove:    info.setInfo ("Close", "", "File", 0); info.addDefaultKeypress ('w', cmd); info.setActive (has); break;
             case cmdExport:    info.setInfo (u8 ("Export…"), "", "File", 0); info.addDefaultKeypress ('e', cmd); info.setActive (has); break;
             case cmdExportAll: info.setInfo (u8 ("Export All…"), "", "File", 0); info.addDefaultKeypress ('e', cmd | shift); info.setActive (! items.empty()); break;
             case cmdFmtSame:   info.setInfo ("Same as Original", "", "File", 0); info.setTicked (formatBox.getSelectedId() == 1); break;
@@ -1653,7 +1650,6 @@ private:
             m.addCommandItem (cm, cmdRemove);
             m.addSeparator();
             m.addCommandItem (cm, cmdExport);
-            m.addCommandItem (cm, cmdExportAll);
             juce::PopupMenu fmt;
             fmt.addCommandItem (cm, cmdFmtSame);
             fmt.addCommandItem (cm, cmdFmt24);

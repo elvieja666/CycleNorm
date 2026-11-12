@@ -6,12 +6,12 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 
 ## Cómo usarla
 
-1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **File ▸ Open…** (⌘O). También podés soltar archivos sobre el ícono del Dock. Para pasar de un 808 a otro usá el **selector** de arriba, al lado del título (muestra el nombre del archivo, con una flechita), o las flechas **↑ / ↓** del teclado.
+1. Arrastrá un WAV / AIFF a la ventana (también abre FLAC, MP3, M4A y CAF), o usá **File ▸ Open…** (⌘O). También podés soltar archivos sobre el ícono del Dock. Se trabaja **un 808 por vez**: el que abrís reemplaza al que estaba (si soltás varios o una carpeta, abre el primero). Su nombre aparece arriba, al lado del título.
 2. Arriba ves el **original** y abajo el **procesado**. Los cortes de cada semiciclo no se dibujan (no hacen falta): la app los usa por dentro.
 3. La app suena por la salida que tenga elegida la Mac y la sigue sola: si enchufás auriculares, conectás unos bluetooth o cambiás la salida en Ajustes > Sonido, en un segundo pasa a esa salida (si estaba sonando, sigue sonando, con un corte mínimo al cambiar).
 4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar, con un fundido de 10 ms para que no haga click; también hay fundido cuando el procesado cambia mientras suena, por ejemplo al mover Amount o el loop), **↑ / ↓** = pasar de archivo. **Loop** repite: si el archivo tiene loop (zona verde), repite esa zona infinitamente; si no, todo el archivo.
 5. Para llevarlo al DAW tenés dos caminos:
-   - **File ▸ Export…** (⌘E) guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **File ▸ Export All…** (⇧⌘E) procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
+   - **File ▸ Export…** (⌘E) guarda el 808 abierto (por defecto con `_norm` al final del nombre).
    - **Drag to DAW** (arriba a la derecha de todo): arrastrás esa pastilla a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
 
 ## Controles
@@ -26,9 +26,9 @@ La normalización es siempre completa: cada semiciclo a 0 dBFS (Amount ya no est
 | **Ramp** (arriba a la derecha) | De 0 a 100 % (por defecto **0**). Es la rampa en cada cambio de ganancia, centrada en el cruce por cero, y es proporcional a cada semiciclo. **0 %**: rampa mínima (1 ms como mucho, o el 6 % del semiciclo; unos 0,7 ms en un 808 de 45 Hz). **100 %**: cubre el 40 % de cada semiciclo a cada lado del cruce (unos 9 ms en total en un 808 de 45 Hz, 3,3 ms en uno de 120 Hz). Ojo: al mezclar la ganancia de un semiciclo con la del vecino, en un 808 asimétrico los lados vuelven a quedar un poco distintos (en las pruebas el 2º armónico sube de -60 a -29 dB). Puede servir en los saltos bruscos (la cola con ruido, el arranque de un golpe). Nunca deja pasar de 0 dB: si la rampa mete una ganancia más alta en el borde de un semiciclo, ahí se baja justo lo necesario |
 | **File ▸ Export Format** | **Same as Original** (mismo formato, bits y sample rate), **WAV 24-bit** o **WAV 32-bit float** |
 
-Los ajustes se aplican a todos los archivos cargados y se guardan al cerrar la app.
+Los ajustes (Ramp, Skip, formato) se guardan al cerrar la app.
 
-**El objetivo es siempre 0 dBFS** (no hay control de Target) y **se normaliza todo**, incluida la cola hasta el final y el ruido de fondo (no hay Threshold). Lo único que puede pasar de 0 dBFS es el ataque original que dejás sin tocar con Skip (si ya venía pasado). En ese caso aparece **CLIPPING!** en rojo arriba, al lado del selector: exportá en 32 bit float.
+**El objetivo es siempre 0 dBFS** (no hay control de Target) y **se normaliza todo**, incluida la cola hasta el final y el ruido de fondo (no hay Threshold). Lo único que puede pasar de 0 dBFS es el ataque original que dejás sin tocar con Skip (si ya venía pasado). En ese caso aparece **CLIPPING!** en rojo arriba, al lado del nombre del archivo: exportá en 32 bit float.
 
 ## Pitch
 
@@ -50,7 +50,7 @@ La idea: normalizar el 808 y loopear una parte para que suene infinitamente sin 
 1. Tocá **Endd loop**. La app prueba **todos** los inicios y fines posibles entre la línea de Skip y la de End (abajo se ve una barra de progreso, y el botón pasa a **Cancel**). Marca el mejor en **verde** en el gráfico de abajo y prende **Loop**: el play arranca desde el principio y, al llegar al fin del loop, vuelve al inicio del loop infinitamente.
    **Next loop** pasa por las otras 4 mejores opciones (distintas entre sí, no el mismo loop corrido una onda), para elegir de oído. Abajo dice cuál está puesta ("option 2 of 5"). Cada opción arranca sin crossfade, aunque a la anterior le hayas puesto uno.
 2. Para **mover el loop entero**, agarrá la zona verde por adentro (aparece la manito) y arrastrala: las dos puntas se mueven juntas, el loop mantiene la misma cantidad de ondas y sigue cayendo en ondas enteras, entre la línea de Skip y la de End. Un clic sin arrastrar adentro de la zona solo mueve el cursor de reproducción.
-3. Si querés otro largo, arrastrá las **puntas verdes** (manijas abajo). Saltan de onda entera en onda entera, así siempre cortan en fase y sin click. Arriba, al lado del selector del 808, se lee el loop: su **calidad** (100 % = empalme perfecto), cuántas ondas tiene, el crossfade y qué opción es (por ejemplo "option 1/5"). Si al estirarlo la calidad baja mucho, es porque la nota cambia a lo largo de la cola y el salto de pitch se va a notar.
+3. Si querés otro largo, arrastrá las **puntas verdes** (manijas abajo). Saltan de onda entera en onda entera, así siempre cortan en fase y sin click. Arriba, al lado del nombre del archivo, se lee el loop: su **calidad** (100 % = empalme perfecto), cuántas ondas tiene, el crossfade y qué opción es (por ejemplo "option 1/5"). Si al estirarlo la calidad baja mucho, es porque la nota cambia a lo largo de la cola y el salto de pitch se va a notar.
 4. **Crossfade del loop**, como en el Quick Sampler de Logic, pero sobre la forma de onda: abajo de la zona verde, en el fin del loop, hay una **manija ✕**. Arrastrala hacia la izquierda: se engancha en los cruces por cero (ondas enteras), así nunca queda a mitad de onda. Va de 1 onda hasta el largo del loop (si el loop tiene 2 ondas, hasta 2); llevándola hasta el fin del loop queda en **Off**, que es como viene. Se ven dos triángulos: el de antes del inicio es lo que entra y el de antes del fin es lo que sale. Funde las últimas ondas antes del fin del loop con las que están antes del inicio, así al saltar lo que venía sonando ya es casi lo mismo que lo que sigue. Queda metido en el audio exportado, así funciona en cualquier sampler. Si lo usás, no le pongas además crossfade en el sampler, porque se sumarían. Es por archivo y se lee abajo ("crossfade 2 cycles"). La calidad % mide los puntos de loop, sin el crossfade.
 5. **Clear loop** lo borra.
 6. Al **exportar**, el WAV lleva los **puntos de loop adentro** (bloque "smpl", el que leen el Sampler de Logic, Kontakt, Simpler y la mayoría de los samplers). También lleva la **nota raíz** medida (por ejemplo C1 + 3 cents), así el sampler lo afina solo. Con loop siempre se exporta en WAV, aunque el original sea AIFF.
@@ -84,7 +84,7 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 ## Carpetas
 
 - `Source/CycleEngine.h`: el motor (detección de ondas y ganancia). No depende de JUCE.
-- `Source/Main.cpp`: la app (ventana, selector de archivos, controles, menús, exportar).
+- `Source/Main.cpp`: la app (ventana, controles, menús, exportar).
 - `Source/WaveformView.h`: el visor de forma de onda.
 - `Source/LoopFinder.h`: el buscador de loop, el crossfade del empalme y la nota raíz.
 - `Source/ABSource.h`: la reproducción original / procesado (y la zona de loop).
@@ -96,7 +96,7 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 
 | Menú | Opciones |
 |---|---|
-| **File** | Open… (⌘O), Remove from List (⌘⌫), Export… (⌘E), Export All… (⇧⌘E), Export Format (Same as Original / WAV 24-bit / WAV 32-bit Float) |
+| **File** | Open… (⌘O), Close (⌘W), Export… (⌘E), Export Format (Same as Original / WAV 24-bit / WAV 32-bit Float) |
 | **Edit** | Undo (⌘Z), Redo (⇧⌘Z) |
 | **Playback** | Play / Stop (barra espaciadora), Loop Playback (⇧⌘L), Hear Processed (A), Show Whole Sound (⌘0) |
 | **Loop** | Find Loop / Cancel Loop Search (⌘L), Next Loop (⌘N), Clear Loop |
