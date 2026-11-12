@@ -236,6 +236,12 @@ struct Item
         const int full = original ? original->getNumSamples() : 0;
         return (endSample > 0 && (int) endSample < full) ? (int) endSample : full;
     }
+    // lo que se exporta: con loop, termina donde termina el loop (lo que sigue el sampler no lo toca nunca)
+    int exportLength() const
+    {
+        const int len = lengthToWrite();
+        return (hasLoop() && (int) loopEnd > 0 && (int) loopEnd < len) ? (int) loopEnd : len;
+    }
 };
 
 //==============================================================================
@@ -1530,7 +1536,7 @@ private:
                                                                           fmtInfo.bits, meta, 0));
         if (w == nullptr) { error = "Format not supported"; return false; }
         stream.release(); // ahora es del writer
-        if (! w->writeFromAudioSampleBuffer (*it.processed, 0, it.lengthToWrite())) // hasta la línea de Fin
+        if (! w->writeFromAudioSampleBuffer (*it.processed, 0, it.exportLength())) // hasta el fin del loop (o la línea de End)
         {
             error = "Error writing " + dest.getFileName();
             return false;
