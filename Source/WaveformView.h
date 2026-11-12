@@ -326,9 +326,11 @@ private:
             for (double cc = c0; cc <= c1 + 1e-9; cc += stepC)
             {
                 const double m = cc / 100.0;
-                const int note = (int) std::lround (m);
-                const double dev = (m - note) * 100.0;
-                const bool isNote = std::abs (dev) < 1e-6;
+                // siempre desde la nota de abajo: C1, C1 +25c, C1 +50c, C1 +75c, C#1...
+                int note = (int) std::floor (m + 1e-6);
+                double dev = (m - note) * 100.0;
+                if (dev > 100.0 - 1e-4) { ++note; dev = 0.0; }
+                const bool isNote = std::abs (dev) < 1e-4;
                 const float y = yOf (m);
                 g.setColour (juce::Colour (isNote ? 0x70ffd34d : 0x22ffd34d));
                 g.drawHorizontalLine ((int) y, (float) r.getX(), lineEnd);
@@ -571,7 +573,7 @@ private:
     {
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
-        g.setColour (juce::Colour (0xff15171b));
+        g.setColour (juce::Colour (0xff0f1114));
         g.fillRect (r);
         const float mid = (float) r.getCentreY(), half = r.getHeight() * 0.46f;
 
@@ -776,7 +778,7 @@ private:
         const int w = juce::jmax (1, getWidth()), h = juce::jmax (1, getHeight());
         cache = juce::Image (juce::Image::RGB, w, h, true);
         juce::Graphics g (cache);
-        g.fillAll (juce::Colour (0xff0e1013));
+        g.fillAll (juce::Colour (0xff0b0c0e));
         if (totalLen() == 0)
         {
             g.setColour (juce::Colour (0xff8a919c));

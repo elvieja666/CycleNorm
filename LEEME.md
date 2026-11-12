@@ -87,6 +87,8 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 - `Source/WaveformView.h`: el visor de forma de onda.
 - `Source/LoopFinder.h`: el buscador de loop, el crossfade del empalme y la nota raíz.
 - `Source/ABSource.h`: la reproducción original / procesado (y la zona de loop).
+- `Source/Theme.h`: la estética (la misma de UNISON / MeteringAB): colores, botones en relieve, pastillas y recuadros hundidos.
+- `Resources/Fonts/`: las letras: Inter (licencia OFL, en `OFL.txt`) y Akira Expanded para el título.
 - `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico, Threshold, Target fijo, Amount 50 %). Incluye un 808 con 2º y 3º armónico casi tan fuertes como la fundamental, uno con un glide muy rápido en el ataque (de 120 a 34 Hz en 50 ms) y uno que arranca con un rulito chico para arriba. También prueba el loop: que caiga en ondas enteras, que empalme sin salto, que devuelva varias opciones distintas, que se pueda cancelar, el crossfade y la nota raíz. Comprueba que cada tramo llega al objetivo, que cada onda dura un período de la fundamental, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
 
 **Deshacer / rehacer:** **⌘Z** deshace el último cambio y **⇧⌘Z** (o ⌘Y) lo rehace. Cuenta todo lo que se edita: Pitch, Skip, End, el loop (buscarlo, Next loop, moverlo, estirarlo, Clear loop), el crossfade, Amount y Ramp. Un arrastre entero es un solo paso. Si el cambio era de otro archivo, lo selecciona y lo deshace ahí. Guarda hasta 300 pasos.

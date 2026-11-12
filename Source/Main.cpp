@@ -5,12 +5,183 @@
 #include "Resample.h"
 #include "ABSource.h"
 #include "WaveformView.h"
+#include "Theme.h"
 
 namespace
 {
-const juce::Colour kAccent (0xff4fb3ff);
-const juce::Colour kBg (0xff1b1e23);
-const juce::Colour kPanel (0xff23272e);
+// colores: los de UNISON (Theme.h)
+const juce::Colour kAccent = Theme::accent;
+const juce::Colour kBg = Theme::topLight;
+
+//==============================================================================
+// Look & feel con la estética de UNISON: botones claros en relieve, pastillas,
+// recuadros hundidos, azul de acento y letra Inter.
+class CycleNormLookAndFeel : public juce::LookAndFeel_V4
+{
+public:
+    CycleNormLookAndFeel()
+    {
+        setColourScheme (getLightColourScheme());
+        setColour (juce::ResizableWindow::backgroundColourId, Theme::topLight);
+        setColour (juce::Slider::textBoxTextColourId, Theme::inkStrong);
+        setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
+        setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
+        setColour (juce::Slider::textBoxHighlightColourId, Theme::accent.withAlpha (0.25f));
+        setColour (juce::TextEditor::backgroundColourId, Theme::well);
+        setColour (juce::TextEditor::textColourId, Theme::inkStrong);
+        setColour (juce::TextEditor::highlightColourId, Theme::accent.withAlpha (0.25f));
+        setColour (juce::TextEditor::highlightedTextColourId, Theme::inkStrong);
+        setColour (juce::TextEditor::outlineColourId, juce::Colours::transparentBlack);
+        setColour (juce::TextEditor::focusedOutlineColourId, Theme::accent);
+        setColour (juce::CaretComponent::caretColourId, Theme::accent);
+        setColour (juce::ComboBox::textColourId, Theme::ink);
+        setColour (juce::ComboBox::arrowColourId, Theme::ink);
+        setColour (juce::PopupMenu::backgroundColourId, Theme::well);
+        setColour (juce::PopupMenu::textColourId, Theme::ink);
+        setColour (juce::PopupMenu::headerTextColourId, Theme::inkDim);
+        setColour (juce::PopupMenu::highlightedBackgroundColourId, Theme::accent);
+        setColour (juce::PopupMenu::highlightedTextColourId, juce::Colours::white);
+        setColour (juce::TextButton::buttonColourId, Theme::raisedBot);
+        setColour (juce::TextButton::buttonOnColourId, Theme::raisedBot);
+        setColour (juce::TextButton::textColourOffId, Theme::ink);
+        setColour (juce::TextButton::textColourOnId, Theme::accent);
+        setColour (juce::Label::textColourId, Theme::ink);
+        setColour (juce::Label::backgroundWhenEditingColourId, Theme::well);
+        setColour (juce::Label::textWhenEditingColourId, Theme::inkStrong);
+        setColour (juce::Label::outlineWhenEditingColourId, Theme::accent);
+        setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
+        setColour (juce::ScrollBar::thumbColourId, Theme::track);
+        setColour (juce::AlertWindow::backgroundColourId, Theme::topLight);
+        setColour (juce::AlertWindow::textColourId, Theme::ink);
+        setColour (juce::AlertWindow::outlineColourId, Theme::track);
+        setColour (juce::ProgressBar::foregroundColourId, Theme::accent);
+        setColour (juce::ProgressBar::backgroundColourId, Theme::well);
+    }
+
+    // toda la letra por defecto: Inter (negrita = SemiBold)
+    juce::Typeface::Ptr getTypefaceForFont (const juce::Font& f) override
+    {
+        if (f.getTypefaceName() == juce::Font::getDefaultSansSerifFontName())
+            return Theme::typeface (f.isBold() ? 600 : 400);
+        return LookAndFeel_V4::getTypefaceForFont (f);
+    }
+
+    // zona visible del botón en relieve (deja lugar para la sombra)
+    static juce::Rectangle<float> raisedShape (juce::Rectangle<float> b) { return b.reduced (4.0f, 2.0f).withTrimmedBottom (4.0f); }
+
+    juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (13.5f, 400); }
+
+    void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
+    {
+        auto r = b.getLocalBounds().toFloat();
+        if (b.getClickingTogglesState()) // Loop / Hearing: pastilla; prendido = clara con borde azul
+        {
+            auto p = raisedShape (r).expanded (0.0f, 1.0f);
+            const float radius = p.getHeight() * 0.5f;
+            const bool on = b.getToggleState();
+            g.setColour (on ? Theme::raisedTop : Theme::pill.brighter (over ? 0.03f : 0.0f));
+            g.fillRoundedRectangle (p, radius);
+            if (on) { g.setColour (Theme::accent.withAlpha (0.45f)); g.drawRoundedRectangle (p.reduced (0.5f), radius, 1.0f); }
+            return;
+        }
+        const auto shape = raisedShape (r);
+        Theme::drawRaised (g, shape, shape.getHeight() * 0.5f, over && b.isEnabled(), down);
+    }
+
+    void drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool) override
+    {
+        auto colour = b.getClickingTogglesState() ? (b.getToggleState() ? Theme::accent : Theme::inkDim) : Theme::ink;
+        if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
+        auto r = raisedShape (b.getLocalBounds().toFloat()).toNearestInt();
+        if (! b.getClickingTogglesState()) r = r.translated (0, b.isDown() ? 1 : 0);
+        g.setColour (colour);
+        g.setFont (getTextButtonFont (b, b.getHeight()));
+        if (b.getProperties().contains ("speaker")) // Hearing: parlante + texto, centrados juntos
+        {
+            const auto font = getTextButtonFont (b, b.getHeight());
+            const float textW = juce::GlyphArrangement::getStringWidth (font, b.getButtonText());
+            const float iconH = 14.0f, iconW = iconH * 0.95f, gap = 7.0f;
+            const auto rf = r.toFloat();
+            const float x0 = rf.getCentreX() - (iconW + gap + textW) * 0.5f;
+            Theme::drawSpeaker (g, { x0, rf.getCentreY() - iconH * 0.5f, iconW, iconH }, colour);
+            g.setColour (colour);
+            g.drawText (b.getButtonText(), juce::Rectangle<float> (x0 + iconW + gap, rf.getY(), textW + 4.0f, rf.getHeight()),
+                        juce::Justification::centredLeft, false);
+            return;
+        }
+        g.drawFittedText (b.getButtonText(), r, juce::Justification::centred, 1);
+    }
+
+    // selector (Format): pastilla gris con flechita
+    void drawComboBox (juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box) override
+    {
+        auto r = raisedShape ({ 0.0f, 0.0f, (float) w, (float) h }).expanded (0.0f, 1.0f);
+        const float radius = r.getHeight() * 0.5f;
+        g.setColour (Theme::pill.darker (box.isMouseOver (true) ? 0.03f : 0.0f));
+        g.fillRoundedRectangle (r, radius);
+        const float cx = r.getRight() - radius - 2.0f, cy = r.getCentreY();
+        juce::Path arrow;
+        arrow.startNewSubPath (cx - 4.5f, cy - 2.0f);
+        arrow.lineTo (cx, cy + 2.5f);
+        arrow.lineTo (cx + 4.5f, cy - 2.0f);
+        g.setColour (Theme::ink);
+        g.strokePath (arrow, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    juce::Font getComboBoxFont (juce::ComboBox&) override { return Theme::font (13.5f, 400); }
+    void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
+    {
+        label.setFont (getComboBoxFont (box));
+        const auto r = raisedShape (box.getLocalBounds().toFloat()).toNearestInt();
+        label.setBounds (r.getX() + 10, r.getY(), r.getWidth() - 10 - r.getHeight(), r.getHeight());
+    }
+    juce::Font getPopupMenuFont() override { return Theme::font (13.5f, 400); }
+
+    // barras (Amount, Ramp, Pitch): recuadro hundido con el valor en azul.
+    // Las que van de negativo a positivo (Pitch) se llenan desde el 0.
+    void drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
+                           juce::Slider::SliderStyle style, juce::Slider& s) override
+    {
+        if (style != juce::Slider::LinearBar) { LookAndFeel_V4::drawLinearSlider (g, x, y, w, h, pos, 0, 0, style, s); return; }
+        const auto r = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
+        const float radius = r.getHeight() * 0.5f;
+        Theme::drawWell (g, r, radius);
+        float from = r.getX();
+        if (s.getMinimum() < 0.0 && s.getMaximum() > 0.0) from = r.getX() + (float) s.valueToProportionOfLength (0.0) * r.getWidth();
+        const float a = std::min (from, pos), b = std::max (from, pos);
+        if (b - a > 0.5f)
+        {
+            juce::Graphics::ScopedSaveState st (g);
+            juce::Path clip; clip.addRoundedRectangle (r, radius);
+            g.reduceClipRegion (clip);
+            g.setGradientFill (juce::ColourGradient (Theme::accent.withAlpha (0.30f), 0.0f, r.getY(),
+                                                     Theme::accent.withAlpha (0.20f), 0.0f, r.getBottom(), false));
+            g.fillRect (juce::Rectangle<float> (a, r.getY(), b - a, r.getHeight()));
+            g.setColour (Theme::accent);
+            g.fillRect (juce::Rectangle<float> (pos - 1.0f, r.getY(), 2.0f, r.getHeight()));
+        }
+    }
+    juce::Label* createSliderTextBox (juce::Slider& s) override
+    {
+        auto* l = LookAndFeel_V4::createSliderTextBox (s);
+        l->setFont (Theme::font (13.5f, 500));
+        l->setColour (juce::Label::textColourId, Theme::inkStrong);
+        l->setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        l->setColour (juce::Label::outlineColourId, juce::Colours::transparentBlack);
+        return l;
+    }
+
+    void drawProgressBar (juce::Graphics& g, juce::ProgressBar&, int w, int h, double progress, const juce::String&) override
+    {
+        const auto r = juce::Rectangle<float> (0.0f, 0.0f, (float) w, (float) h);
+        Theme::drawWell (g, r, r.getHeight() * 0.5f);
+        if (progress > 0.0)
+        {
+            const auto f = r.withWidth (juce::jmax (r.getHeight(), r.getWidth() * (float) juce::jlimit (0.0, 1.0, progress)));
+            g.setColour (Theme::accent.withAlpha (0.85f));
+            g.fillRoundedRectangle (f, r.getHeight() * 0.5f);
+        }
+    }
+};
 juce::String u8 (const char* s) { return juce::String::fromUTF8 (s); }
 
 cyclenorm::Channels toChannels (const juce::AudioBuffer<float>& b)
@@ -75,12 +246,15 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        // pastilla clara con borde azul (como Scope en UNISON)
         auto r = getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (isEnabled() ? kAccent.withAlpha (hover ? 0.25f : 0.12f) : juce::Colours::transparentBlack);
-        g.fillRoundedRectangle (r, 6.0f);
-        g.setColour (isEnabled() ? kAccent : juce::Colour (0xff555a63));
-        g.drawRoundedRectangle (r, 6.0f, 1.2f);
-        g.setFont (juce::FontOptions (13.0f));
+        const float radius = r.getHeight() * 0.5f;
+        g.setColour (isEnabled() ? (hover ? Theme::raisedTop : Theme::raisedTop.darker (0.015f)) : Theme::pill);
+        g.fillRoundedRectangle (r, radius);
+        g.setColour (isEnabled() ? Theme::accent.withAlpha (hover ? 0.8f : 0.45f) : Theme::track);
+        g.drawRoundedRectangle (r, radius, 1.0f);
+        g.setColour (isEnabled() ? Theme::accent : Theme::inkFaint);
+        g.setFont (Theme::font (13.5f, 400));
         g.drawText (u8 ("⇢  Drag the processed audio to your DAW"), getLocalBounds(), juce::Justification::centred);
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
@@ -164,11 +338,9 @@ public:
         setupButton (otherLoopButton, "Next loop");
         otherLoopButton.onClick = [this] { nextLoopCandidate(); };
         addChildComponent (progressBar);
-        progressBar.setColour (juce::ProgressBar::foregroundColourId, kAccent);
-        progressBar.setColour (juce::ProgressBar::backgroundColourId, juce::Colour (0xff2d323a));
         progressBar.setTextToDisplay (" "); // el texto va en una etiqueta encima (el de la barra no se leía)
-        progressLabel.setColour (juce::Label::textColourId, juce::Colours::white);
-        progressLabel.setFont (juce::FontOptions (13.0f));
+        progressLabel.setColour (juce::Label::textColourId, Theme::inkStrong);
+        progressLabel.setFont (Theme::font (13.0f, 500));
         progressLabel.setJustificationType (juce::Justification::centred);
         progressLabel.setInterceptsMouseClicks (false, false);
         addChildComponent (progressLabel);
@@ -178,8 +350,7 @@ public:
         loopButton.setClickingTogglesState (true);
         abButton.setClickingTogglesState (true);
         abButton.setToggleState (true, juce::dontSendNotification);
-        abButton.setColour (juce::TextButton::buttonOnColourId, kAccent.withAlpha (0.55f));
-        loopButton.setColour (juce::TextButton::buttonOnColourId, kAccent.withAlpha (0.55f));
+        abButton.getProperties().set ("speaker", true);
 
         openButton.onClick = [this] { openFiles(); };
         removeButton.onClick = [this] { removeSelected(); };
@@ -233,7 +404,7 @@ public:
 
         list.setModel (this);
         list.setRowHeight (34);
-        list.setColour (juce::ListBox::backgroundColourId, kPanel);
+        list.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
         list.setWantsKeyboardFocus (false);
         addAndMakeVisible (list);
 
@@ -293,11 +464,11 @@ public:
         };
         addAndMakeVisible (wave);
 
-        info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
-        info.setFont (juce::FontOptions (13.0f));
+        info.setColour (juce::Label::textColourId, Theme::inkDim);
+        info.setFont (Theme::font (13.0f, 400));
         addAndMakeVisible (info);
         pitchLabel.setColour (juce::Label::textColourId, kAccent);
-        pitchLabel.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+        pitchLabel.setFont (Theme::font (14.0f, 500));
         pitchLabel.setJustificationType (juce::Justification::centredRight);
         addAndMakeVisible (pitchLabel);
 
@@ -328,16 +499,28 @@ public:
     //==========================================================================
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (kBg);
-        g.setColour (kPanel);
-        g.fillRect (controlsArea);
-        g.setColour (juce::Colours::white);
-        g.setFont (juce::FontOptions (18.0f, juce::Font::bold));
-        g.drawText ("CycleNorm", titleArea, juce::Justification::centredLeft);
-        g.setColour (juce::Colour (0xff8a919c));
-        g.setFont (juce::FontOptions (12.0f));
+        // fondo claro con degradé, como UNISON
+        g.setGradientFill (juce::ColourGradient (Theme::topLight, 0.0f, 0.0f, Theme::topDark, 0.0f, (float) getHeight(), false));
+        g.fillAll();
+        // título en Akira Expanded
+        g.setColour (Theme::inkStrong);
+        const auto tf = Theme::titleFont (15.0f);
+        g.setFont (tf);
+        const float titleW = juce::GlyphArrangement::getStringWidth (tf, "CYCLENORM");
+        g.drawText ("CYCLENORM", titleArea.toFloat(), juce::Justification::centredLeft);
+        g.setColour (Theme::inkFaint);
+        g.setFont (Theme::font (12.5f, 300));
         g.drawText (u8 ("normalizes half-cycle by half-cycle · space = play · A = original/processed"),
-                    titleArea.withTrimmedLeft (110), juce::Justification::centredLeft);
+                    titleArea.withTrimmedLeft ((int) titleW + 18), juce::Justification::centredLeft);
+        // recuadros hundidos: la lista y los controles de abajo
+        Theme::drawWell (g, list.getBounds().toFloat().expanded (1.0f), 12.0f);
+        Theme::drawWell (g, controlsArea.toFloat(), 14.0f);
+        // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
+        g.setColour (Theme::darkBg);
+        g.fillRoundedRectangle (waveArea.toFloat(), 12.0f);
+        // separador fino debajo de la fila de botones
+        g.setColour (juce::Colours::black.withAlpha (0.07f));
+        g.fillRect (juce::Rectangle<float> ((float) titleArea.getX(), (float) separatorY, (float) titleArea.getWidth(), 1.0f));
     }
 
     void resized() override
@@ -347,7 +530,7 @@ public:
         pitchLabel.setBounds (titleArea.withTrimmedLeft (titleArea.getWidth() / 2));
         r.removeFromTop (6);
 
-        auto top = r.removeFromTop (30);
+        auto top = r.removeFromTop (36);
         openButton.setBounds (top.removeFromLeft (90)); top.removeFromLeft (6);
         removeButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (16);
         playButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (6);
@@ -359,10 +542,12 @@ public:
         exportAllButton.setBounds (top.removeFromRight (130)); top.removeFromRight (6);
         exportButton.setBounds (top.removeFromRight (100)); top.removeFromRight (6);
         formatBox.setBounds (top.removeFromRight (210));
-        r.removeFromTop (8);
+        r.removeFromTop (5);
+        separatorY = r.getY();
+        r.removeFromTop (10);
 
         controlsArea = r.removeFromBottom (118);
-        auto c = controlsArea.reduced (12, 10);
+        auto c = controlsArea.reduced (14, 12);
         auto bottomRow = c.removeFromBottom (30);
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
@@ -382,9 +567,10 @@ public:
         place (pitchShiftLabel, pitchShift, nullptr);
         r.removeFromBottom (8);
 
-        list.setBounds (r.removeFromLeft (230));
+        list.setBounds (r.removeFromLeft (230).reduced (4));
         r.removeFromLeft (8);
-        wave.setBounds (r);
+        waveArea = r;
+        wave.setBounds (r.reduced (8));
     }
 
     bool keyPressed (const juce::KeyPress& k) override
@@ -518,6 +704,8 @@ private:
     WaveformView wave;
     DragOut dragOut;
     juce::Rectangle<int> titleArea, controlsArea;
+    int separatorY = 0;
+    juce::Rectangle<int> waveArea;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
     int outputCheckTicks = 0;
@@ -532,13 +720,12 @@ private:
         s.setRange (lo, hi, step);
         s.setTextValueSuffix (suffix);
         s.setValue (value, juce::dontSendNotification);
-        s.setColour (juce::Slider::trackColourId, kAccent.withAlpha (0.45f));
         s.setWantsKeyboardFocus (false);
         s.onValueChange = [this] { settingsChanged(); };
         addAndMakeVisible (s);
         l.setText (name, juce::dontSendNotification);
-        l.setFont (juce::FontOptions (13.0f));
-        l.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
+        l.setFont (Theme::font (12.5f, 300));
+        l.setColour (juce::Label::textColourId, Theme::inkDim);
         addAndMakeVisible (l);
     }
 
@@ -1090,9 +1277,9 @@ private:
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
             t << u8 ("  ·  CLIPPING! The original attack goes over 0 dBFS: export as 32-bit float");
-            info.setColour (juce::Label::textColourId, juce::Colour (0xffff6b6b));
+            info.setColour (juce::Label::textColourId, Theme::bad);
         }
-        else info.setColour (juce::Label::textColourId, juce::Colour (0xffc8ced6));
+        else info.setColour (juce::Label::textColourId, Theme::inkDim);
         info.setText (t, juce::dontSendNotification);
     }
 
@@ -1366,15 +1553,15 @@ private:
     {
         if (! juce::isPositiveAndBelow (row, (int) items.size())) return;
         auto& it = *items[(size_t) row];
-        if (selected) { g.setColour (kAccent.withAlpha (0.28f)); g.fillRect (0, 0, w, h); }
-        g.setColour (juce::Colours::white);
-        g.setFont (juce::FontOptions (13.0f));
-        g.drawText (it.file.getFileName(), 8, 2, w - 12, h / 2, juce::Justification::bottomLeft, true);
-        g.setColour (juce::Colour (0xff8a919c));
-        g.setFont (juce::FontOptions (11.0f));
+        if (selected) Theme::drawRaised (g, juce::Rectangle<float> (3.0f, 2.0f, (float) w - 6.0f, (float) h - 5.0f), 8.0f, false, false);
+        g.setColour (selected ? Theme::accent : Theme::ink);
+        g.setFont (Theme::font (13.0f, selected ? 500 : 400));
+        g.drawText (it.file.getFileName(), 10, 2, w - 16, h / 2, juce::Justification::bottomLeft, true);
+        g.setColour (Theme::inkFaint);
+        g.setFont (Theme::font (11.0f, 400));
         g.drawText (juce::String ((int) it.analysis.numCycles()) + u8 (" cycles · ") + juce::String (it.sampleRate / 1000.0, 1)
                         + " kHz · " + (it.isFloat ? juce::String ("32f") : juce::String (it.bits)) + " bit",
-                    8, h / 2, w - 12, h / 2 - 2, juce::Justification::topLeft, true);
+                    10, h / 2, w - 16, h / 2 - 2, juce::Justification::topLeft, true);
     }
     void selectedRowsChanged (int row) override { if (row >= 0 && row != current) selectItem (row); }
 };
@@ -1389,10 +1576,6 @@ public:
 
     void initialise (const juce::String& commandLine) override
     {
-        laf.setColourScheme (juce::LookAndFeel_V4::getMidnightColourScheme());
-        laf.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff2d323a));
-        laf.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff2d323a));
-        laf.setColour (juce::ResizableWindow::backgroundColourId, kBg);
         juce::LookAndFeel::setDefaultLookAndFeel (&laf);
         window = std::make_unique<MainWindow>();
         window->content->openFromCommandLine (commandLine);
@@ -1426,7 +1609,7 @@ private:
         MainComponent* content = nullptr;
     };
 
-    juce::LookAndFeel_V4 laf;
+    CycleNormLookAndFeel laf;
     std::unique_ptr<MainWindow> window;
 };
 

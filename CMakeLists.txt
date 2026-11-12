@@ -21,13 +21,22 @@ juce_add_gui_app(CycleNorm
     DOCUMENT_EXTENSIONS wav aif aiff flac mp3 m4a caf
     VERSION ${PROJECT_VERSION})
 
+# letras (las mismas de UNISON): Inter (OFL) y Akira Expanded para el título
+juce_add_binary_data(CycleNormFonts SOURCES
+    Resources/Fonts/Inter-Light.otf
+    Resources/Fonts/Inter-Regular.otf
+    Resources/Fonts/Inter-Medium.otf
+    Resources/Fonts/Inter-SemiBold.otf
+    Resources/Fonts/AkiraExpanded-Demo.otf)
+
 target_sources(CycleNorm PRIVATE
     Source/Main.cpp
     Source/CycleEngine.h
     Source/ABSource.h
     Source/WaveformView.h
     Source/LoopFinder.h
-    Source/Resample.h)
+    Source/Resample.h
+    Source/Theme.h)
 
 target_compile_definitions(CycleNorm PRIVATE
     JUCE_WEB_BROWSER=0
@@ -37,6 +46,7 @@ target_compile_definitions(CycleNorm PRIVATE
 
 target_link_libraries(CycleNorm
     PRIVATE juce::juce_audio_utils
+            CycleNormFonts
     PUBLIC juce::juce_recommended_config_flags
            juce::juce_recommended_lto_flags
            juce::juce_recommended_warning_flags)
