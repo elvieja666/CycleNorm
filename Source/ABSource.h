@@ -70,11 +70,14 @@ public:
         const bool region = looping && le > ls && le <= len;
         if (remapPending.exchange (false) && region)
         {
+            const juce::int64 before = p;
             const juce::int64 os = prevLoopStart.load(), oe = prevLoopEnd.load();
             if (oe > os && p >= os && p < oe)          // estaba sonando dentro del loop: mismo lugar en el loop nuevo
                 p = ls + (p - os) % (le - ls);
             else if (p >= le && (oe <= os || p < oe)) // quedó después del loop nuevo: vuelve adentro
                 p = ls + (p - ls) % (le - ls);
+            // el cursor saltó (otro loop, o se movió): mini crossfade de lo que venía sonando a lo nuevo
+            if (p != before) { jumpOld = before; jumpFade = 0.0f; }
         }
         int done = 0;
         while (done < info.numSamples)
@@ -88,7 +91,7 @@ public:
             juce::int64 stop = len;
             if (region && p < le) stop = le;
             const int n = (int) juce::jmin ((juce::int64) (info.numSamples - done), stop - p);
-            const bool steady = std::abs (mix - target) < 1e-6f && (swapFade >= 1.0f || ! useB);
+            const bool steady = std::abs (mix - target) < 1e-6f && (swapFade >= 1.0f || ! useB) && jumpFade >= 1.0f;
             if (steady)
             {
                 for (int c = 0; c < info.buffer->getNumChannels(); ++c)
@@ -104,20 +107,29 @@ public:
                     mix = target > mix ? juce::jmin (target, mix + fadeStep) : juce::jmax (target, mix - fadeStep);
                     const float sf = swapFade;
                     if (swapFade < 1.0f) swapFade = juce::jmin (1.0f, swapFade + fadeStep);
+                    const float jf = jumpFade;
+                    const int oldIdx = (int) jumpOld + k;
+                    if (jumpFade < 1.0f) jumpFade = juce::jmin (1.0f, jumpFade + fadeStep);
                     for (int c = 0; c < outCh; ++c)
                     {
-                        auto sampleOf = [&] (const BufferPtr& buf) {
-                            if (buf == nullptr || idx >= buf->getNumSamples()) return 0.0f;
-                            return buf->getSample (juce::jmin (c, buf->getNumChannels() - 1), idx);
+                        auto sampleAt = [&] (const BufferPtr& buf, int at) {
+                            if (buf == nullptr || at < 0 || at >= buf->getNumSamples()) return 0.0f;
+                            return buf->getSample (juce::jmin (c, buf->getNumChannels() - 1), at);
                         };
-                        float vb = sampleOf (b);
-                        if (sf < 1.0f && prevB != nullptr) vb = sampleOf (prevB) * (1.0f - sf) + vb * sf;
-                        const float va = sampleOf (a);
-                        info.buffer->setSample (c, info.startSample + done + k, va * (1.0f - mix) + vb * mix);
+                        auto valueAt = [&] (int at) {
+                            float vb = sampleAt (b, at);
+                            if (sf < 1.0f && prevB != nullptr) vb = sampleAt (prevB, at) * (1.0f - sf) + vb * sf;
+                            const float va = sampleAt (a, at);
+                            return va * (1.0f - mix) + vb * mix;
+                        };
+                        float v = valueAt (idx);
+                        if (jf < 1.0f) v = valueAt (oldIdx) * (1.0f - jf) + v * jf; // lo de antes del salto, fundiéndose
+                        info.buffer->setSample (c, info.startSample + done + k, v);
                     }
                 }
             }
             if (swapFade >= 1.0f) swapFade = 1.0f;
+            jumpOld += n;
             p += n;
             done += n;
         }
@@ -139,7 +151,8 @@ public:
 private:
     mutable juce::SpinLock lock;
     BufferPtr a, b, prevB;
-    float mix = 1.0f, swapFade = 1.0f, fadeStep = 1.0f / 441.0f; // (solo los toca el hilo de audio, salvo al cambiar buffers)
+    float mix = 1.0f, swapFade = 1.0f, jumpFade = 1.0f, fadeStep = 1.0f / 441.0f;
+    juce::int64 jumpOld = 0; // (salto del cursor: de dónde venía) // (solo los toca el hilo de audio, salvo al cambiar buffers)
     std::atomic<juce::int64> pos { 0 }, endSample { 0 }, loopStart { 0 }, loopEnd { 0 };
     std::atomic<juce::int64> prevLoopStart { 0 }, prevLoopEnd { 0 };
     std::atomic<bool> remapPending { false };
