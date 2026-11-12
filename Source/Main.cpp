@@ -702,7 +702,8 @@ public:
 
         info.setColour (juce::Label::textColourId, Theme::inkDim);
         info.setFont (Theme::font (12.0f, 400)); // como el estado de UNISON
-        info.setJustificationType (juce::Justification::centredRight); // la info del loop, a la derecha de todo
+        info.setJustificationType (juce::Justification::centredLeft); // la info del loop, desde la línea de al lado de Loop section
+        info.setBorderSize ({});
         addAndMakeVisible (info);
         pitchLabel.setColour (juce::Label::textColourId, kAccent);
         pitchLabel.setFont (Theme::font (12.5f, 400));
@@ -828,6 +829,7 @@ public:
                 b->setBounds (loopRow.removeFromLeft (wOf (*b)));
         }
         row.removeFromRight (kGap); groupDividers.push_back (row.getRight()); row.removeFromRight (kGap + 1);
+        loopInfoX = groupDividers.back(); // la info del loop arranca en esta línea (al lado de Loop section)
         // 3) el proceso: Normalize, Ramp y Pitch (las dos barras igual de largas)
         place (normButton, 0);
         {
@@ -998,7 +1000,7 @@ private:
     juce::Rectangle<int> titleArea, controlsArea;
     int separatorY = 0;
     juce::Rectangle<int> waveArea, fileName, titleRest;
-    int pitchInfoX = 0;
+    int pitchInfoX = 0, loopInfoX = 0;
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
@@ -1608,7 +1610,7 @@ private:
         if (t.isEmpty()) return;
         const int px = juce::jlimit (t.getX(), t.getRight(), pitchInfoX);
         fileName = t.withRight (px - 12);
-        auto rest = t.withLeft (px);
+        auto rest = t.withLeft (juce::jlimit (px, t.getRight(), loopInfoX));
         info.setBounds (rest);
         progressBar.setBounds (rest.withSizeKeepingCentre (rest.getWidth() - 12, 18).withX (rest.getX()));
         progressLabel.setBounds (progressBar.getBounds());
@@ -1635,8 +1637,6 @@ private:
             const auto nCyc = std::distance (std::lower_bound (B.begin(), B.end(), it.loopStart), std::lower_bound (B.begin(), B.end(), it.loopEnd));
             t << "Loop " << juce::String (it.loopQuality * 100.0, 1) << u8 (" % · ") << (int) nCyc << " cycles"
               << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) : juce::String ("Off"));
-            if (it.loopCandIdx >= 0 && it.loopCands.size() > 1)
-                t << u8 (" · ") << (int) it.loopCands.size() << " options";
         }
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
