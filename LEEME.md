@@ -1,4 +1,4 @@
-# CycleNorm v1.12.0
+# CycleNorm v1.13.0
 
 > La app está en inglés; este LEEME queda en castellano. Los nombres de botones y controles van como aparecen en la app.
 
