@@ -912,10 +912,11 @@ private:
                     g.drawText ("End", juce::Rectangle<float> (ex - 34.0f, (float) r.getBottom() - 18.0f, 30.0f, 14.0f), juce::Justification::centredRight);
                 }
             }
-            // rojo donde pasa de 0 dBFS
-            g.setColour (juce::Colour (0x40ff3030));
-            g.drawHorizontalLine ((int) (mid - half), (float) r.getX(), (float) r.getRight());
-            g.drawHorizontalLine ((int) (mid + half), (float) r.getX(), (float) r.getRight());
+            // la línea de 0 dBFS (arriba y abajo), en blanco
+            g.setColour (juce::Colour (0x59ffffff));
+            const float x1 = underlay ? (float) r.getRight() - 34.0f : (float) r.getRight(); // arriba: sin pisar el teclado
+            g.drawHorizontalLine ((int) (mid - half), (float) r.getX(), x1);
+            g.drawHorizontalLine ((int) (mid + half), (float) r.getX(), x1);
         }
 
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
