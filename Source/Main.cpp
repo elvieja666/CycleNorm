@@ -820,23 +820,13 @@ public:
             dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (2).withHeight (kButtonH + 1));
         }
         row.removeFromRight (kGap); groupDividersRight = row.getRight(); row.removeFromRight (kGap + 1);
-        // 4) el loop de sección (el que se exporta): prenderlo, buscarlo, el siguiente, borrarlo
-        {
-            const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Loop 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
-            auto wOf = [&] (juce::Button& b) { return &b == &otherLoopButton ? wNum : widthFor (b, 0); };
-            auto loopRow = row.removeFromRight (wOf (loopButton) + wOf (findLoopButton) + wOf (otherLoopButton) + wOf (clearLoopButton));
-            for (auto* b : { (juce::Button*) &loopButton, (juce::Button*) &findLoopButton, (juce::Button*) &otherLoopButton, (juce::Button*) &clearLoopButton })
-                b->setBounds (loopRow.removeFromLeft (wOf (*b)));
-        }
-        row.removeFromRight (kGap); groupDividers.push_back (row.getRight()); row.removeFromRight (kGap + 1);
-        loopInfoX = groupDividers.back(); // la info del loop arranca en esta línea (al lado de Loop section)
-        // 3) el proceso: Normalize, Ramp y Pitch (las dos barras igual de largas)
+        // 3) el proceso: Normalize y Ramp
         place (normButton, 0);
         {
             const auto lf = Theme::font (12.5f, 300);
             const int labelW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp")) + 10;
             row.removeFromLeft (kGap);
-            const int each = juce::jmax (100, (row.getWidth() - kGap) / 2);
+            const int each = labelW + 125; // la barra de Ramp: del mismo largo que antes
             auto put = [&] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl) {
                 const int cy = p.getY() + 2 + kButtonH / 2;
                 l.setBounds (p.removeFromLeft (labelW).withHeight (kPillH).withCentre ({ p.getX() - labelW / 2, cy }));
@@ -846,6 +836,15 @@ public:
             // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
             // (el slider queda oculto, guarda el valor)
         }
+        divider();
+        // 4) al lado de Ramp, el loop de sección (el que se exporta): prenderlo, buscarlo, el siguiente, borrarlo
+        {
+            const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Loop 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
+            auto wOf = [&] (juce::Button& b) { return &b == &otherLoopButton ? wNum : widthFor (b, 0); };
+            for (auto* b : { (juce::Button*) &loopButton, (juce::Button*) &findLoopButton, (juce::Button*) &otherLoopButton, (juce::Button*) &clearLoopButton })
+                b->setBounds (row.removeFromLeft (wOf (*b)));
+        }
+        loopInfoX = loopButton.getX() + 4; // la info del loop arranca en el borde izquierdo (visible) de Loop section
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
         r.removeFromTop (6);
