@@ -153,7 +153,7 @@ public:
             if (x >= 0 && x <= plotWidth())
             {
                 g.setColour (juce::Colours::white.withAlpha (0.85f));
-                g.fillRect ((float) x, 0.0f, 1.5f, (float) getHeight());
+                g.fillRect ((float) std::round (x), 0.0f, 1.0f, (float) getHeight()); // finita, como en UNISON
             }
         }
         drawZoomBar (g);
@@ -606,13 +606,13 @@ private:
                 else path.lineTo (x, y);
             }
             g.setColour (juce::Colour (0xff6fd6ff));
-            g.strokePath (path, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.strokePath (path, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             for (auto& p : pitchPts)
             {
                 const float x = (float) r.getX() + (float) sampleToX (p.first);
                 if (x < (float) r.getX() - 4 || x > (float) r.getRight() + 4) continue;
                 if (plotWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
-                g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
+                g.fillEllipse (x - 1.5f, yOf (midiOf (p.second)) - 1.5f, 3.0f, 3.0f);
             }
         }
         // etiqueta con los cents, pegada al teclado a la altura del pitch medido: cuánto se aleja de la nota
@@ -1095,7 +1095,7 @@ private:
                     for (int s = juce::jmax (0, s0 - 1); s < s1; ++s) { const float v = valueAt (s); lo = juce::jmin (lo, v); hi = juce::jmax (hi, v); }
                     if (hi < lo) continue;
                     const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
-                    const juce::Rectangle<float> cr { (float) r.getX() + (float) x * colW, y0, colW, juce::jmax (0.9f, y1 - y0) };
+                    const juce::Rectangle<float> cr { (float) r.getX() + (float) x * colW, y0, colW, juce::jmax (0.6f, y1 - y0) };
                     (cr.getX() < greyBefore ? greyPeaks : peaks).addWithoutMerging (cr);
                 }
                 g.fillRectList (peaks);
@@ -1136,7 +1136,7 @@ private:
                 {
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingSkip ? 1.0f : 0.85f));
                     const float dashes[] = { 4.0f, 3.0f };
-                    g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, draggingSkip ? 2.0f : 1.2f);
+                    g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, (float) r.getY(), std::round (lx) + 0.5f, (float) r.getBottom()), dashes, 2, draggingSkip ? 1.5f : 1.0f);
                 }
             }
             // lo que queda antes de la línea de Start: oscurecido (no se exporta ni suena)
@@ -1154,7 +1154,7 @@ private:
                 const float sx = (float) r.getX() + startLineX();
                 g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
                 const float dashes[] = { 4.0f, 3.0f };
-                g.drawDashedLine (juce::Line<float> (sx, (float) r.getY(), sx, (float) r.getBottom()), dashes, 2, draggingStart ? 2.0f : 1.2f);
+                g.drawDashedLine (juce::Line<float> (std::round (sx) + 0.5f, (float) r.getY(), std::round (sx) + 0.5f, (float) r.getBottom()), dashes, 2, draggingStart ? 1.5f : 1.0f);
             }
             // fade in: la rampa (de Start, abajo, hasta donde termina, arriba) y su manija
             if (showSkipLine && hasFadeHandle())
@@ -1170,7 +1170,7 @@ private:
                     g.setColour (juce::Colour (0x66000000));
                     g.fillPath (shade);
                     g.setColour (juce::Colours::white.withAlpha (0.55f));
-                    g.drawLine (x0, bot, x1, top, 1.2f);
+                    g.drawLine (x0, bot, x1, top, 1.0f);
                     // hasta dónde llega el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (x1, (float) r.getY(), x1, (float) r.getBottom(), 1.0f);
@@ -1190,7 +1190,7 @@ private:
                     g.setColour (juce::Colour (0x66000000));
                     g.fillPath (shade);
                     g.setColour (juce::Colours::white.withAlpha (0.55f));
-                    g.drawLine (x0, top, x1, bot, 1.2f);
+                    g.drawLine (x0, top, x1, bot, 1.0f);
                     // desde dónde arranca el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (x0, (float) r.getY(), x0, (float) r.getBottom(), 1.0f);
@@ -1225,7 +1225,7 @@ private:
                     if (lx < (float) r.getX() - 1.0f || lx > (float) r.getRight() + 1.0f) continue;
                     const bool grabbed = draggingLoop == 3 + k;
                     g.setColour (juce::Colour (0xff3ddc84).withAlpha (grabbed ? 1.0f : 0.9f));
-                    g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, grabbed ? 2.0f : 1.2f);
+                    g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, (float) r.getY(), std::round (lx) + 0.5f, (float) r.getBottom()), dashes, 2, grabbed ? 1.5f : 1.0f);
                 }
                 // crossfade (como en el Quick Sampler): lo que entra, antes del inicio, sube; lo que sale,
                 // antes del fin, baja. La manija ✕ (abajo) marca dónde empieza el fundido.
@@ -1267,7 +1267,7 @@ private:
                 {
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingEnd ? 1.0f : 0.9f));
                     const float dashes[] = { 4.0f, 3.0f };
-                    g.drawDashedLine (juce::Line<float> (ex, (float) r.getY(), ex, (float) r.getBottom()), dashes, 2, draggingEnd ? 2.0f : 1.2f);
+                    g.drawDashedLine (juce::Line<float> (std::round (ex) + 0.5f, (float) r.getY(), std::round (ex) + 0.5f, (float) r.getBottom()), dashes, 2, draggingEnd ? 1.5f : 1.0f);
                 }
             }
             // la línea de 0 dBFS (arriba y abajo), en blanco
