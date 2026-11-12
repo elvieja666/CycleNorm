@@ -702,10 +702,12 @@ public:
 
         info.setColour (juce::Label::textColourId, Theme::inkDim);
         info.setFont (Theme::font (12.0f, 400)); // como el estado de UNISON
+        info.setJustificationType (juce::Justification::centredRight); // la info del loop, a la derecha de todo
         addAndMakeVisible (info);
         pitchLabel.setColour (juce::Label::textColourId, kAccent);
         pitchLabel.setFont (Theme::font (12.5f, 400));
-        pitchLabel.setJustificationType (juce::Justification::centredRight);
+        pitchLabel.setJustificationType (juce::Justification::centredLeft);
+        pitchLabel.setBorderSize ({});      // el texto arranca justo en la línea que separa Processed de Normalize
         addAndMakeVisible (pitchLabel);
 
         dragOut.makeFile = [this] { return writeForDrag(); };
@@ -783,12 +785,7 @@ public:
             auto t = titleArea;
             const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (kTitleCap), "TOOLKIT");
             t.removeFromLeft ((int) titleW + 22);
-            pitchLabel.setBounds (t.removeFromRight (juce::jmin (520, t.getWidth() / 2)));
-            fileName = t.removeFromLeft (juce::jmin (330, t.getWidth() / 2));
-            t.removeFromLeft (12);
-            info.setBounds (t);
-            progressBar.setBounds (t.withSizeKeepingCentre (t.getWidth() - 12, 18).withX (t.getX()));
-            progressLabel.setBounds (progressBar.getBounds());
+            titleRest = t; // el nombre, el pitch y la info del loop: se acomodan en layoutTitleRow (abajo)
         }
 
         // botones: del ancho de su texto (como las pastillas de UNISON); el componente lleva la sombra
@@ -815,6 +812,7 @@ public:
             abButton.setBounds (row.removeFromLeft (w)); // con el parlante (mismo ancho con Processed u Original)
         }
         divider();
+        pitchInfoX = groupDividers.back(); // la info del pitch arranca en esta línea (entre Processed y Normalize)
         // 5) a la derecha de todo: Drag to DAW
         {
             const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
@@ -847,6 +845,7 @@ public:
             // (el slider queda oculto, guarda el valor)
         }
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
+        layoutTitleRow();
         r.removeFromTop (6);
         separatorY = r.getY();
         r.removeFromTop (8);
@@ -993,7 +992,8 @@ private:
     DragOut dragOut;
     juce::Rectangle<int> titleArea, controlsArea;
     int separatorY = 0;
-    juce::Rectangle<int> waveArea, fileName;
+    juce::Rectangle<int> waveArea, fileName, titleRest;
+    int pitchInfoX = 0;
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
@@ -1595,6 +1595,23 @@ private:
         return it.isFloat || it.bits > 24;
     }
 
+    // fila del título: el nombre del 808 hasta la línea de Processed | Normalize; desde ahí el pitch
+    // (del ancho de su texto) y a la derecha de todo la info del loop
+    void layoutTitleRow()
+    {
+        auto t = titleRest;
+        if (t.isEmpty()) return;
+        const int px = juce::jlimit (t.getX(), t.getRight(), pitchInfoX);
+        fileName = t.withRight (px - 12);
+        auto rest = t.withLeft (px);
+        const int pw = (int) std::ceil (juce::GlyphArrangement::getStringWidth (pitchLabel.getFont(), pitchLabel.getText())) + 4;
+        pitchLabel.setBounds (rest.removeFromLeft (juce::jmin (pw, rest.getWidth())));
+        rest.removeFromLeft (16);
+        info.setBounds (rest);
+        progressBar.setBounds (rest.withSizeKeepingCentre (rest.getWidth() - 12, 18).withX (rest.getX()));
+        progressLabel.setBounds (progressBar.getBounds());
+        repaint (titleArea);
+    }
     void updateInfo()
     {
         repaint (titleArea); // el nombre del 808 abierto
@@ -1753,18 +1770,18 @@ private:
         auto p = pitchOf (it, readSettings(), inLoop);
         p.midi += previewSemis;                                  // vista previa de la barra Pitch
         p.hz *= std::pow (2.0, previewSemis / 12.0);
-        if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); return; }
+        if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); layoutTitleRow(); return; }
         const double cents = (p.midi - std::round (p.midi)) * 100.0;
         juce::String t;
         t << "Pitch (" << (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding, approx." : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
           << " " << (cents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (cents), 1) << " cents  ·  "
           << juce::String (p.hz, 3) << " Hz";
         const double tuned = it.tuneSemis + previewSemis;
-        if (std::abs (tuned) > 1e-9)
-            t << u8 ("  ·  tuned ") << (tuned >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (tuned * 100.0), 1) << " cents";
+        t << u8 ("  ·  tuned ") << (tuned >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (tuned * 100.0), 1) << " cents";
         if (p.cycles >= 8)
             t << u8 ("  ·  drift ") << (p.driftCents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (p.driftCents), 1) << " cents";
         pitchLabel.setText (t, juce::dontSendNotification);
+        layoutTitleRow();
     }
 
     //== exportar ==============================================================
