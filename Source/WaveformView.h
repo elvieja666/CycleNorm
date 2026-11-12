@@ -125,9 +125,12 @@ public:
             drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
         }
 
+        // el cursor: en la x que calculó el timer (la misma franja que mandó a redibujar; si se
+        // calculara de nuevo acá, el audio ya avanzó y caería afuera de la franja: titilaba)
         if (totalLen() > 0 && getPlayheadSeconds)
         {
-            const double x = sampleToX (getPlayheadSeconds() * sr);
+            if (! (isPlaying && isPlaying())) playheadPx = sampleToX (getPlayheadSeconds() * sr); // quieto: donde está
+            const double x = playheadPx;
             if (x >= 0 && x <= plotWidth())
             {
                 g.setColour (juce::Colours::white.withAlpha (0.85f));
@@ -870,20 +873,23 @@ private:
     {
         const bool playing = isPlaying && isPlaying();
         int x = -1;
+        double px = -1.0;
         if (totalLen() > 0 && getPlayheadSeconds)
         {
-            const double px = sampleToX (getPlayheadSeconds() * sr);
+            px = sampleToX (getPlayheadSeconds() * sr);
             if (px >= 0 && px <= plotWidth()) x = (int) std::floor (px);
         }
         if (! playing && x == lastPlayheadX) return;
         if (x != lastPlayheadX)
         {
-            if (lastPlayheadX >= 0) repaint (lastPlayheadX - 2, 0, 5, getHeight());
-            if (x >= 0) repaint (x - 2, 0, 5, getHeight());
+            playheadPx = px;
+            if (lastPlayheadX >= 0) repaint (lastPlayheadX - 3, 0, 8, getHeight());
+            if (x >= 0) repaint (x - 3, 0, 8, getHeight());
             lastPlayheadX = x;
         }
     }
     int lastPlayheadX = -1;
+    double playheadPx = -1.0; // dónde se dibuja el cursor (lo pone el timer)
 
     void drawLane (juce::Graphics& g, const juce::AudioBuffer<float>* buf, juce::Rectangle<int> r,
                    juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0, bool showSkipLine = false,
