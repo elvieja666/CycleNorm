@@ -77,7 +77,8 @@ namespace Theme
         return juce::Font (juce::FontOptions (titleTypeface()).withHeight (capHeight / capPerHeight));
     }
 
-    constexpr float textScale = 1.0f; // en Toolkit los tamaños ya van en px finales
+    // Todos los textos un 22% más grandes que el diseño base (igual que UNISON).
+    constexpr float textScale = 1.22f;
 
     inline juce::Font font (float height, int weight = 400, float kerning = 0.0f)
     {

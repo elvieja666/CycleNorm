@@ -69,7 +69,7 @@ public:
     // zona visible del botón en relieve (deja lugar para la sombra)
     static juce::Rectangle<float> raisedShape (juce::Rectangle<float> b) { return b.reduced (4.0f, 2.0f).withTrimmedBottom (4.0f); }
 
-    juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (13.5f, 400); }
+    juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (14.0f, 400); } // como Measure / Bypass / Scope
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
     {
@@ -127,14 +127,14 @@ public:
         g.setColour (Theme::ink);
         g.strokePath (arrow, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
-    juce::Font getComboBoxFont (juce::ComboBox&) override { return Theme::font (13.5f, 400); }
+    juce::Font getComboBoxFont (juce::ComboBox&) override { return Theme::font (14.0f, 400); }
     void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override
     {
         label.setFont (getComboBoxFont (box));
         const auto r = raisedShape (box.getLocalBounds().toFloat()).toNearestInt();
         label.setBounds (r.getX() + 10, r.getY(), r.getWidth() - 10 - r.getHeight(), r.getHeight());
     }
-    juce::Font getPopupMenuFont() override { return Theme::font (13.5f, 400); }
+    juce::Font getPopupMenuFont() override { return Theme::font (11.5f, 400); } // (el menú no se achica con la ventana)
 
     // barras (Amount, Ramp, Pitch): recuadro hundido con el valor en azul.
     // Las que van de negativo a positivo (Pitch) se llenan desde el 0.
@@ -163,7 +163,7 @@ public:
     juce::Label* createSliderTextBox (juce::Slider& s) override
     {
         auto* l = LookAndFeel_V4::createSliderTextBox (s);
-        l->setFont (Theme::font (13.5f, 500));
+        l->setFont (Theme::font (14.0f, 400)); // como el valor de Window (3000 ms)
         l->setColour (juce::Label::textColourId, Theme::inkStrong);
         l->setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
         l->setColour (juce::Label::outlineColourId, juce::Colours::transparentBlack);
@@ -276,7 +276,7 @@ public:
             r = body;
         }
         g.setColour (text);
-        g.setFont (Theme::font (13.5f, 500));
+        g.setFont (Theme::font (14.0f, 400));
         g.drawText ("Drag to DAW", r.toNearestInt(), juce::Justification::centred);
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
@@ -379,7 +379,7 @@ public:
         addChildComponent (progressBar);
         progressBar.setTextToDisplay (" "); // el texto va en una etiqueta encima (el de la barra no se leía)
         progressLabel.setColour (juce::Label::textColourId, Theme::inkStrong);
-        progressLabel.setFont (Theme::font (13.0f, 500));
+        progressLabel.setFont (Theme::font (12.0f, 400));
         progressLabel.setJustificationType (juce::Justification::centred);
         progressLabel.setInterceptsMouseClicks (false, false);
         addChildComponent (progressLabel);
@@ -524,10 +524,10 @@ public:
         addAndMakeVisible (wave);
 
         info.setColour (juce::Label::textColourId, Theme::inkDim);
-        info.setFont (Theme::font (13.0f, 400));
+        info.setFont (Theme::font (12.0f, 400)); // como el estado de UNISON
         addAndMakeVisible (info);
         pitchLabel.setColour (juce::Label::textColourId, kAccent);
-        pitchLabel.setFont (Theme::font (14.0f, 500));
+        pitchLabel.setFont (Theme::font (12.5f, 400));
         pitchLabel.setJustificationType (juce::Justification::centredRight);
         addAndMakeVisible (pitchLabel);
 
@@ -539,7 +539,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (1290, 680);
+        setSize (1400, 650); // (diseño base de UNISON; la ventana lo muestra al 80,3 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -566,7 +566,7 @@ public:
         g.fillAll();
         // título en Akira Expanded
         g.setColour (Theme::inkStrong);
-        const auto tf = Theme::titleFont (15.0f);
+        const auto tf = Theme::titleFont (kTitleCap);
         g.setFont (tf);
         const float titleW = juce::GlyphArrangement::getStringWidth (tf, "TOOLKIT");
         g.drawText ("TOOLKIT", titleArea.toFloat(), juce::Justification::centredLeft);
@@ -575,7 +575,7 @@ public:
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
             g.setColour (Theme::ink);
-            g.setFont (Theme::font (14.0f, 500));
+            g.setFont (Theme::font (14.0f, 400));
             g.drawText (items[(size_t) current]->file.getFileName(), fileName, juce::Justification::centredLeft, true);
         }
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
@@ -586,53 +586,69 @@ public:
         g.fillRect (juce::Rectangle<float> ((float) titleArea.getX(), (float) separatorY, (float) titleArea.getWidth(), 1.0f));
     }
 
+    // Medidas del diseño base de UNISON (después toda la ventana se achica al 80,3 %, como UNISON):
+    // márgenes de 20, fila del título de 38 (título de 14 de alto de mayúsculas), botones de 33 de
+    // alto visible con letra de 14, barras de 24 de alto (las pastillas de UNISON), visor con margen de 7.
+    static constexpr int kMargin = 20, kTitleH = 38, kButtonH = 33, kPillH = 24, kGap = 8;
+    static constexpr float kTitleCap = 14.0f;
+
     void resized() override
     {
-        auto r = getLocalBounds().reduced (10);
-        titleArea = r.removeFromTop (28);
+        auto r = getLocalBounds();
+        r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
+        titleArea = r.removeFromTop (kTitleH);
         {
-            // fila del título: TOOLKIT · selector del 808 · info del loop · pitch medido (a la derecha)
+            // fila del título: TOOLKIT · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
-            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (15.0f), "TOOLKIT");
-            t.removeFromLeft ((int) titleW + 18);
-            pitchLabel.setBounds (t.removeFromRight (juce::jmin (430, t.getWidth() / 2)));
-            fileName = t.removeFromLeft (juce::jmin (300, t.getWidth() / 2));
+            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (kTitleCap), "TOOLKIT");
+            t.removeFromLeft ((int) titleW + 22);
+            pitchLabel.setBounds (t.removeFromRight (juce::jmin (520, t.getWidth() / 2)));
+            fileName = t.removeFromLeft (juce::jmin (330, t.getWidth() / 2));
             t.removeFromLeft (12);
             info.setBounds (t);
-            progressBar.setBounds (t.reduced (0, 6).withTrimmedRight (12));
+            progressBar.setBounds (t.withSizeKeepingCentre (t.getWidth() - 12, 18).withX (t.getX()));
             progressLabel.setBounds (progressBar.getBounds());
         }
-        r.removeFromTop (6);
 
-        auto top = r.removeFromTop (36);
-        playButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (6);
-        loopButton.setBounds (top.removeFromLeft (60)); top.removeFromLeft (6);
-        normButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
-        abButton.setBounds (top.removeFromLeft (180)); top.removeFromLeft (16);
-        findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
-        otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
-        clearLoopButton.setBounds (top.removeFromLeft (95));
-        // la pastilla para arrastrar el procesado al DAW, a la derecha de todo (mismo alto visible que los botones)
-        dragOut.setBounds (top.removeFromRight (118).withTrimmedTop (2).withTrimmedBottom (5).reduced (3, 0));
-        top.removeFromRight (14);
-        // Ramp y Pitch arriba a la derecha: el nombre y la barra de cada uno
+        // botones: del ancho de su texto (como las pastillas de UNISON); el componente lleva la sombra
+        // (4 a los costados, 2 arriba, 6 abajo), así lo visible mide kButtonH de alto
+        auto row = r.removeFromTop (kButtonH + 8);
+        const auto bf = Theme::font (14.0f, 400);
+        auto widthFor = [&] (juce::Button& b, float extra) {
+            return (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, b.getButtonText()) + 2.0f * 17.0f + extra) + 8;
+        };
+        auto place = [&] (juce::Button& b, float extra) { b.setBounds (row.removeFromLeft (widthFor (b, extra))); };
+        place (playButton, 0); place (loopButton, 0); place (normButton, 0);
+        place (abButton, 24.0f); // con el parlante
+        row.removeFromLeft (kGap);
+        place (findLoopButton, 0); place (otherLoopButton, 0); place (clearLoopButton, 0);
+        // Drag to DAW, a la derecha de todo (mismo alto visible que los botones)
         {
-            auto place = [] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl, int labelW) {
-                sl.setBounds (p.removeFromRight (p.getWidth() - labelW).reduced (0, 5).withTrimmedBottom (2));
-                l.setBounds (p.withTrimmedBottom (2));
-            };
-            top.removeFromLeft (16);
-            // las dos barras igual de largas (cada nombre ocupa lo mismo)
-            const int each = juce::jlimit (140, 300, (top.getWidth() - 14) / 2);
-            place (top.removeFromRight (each), pitchShiftLabel, pitchShift, 46);
-            top.removeFromRight (14);
-            place (top.removeFromRight (each), rampLabel, ramp, 46);
+            const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
+            dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (2).withHeight (kButtonH + 1));
         }
-        r.removeFromTop (5);
+        row.removeFromRight (kGap + 6);
+        // Ramp y Pitch: el nombre y la barra (de 24 de alto, como las pastillas de UNISON), las dos igual de largas
+        {
+            const auto lf = Theme::font (12.5f, 300);
+            const int labelW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp")) + 10;
+            row.removeFromLeft (kGap);
+            const int each = juce::jmax (120, (row.getWidth() - kGap) / 2);
+            auto put = [&] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl) {
+                const int cy = p.getY() + 2 + kButtonH / 2;
+                l.setBounds (p.removeFromLeft (labelW).withHeight (kPillH).withCentre ({ p.getX() - labelW / 2, cy }));
+                sl.setBounds (p.withHeight (kPillH).withY (cy - kPillH / 2));
+            };
+            put (row.removeFromRight (each), pitchShiftLabel, pitchShift);
+            row.removeFromRight (kGap);
+            put (row.removeFromRight (each), rampLabel, ramp);
+        }
+        r.removeFromTop (6);
         separatorY = r.getY();
-        r.removeFromTop (10);
-
-        // sin lista ni línea de abajo: el visor ocupa todo
+        r.removeFromTop (8);
+        // el visor: con el margen del osciloscopio de UNISON (7)
+        r.removeFromBottom (7);
+        r = getLocalBounds().withTop (r.getY()).withBottom (r.getBottom()).reduced (7, 0);
         waveArea = r;
         wave.setBounds (r.reduced (8));
     }
@@ -778,7 +794,7 @@ private:
         s.onValueChange = [this] { settingsChanged(); };
         addAndMakeVisible (s);
         l.setText (name, juce::dontSendNotification);
-        l.setFont (Theme::font (12.5f, 300));
+        l.setFont (Theme::font (12.5f, 300)); // como los títulos de UNISON (Window, Latency, Listen)
         l.setColour (juce::Label::textColourId, Theme::inkDim);
         addAndMakeVisible (l);
     }
@@ -1772,20 +1788,37 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
+    // Todo se diseña con las medidas base de UNISON (1400 x 650 con el scope abierto) y se muestra
+    // achicado al 80,3 %, igual que UNISON: así la ventana, las letras y las burbujas miden lo mismo.
+    struct ScaledHolder : juce::Component
+    {
+        static constexpr float kScale = 1.05f * 497.0f / 650.0f; // la escala de UNISON (≈ 0,803)
+        ScaledHolder() { addAndMakeVisible (content); }
+        void resized() override
+        {
+            content.setTransform (juce::AffineTransform::scale (kScale));
+            content.setBounds (0, 0, juce::roundToInt ((float) getWidth() / kScale), juce::roundToInt ((float) getHeight() / kScale));
+        }
+        MainComponent content;
+    };
+
     class MainWindow : public juce::DocumentWindow
     {
     public:
         MainWindow() : DocumentWindow ("Toolkit", kBg, DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
-            content = new MainComponent();
-            setContentOwned (content, true);
+            holder = new ScaledHolder();
+            content = &holder->content;
+            holder->setSize (juce::roundToInt (1400 * ScaledHolder::kScale), juce::roundToInt (650 * ScaledHolder::kScale)); // como UNISON
+            setContentOwned (holder, true);
             setResizable (true, true);
-            setResizeLimits (1230, 560, 4000, 3000);
+            setResizeLimits (juce::roundToInt (1300 * ScaledHolder::kScale), juce::roundToInt (520 * ScaledHolder::kScale), 4000, 3000);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
+        ScaledHolder* holder = nullptr;
         MainComponent* content = nullptr;
     };
 

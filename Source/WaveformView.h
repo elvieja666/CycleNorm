@@ -118,7 +118,7 @@ public:
             text << "Pitch x" << (vf < 10.0 ? juce::String (vf, 1) : juce::String (juce::roundToInt (vf)));
         }
         text << juce::String::fromUTF8 ("  \xc2\xb7  ");
-        g.setFont (juce::FontOptions (12.5f));
+        g.setFont (uiFont (12.5f));
         const juce::String showAll ("Show all");
         const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text);
         const float sw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), showAll);
@@ -261,6 +261,9 @@ public:
         dirty = true; repaint();
         mouseMove (e);
     }
+    // letras del visor con la misma escala que el resto (textScale de UNISON)
+    static juce::FontOptions uiFont (float h, int style = juce::Font::plain) { return juce::FontOptions (h * 1.22f, style); }
+
     void showAll() { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; dirty = true; repaint(); }
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
@@ -433,7 +436,7 @@ private:
             for (double cand : { 50.0, 25.0, 10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1 })
                 if (spanC / cand >= 4.0) { stepC = cand; break; }
             const double c0 = std::ceil (lo * 100.0 / stepC) * stepC, c1 = hi * 100.0;
-            g.setFont (juce::FontOptions (10.5f));
+            g.setFont (uiFont (10.5f));
             for (double cc = c0; cc <= c1 + 1e-9; cc += stepC)
             {
                 const double m = cc / 100.0;
@@ -480,7 +483,7 @@ private:
                 if ((pc == 0 || m == refNote) && keyH >= 8.0f)
                 {
                     g.setColour (m == refNote ? (isBlack (m) ? juce::Colours::white : juce::Colour (0xff0b0c0e)) : juce::Colour (0xff2b2e33));
-                    g.setFont (juce::FontOptions (juce::jlimit (8.5f, 11.0f, keyH * 0.8f), juce::Font::bold));
+                    g.setFont (uiFont (juce::jlimit (8.5f, 11.0f, keyH * 0.8f), juce::Font::bold));
                     g.drawText (noteStr (m), juce::Rectangle<float> (kbX + 1.0f, yc - 7.0f, kbW - 3.0f, 14.0f),
                                 isBlack (m) ? juce::Justification::centredLeft : juce::Justification::centredRight);
                 }
@@ -517,7 +520,7 @@ private:
             const double dev = (ref - (double) refNote) * 100.0;
             const float y = juce::jlimit (area.getY() - 14.0f, area.getBottom() + 14.0f, yOf (ref));
             const juce::String t = (dev >= 0.0 ? "+" : juce::String::fromUTF8 ("\xe2\x88\x92")) + juce::String (std::abs (dev), 1) + "c";
-            g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+            g.setFont (uiFont (11.0f, juce::Font::bold));
             const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), t) + 10.0f;
             const auto tag = juce::Rectangle<float> (lineEnd - tw - 2.0f, y - 8.0f, tw, 16.0f);
             g.setColour (juce::Colour (0xff6fd6ff));
@@ -526,7 +529,7 @@ private:
             g.drawText (t, tag, juce::Justification::centred);
         }
         g.setColour (juce::Colour (0xff8b9096));
-        g.setFont (juce::FontOptions (12.0f));
+        g.setFont (uiFont (12.0f));
         const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
                                     : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
@@ -857,7 +860,7 @@ private:
                     const float hy = (float) r.getY() + 22.0f;
                     handle.addTriangle (lx - 6.0f, hy, lx + 6.0f, hy, lx, hy + 8.0f);
                     g.fillPath (handle);
-                    g.setFont (juce::FontOptions (11.0f));
+                    g.setFont (uiFont (11.0f));
                     g.drawText ("Skip", juce::Rectangle<float> (lx + 5.0f, (float) r.getBottom() - 18.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
                 }
             }
@@ -938,7 +941,7 @@ private:
                 if (x0 >= (float) r.getX() && x0 + 44.0f < (float) r.getRight())
                 {
                     g.setColour (juce::Colour (0xff3ddc84));
-                    g.setFont (juce::FontOptions (11.0f));
+                    g.setFont (uiFont (11.0f));
                     g.drawText ("Loop", juce::Rectangle<float> (x0 + 5.0f, (float) r.getY() + 4.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
                 }
             }
@@ -953,7 +956,7 @@ private:
                     const float hy = (float) r.getY() + 22.0f;
                     handle.addTriangle (ex - 6.0f, hy, ex + 6.0f, hy, ex, hy + 8.0f);
                     g.fillPath (handle);
-                    g.setFont (juce::FontOptions (11.0f));
+                    g.setFont (uiFont (11.0f));
                     g.drawText ("End", juce::Rectangle<float> (ex - 34.0f, (float) r.getBottom() - 18.0f, 30.0f, 14.0f), juce::Justification::centredRight);
                 }
             }
@@ -965,7 +968,7 @@ private:
         }
 
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
-        g.setFont (juce::FontOptions (13.0f, active ? juce::Font::bold : juce::Font::plain));
+        g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
         g.drawText (title + (active ? "  (playing)" : ""), r.reduced (8, 4), juce::Justification::topLeft);
     }
 
@@ -982,7 +985,7 @@ private:
         if (totalLen() == 0)
         {
             g.setColour (juce::Colour (0xff8a919c));
-            g.setFont (juce::FontOptions (16.0f));
+            g.setFont (uiFont (16.0f));
             g.drawText (juce::String::fromUTF8 ("Drop your 808s here (WAV / AIFF)  ·  or File ▸ Open… (⌘O)"), getLocalBounds(), juce::Justification::centred);
             return;
         }
