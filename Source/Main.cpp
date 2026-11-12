@@ -397,7 +397,12 @@ public:
         openButton.onClick = [this] { openFiles(); };
         removeButton.onClick = [this] { removeSelected(); };
         playButton.onClick = [this] { togglePlay(); };
-        loopButton.onClick = [this] { source.setLooping (loopButton.getToggleState()); props->setValue ("loop", loopButton.getToggleState()); };
+        loopButton.onClick = [this] {
+            source.setLooping (loopButton.getToggleState());
+            props->setValue ("loop", loopButton.getToggleState());
+            if (juce::isPositiveAndBelow (current, (int) items.size()) && items[(size_t) current]->hasLoop())
+                processCurrent(); // con / sin el crossfade del loop
+        };
         abButton.onClick = [this] { updateAB(); };
         exportButton.onClick = [this] { exportSelected(); };
         exportAllButton.onClick = [this] { exportAll(); };
@@ -700,6 +705,8 @@ public:
                 const int xf = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_XFADE", "0").getIntValue();
                 items.front()->xfadeCycles = juce::jmin (xf, maxXfadeCycles (*items.front()));
                 processCurrent();
+                if (juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_LOOPOFF", {}).isNotEmpty())
+                    loopButton.setToggleState (false, juce::sendNotificationSync); // (prueba: exportar con Loop apagado)
             }
             const bool ok = writeItem (*items.front(), juce::File (testOut), err);
             std::printf ("test export: %s %s\n", ok ? "OK" : "FAIL", err.toRawUTF8());
@@ -1010,7 +1017,9 @@ private:
             for (int ch = 0; ch < out->getNumChannels(); ++ch) v.ch.push_back (out->getReadPointer (ch));
             v.n = (size_t) out->getNumSamples();
             it.loopQuality = cyclenorm::loopQuality (it.analysis, v, it.loopStart, it.loopEnd);
-            const size_t xfLen = xfadeSamples (it);
+            // el crossfade cambia la onda: sólo con Loop prendido (apagado, se escucha y se ve sin él;
+            // al exportar se aplica igual, ver writeItem)
+            const size_t xfLen = loopButton.getToggleState() ? xfadeSamples (it) : 0;
             if (xfLen > 0)
             {
                 std::vector<float*> chs;
@@ -1549,6 +1558,17 @@ private:
         if (! stream->openedOk()) { error = "Could not write " + dest.getFullPathName(); return false; }
         // Puntos de loop adentro del WAV (bloque "smpl", el que leen el Sampler de Logic, Kontakt,
         // Simpler...) y la nota raíz medida, así el sampler lo afina y lo loopea solo.
+        // con Loop apagado lo que suena no tiene el crossfade: el archivo lo lleva igual (el sampler lo loopea)
+        auto outBuf = it.processed;
+        if (it.hasLoop() && ! loopButton.getToggleState() && outBuf != nullptr && it.loopEnd <= (size_t) outBuf->getNumSamples())
+            if (const size_t xf = xfadeSamples (it); xf > 0)
+            {
+                auto c = std::make_shared<juce::AudioBuffer<float>> (*outBuf);
+                std::vector<float*> chs;
+                for (int ch = 0; ch < c->getNumChannels(); ++ch) chs.push_back (c->getWritePointer (ch));
+                cyclenorm::applyLoopCrossfade (chs, it.loopStart, it.loopEnd, xf);
+                outBuf = c;
+            }
         juce::StringPairArray meta;
         if (it.hasLoop() && ! fmtInfo.aiff)
         {
@@ -1569,11 +1589,11 @@ private:
             meta.set ("Loop0PlayCount", "0"); // infinito
         }
         std::unique_ptr<juce::AudioFormatWriter> w (fmt.createWriterFor (stream.get(), it.sampleRate,
-                                                                          (unsigned int) it.processed->getNumChannels(),
+                                                                          (unsigned int) outBuf->getNumChannels(),
                                                                           fmtInfo.bits, meta, 0));
         if (w == nullptr) { error = "Format not supported"; return false; }
         stream.release(); // ahora es del writer
-        if (! w->writeFromAudioSampleBuffer (*it.processed, 0, it.exportLength())) // hasta el fin del loop (o la línea de End)
+        if (! w->writeFromAudioSampleBuffer (*outBuf, 0, it.exportLength())) // hasta el fin del loop (o la línea de End)
         {
             error = "Error writing " + dest.getFileName();
             return false;
