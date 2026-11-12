@@ -142,6 +142,7 @@ public:
                       hasPitch ? std::function<void()> ([] {}) : std::function<void()>(), 1);
             drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
             drawTabs (g);
+            if (hasPitch) drawPitchCurve (g, topLaneRect(), 2); // la pildorita de los cents: sigue a End, encima de lo oscurecido
         }
 
         // el cursor: en la x que calculó el timer (la misma franja que mandó a redibujar; si se
@@ -506,6 +507,27 @@ private:
         const int refNote = hasRef ? (int) std::lround (ref) : -1000;
         const int n0 = (int) std::floor (lo) - 1, n1 = (int) std::ceil (hi) + 1;
 
+        // etiqueta con los cents (a la altura del pitch medido: cuánto se aleja de la nota). Va pegada
+        // a la línea de End (o al teclado), encima de la zona oscurecida: se dibuja aparte (layer 2)
+        if (layer == 2)
+        {
+            if (! hasRef) return;
+            const double dev = (ref - (double) refNote) * 100.0;
+            const float y = juce::jlimit (area.getY() - 14.0f, area.getBottom() + 14.0f, yOf (ref));
+            const juce::String t = (dev >= 0.0 ? "+" : juce::String::fromUTF8 ("\xe2\x88\x92")) + juce::String (std::abs (dev), 1) + "c";
+            g.setFont (uiFont (11.0f, juce::Font::bold));
+            const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), t) + 10.0f;
+            float right = lineEnd - 2.0f;
+            if (endSample > 0 && endSample < (size_t) totalLen())
+                right = juce::jmin (right, (float) r.getX() + (float) sampleToX ((double) endSample) - 4.0f);
+            right = juce::jmax ((float) r.getX() + tw + 2.0f, right);
+            const auto tag = juce::Rectangle<float> (right - tw, y - 8.0f, tw, 16.0f);
+            g.setColour (juce::Colour (0xff6fd6ff));
+            g.fillRoundedRectangle (tag, 8.0f);
+            g.setColour (juce::Colour (0xff0b0c0e));
+            g.drawText (t, tag, juce::Justification::centred);
+            return;
+        }
         if (layer == 0)
         {
             // franjas por semitono (como el piano roll): las de teclas blancas apenas más claras,
@@ -614,20 +636,6 @@ private:
                 if (plotWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
                 g.fillEllipse (x - 1.5f, yOf (midiOf (p.second)) - 1.5f, 3.0f, 3.0f);
             }
-        }
-        // etiqueta con los cents, pegada al teclado a la altura del pitch medido: cuánto se aleja de la nota
-        if (hasRef)
-        {
-            const double dev = (ref - (double) refNote) * 100.0;
-            const float y = juce::jlimit (area.getY() - 14.0f, area.getBottom() + 14.0f, yOf (ref));
-            const juce::String t = (dev >= 0.0 ? "+" : juce::String::fromUTF8 ("\xe2\x88\x92")) + juce::String (std::abs (dev), 1) + "c";
-            g.setFont (uiFont (11.0f, juce::Font::bold));
-            const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), t) + 10.0f;
-            const auto tag = juce::Rectangle<float> (lineEnd - tw - 2.0f, y - 8.0f, tw, 16.0f);
-            g.setColour (juce::Colour (0xff6fd6ff));
-            g.fillRoundedRectangle (tag, 8.0f);
-            g.setColour (juce::Colour (0xff0b0c0e));
-            g.drawText (t, tag, juce::Justification::centred);
         }
         g.setColour (juce::Colour (0xff8b9096));
         g.setFont (uiFont (12.0f));
