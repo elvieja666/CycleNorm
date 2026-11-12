@@ -6,12 +6,12 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 
 ## Cómo usarla
 
-1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **Open…**. También podés soltar archivos sobre el ícono del Dock.
+1. Arrastrá uno o varios WAV / AIFF a la ventana, o una carpeta entera (también abre FLAC, MP3, M4A y CAF), o usá **File ▸ Open…** (⌘O). También podés soltar archivos sobre el ícono del Dock.
 2. Arriba ves el **original** y abajo el **procesado**. Los cortes de cada semiciclo no se dibujan (no hacen falta): la app los usa por dentro.
 3. La app suena por la salida que tenga elegida la Mac y la sigue sola: si enchufás auriculares, conectás unos bluetooth o cambiás la salida en Ajustes > Sonido, en un segundo pasa a esa salida (si estaba sonando, sigue sonando, con un corte mínimo al cambiar).
 4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar, con un fundido de 10 ms para que no haga click; también hay fundido cuando el procesado cambia mientras suena, por ejemplo al mover Amount o el loop), **↑ / ↓** = pasar de archivo. **Loop** repite: si el archivo tiene loop (zona verde), repite esa zona infinitamente; si no, todo el archivo.
 5. Para llevarlo al DAW tenés dos caminos:
-   - **Export…** guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **Export all…** procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
+   - **File ▸ Export…** (⌘E) guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **File ▸ Export All…** (⇧⌘E) procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
    - **Drag the processed audio to your DAW**: arrastrás ese botón a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
 
 ## Controles
@@ -23,7 +23,7 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 | **End** | La línea roja punteada a la derecha del gráfico de abajo. **Se arrastra para cortar el final del sample**, por ejemplo para sacar el ruido que queda subido al final. Salta de semiciclo en semiciclo, así el corte cae siempre en un cruce por cero y no hace click. Lo que queda a la derecha se ve oscurecido y no suena ni se exporta: Play, Export, Export all y el arrastre al DAW terminan ahí. Es **por archivo** (cada sample tiene su propio End) y arranca al final (sin cortar). No puede quedar antes de la línea de Skip. Abajo a la izquierda se lee dónde está ("End: 1.81 s (of 2.64 s)") |
 | **Pitch** (barra) | Re-pitch a mano, en **cents**, de **−600 a +600** (6 semitonos para cada lado). La barra muestra también los semitonos equivalentes ("−100.7 cents (−1.01 st)"), y arriba el pitch se actualiza al toque, así ves dónde queda (por ejemplo, un C#1 en −100,7 cents queda en "C1 +0.0 cents"). **Rueda del mouse**: de a 1 cent; **Shift + rueda**: de a 0,1 cent. **Shift + arrastrar**: modo fino. **Doble clic**: vuelve a 0. Funciona como un sampler al tocar otra tecla: **re-samplea** el archivo, así cambia el tono y el largo juntos (bajar 1 semitono lo alarga un 6 %) y conserva el carácter (el glide y la saturación se mueven juntos). Usa un re-sampleo de alta calidad (sinc con ventana Kaiser, sin aliasing al subir; lo que agrega queda por debajo de −75 dB). **Mientras movés la barra**, la línea celeste y el pitch de arriba se mueven al toque (la grilla queda quieta y se mueve la línea; si la línea se sale, el rango se agranda). El re-sampleo de verdad se hace cuando la soltás o dejás de moverla un instante. Mientras suena, sigue sonando desde el mismo punto y se mantiene el zoom. El loop, End y Skip quedan en las mismas ondas. Es por archivo. Al exportar con re-pitch, el nombre lleva la nota (por ejemplo `_norm_C1.wav`) y la nota raíz del WAV sale de la medición ya afinada |
 | **Ramp** | De 0 a 100 % (por defecto **0**). Es la rampa en cada cambio de ganancia, centrada en el cruce por cero, y es proporcional a cada semiciclo. **0 %**: rampa mínima (1 ms como mucho, o el 6 % del semiciclo; unos 0,7 ms en un 808 de 45 Hz). **100 %**: cubre el 40 % de cada semiciclo a cada lado del cruce (unos 9 ms en total en un 808 de 45 Hz, 3,3 ms en uno de 120 Hz). Ojo: al mezclar la ganancia de un semiciclo con la del vecino, en un 808 asimétrico los lados vuelven a quedar un poco distintos (en las pruebas el 2º armónico sube de -60 a -29 dB). Puede servir en los saltos bruscos (la cola con ruido, el arranque de un golpe). Nunca deja pasar de 0 dB: si la rampa mete una ganancia más alta en el borde de un semiciclo, ahí se baja justo lo necesario |
-| **Format** | **Same as original** (mismo formato, bits y sample rate), **WAV 24-bit** o **WAV 32-bit float** |
+| **File ▸ Export Format** | **Same as Original** (mismo formato, bits y sample rate), **WAV 24-bit** o **WAV 32-bit float** |
 
 Los ajustes se aplican a todos los archivos de la lista y se guardan al cerrar la app.
 
@@ -90,6 +90,17 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 - `Source/Theme.h`: la estética (la misma de UNISON / MeteringAB): colores, botones en relieve, pastillas y recuadros hundidos.
 - `Resources/Fonts/`: las letras: Inter (licencia OFL, en `OFL.txt`) y Akira Expanded para el título.
 - `Tests/EngineTest.cpp`: prueba del motor con 808 sintéticos (limpio, saturado con DC y ruido, estéreo invertido, 96 kHz, dos golpes, asimétrico, Threshold, Target fijo, Amount 50 %). Incluye un 808 con 2º y 3º armónico casi tan fuertes como la fundamental, uno con un glide muy rápido en el ataque (de 120 a 34 Hz en 50 ms) y uno que arranca con un rulito chico para arriba. También prueba el loop: que caiga en ondas enteras, que empalme sin salto, que devuelva varias opciones distintas, que se pueda cancelar, el crossfade y la nota raíz. Comprueba que cada tramo llega al objetivo, que cada onda dura un período de la fundamental, que no hay un pozo antes de un golpe nuevo, que ningún punto lo pasa, que los semiciclos cortan donde el audio vale 0 y que no aparecen clicks. Las instrucciones para compilarla están arriba del archivo.
+
+**Barra de menú (arriba, como cualquier app de Mac):**
+
+| Menú | Opciones |
+|---|---|
+| **File** | Open… (⌘O), Remove from List (⌘⌫), Export… (⌘E), Export All… (⇧⌘E), Export Format (Same as Original / WAV 24-bit / WAV 32-bit Float) |
+| **Edit** | Undo (⌘Z), Redo (⇧⌘Z) |
+| **Playback** | Play / Stop (barra espaciadora), Loop Playback (⇧⌘L), Hear Processed (A), Show Whole Sound (⌘0) |
+| **Loop** | Find Loop / Cancel Loop Search (⌘L), Next Loop (⌘N), Clear Loop |
+
+En la ventana quedan sólo Play, Loop, Hearing y los botones del loop.
 
 **Deshacer / rehacer:** **⌘Z** deshace el último cambio y **⇧⌘Z** (o ⌘Y) lo rehace. Cuenta todo lo que se edita: Pitch, Skip, End, el loop (buscarlo, Next loop, moverlo, estirarlo, Clear loop), el crossfade, Amount y Ramp. Un arrastre entero es un solo paso. Si el cambio era de otro archivo, lo selecciona y lo deshace ahí. Guarda hasta 300 pasos.
 

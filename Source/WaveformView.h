@@ -169,6 +169,7 @@ public:
         dirty = true; repaint();
         mouseMove (e);
     }
+    void showAll() { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; dirty = true; repaint(); }
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
         viewStart = 0; viewLen = (double) totalLen();
@@ -812,7 +813,7 @@ private:
         {
             g.setColour (juce::Colour (0xff8a919c));
             g.setFont (juce::FontOptions (16.0f));
-            g.drawText (juce::String ("Drop your 808s here (WAV / AIFF)"), getLocalBounds(), juce::Justification::centred);
+            g.drawText (juce::String::fromUTF8 ("Drop your 808s here (WAV / AIFF)  ·  or File ▸ Open… (⌘O)"), getLocalBounds(), juce::Justification::centred);
             return;
         }
         const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;

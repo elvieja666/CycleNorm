@@ -308,10 +308,21 @@ private:
 
 class MainComponent : public juce::Component,
                       public juce::FileDragAndDropTarget,
+                      public juce::ApplicationCommandTarget,
+                      public juce::MenuBarModel,
                       private juce::ListBoxModel,
                       private juce::Timer
 {
 public:
+    // comandos de la barra de menú (File, Edit, Playback, Loop)
+    enum Cmd
+    {
+        cmdOpen = 1, cmdRemove, cmdExport, cmdExportAll, cmdFmtSame, cmdFmt24, cmdFmtFloat,
+        cmdUndo, cmdRedo,
+        cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView,
+        cmdFindLoop, cmdNextLoop, cmdClearLoop
+    };
+
     MainComponent()
     {
         formats.registerBasicFormats();
@@ -366,7 +377,18 @@ public:
         formatBox.setSelectedId (props->getIntValue ("format", 1), juce::dontSendNotification);
         formatBox.onChange = [this] { props->setValue ("format", formatBox.getSelectedId()); updateInfo(); };
         formatBox.setWantsKeyboardFocus (false);
-        addAndMakeVisible (formatBox);
+        addChildComponent (formatBox); // ahora se elige en File ▸ Export Format (queda como modelo)
+        // Open, Remove y Export pasan a la barra de menú (File): fuera de la ventana
+        for (auto* b : { &openButton, &removeButton, &exportButton, &exportAllButton }) b->setVisible (false);
+
+        // barra de menú de la Mac (y atajos de teclado en cualquier sistema)
+        commandManager.registerAllCommandsForTarget (this);
+        commandManager.setFirstCommandTarget (this);
+        addKeyListener (commandManager.getKeyMappings());
+        setApplicationCommandManagerToWatch (&commandManager);
+       #if JUCE_MAC
+        juce::MenuBarModel::setMacMainMenu (this);
+       #endif
 
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
@@ -487,6 +509,9 @@ public:
 
     ~MainComponent() override
     {
+       #if JUCE_MAC
+        juce::MenuBarModel::setMacMainMenu (nullptr);
+       #endif
         if (loopJob != nullptr) { loopJob->signalThreadShouldExit(); loopJob.reset(); }
         saveSettings();
         transport.stop();
@@ -531,17 +556,12 @@ public:
         r.removeFromTop (6);
 
         auto top = r.removeFromTop (36);
-        openButton.setBounds (top.removeFromLeft (90)); top.removeFromLeft (6);
-        removeButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (16);
         playButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (6);
         loopButton.setBounds (top.removeFromLeft (60)); top.removeFromLeft (6);
         abButton.setBounds (top.removeFromLeft (180)); top.removeFromLeft (16);
         findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
         otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
         clearLoopButton.setBounds (top.removeFromLeft (95));
-        exportAllButton.setBounds (top.removeFromRight (130)); top.removeFromRight (6);
-        exportButton.setBounds (top.removeFromRight (100)); top.removeFromRight (6);
-        formatBox.setBounds (top.removeFromRight (210));
         r.removeFromTop (5);
         separatorY = r.getY();
         r.removeFromTop (10);
@@ -576,13 +596,7 @@ public:
     bool keyPressed (const juce::KeyPress& k) override
     {
         if (k == juce::KeyPress::spaceKey) { togglePlay(); return true; }
-        // ⌘Z deshacer, ⇧⌘Z (o ⌘Y) rehacer
-        if (k.getModifiers().isCommandDown() && (k.getKeyCode() == 'Z' || k.getKeyCode() == 'z'))
-        {
-            if (k.getModifiers().isShiftDown()) redo(); else undo();
-            return true;
-        }
-        if (k.getModifiers().isCommandDown() && (k.getKeyCode() == 'Y' || k.getKeyCode() == 'y')) { redo(); return true; }
+        // ⌘Z / ⇧⌘Z y los demás atajos: comandos del menú (commandManager)
         if (k.getTextCharacter() == 'a' || k.getTextCharacter() == 'A')
         {
             abButton.setToggleState (! abButton.getToggleState(), juce::dontSendNotification);
@@ -676,6 +690,7 @@ private:
     juce::Label progressLabel;
     std::unique_ptr<LoopSearchJob> loopJob;
     juce::ComboBox formatBox;
+    juce::ApplicationCommandManager commandManager;
     juce::Slider amount, ramp;
     StepSlider pitchShift;
     static constexpr int kMaxSkip = 512; // semiciclos
@@ -1093,6 +1108,7 @@ private:
         if (undoStack.size() > 300) undoStack.erase (undoStack.begin());
         redoStack.clear();
         lastState = std::move (st);
+        commandManager.commandStatusChanged();
     }
     void flushPendingEdits()
     {
@@ -1146,6 +1162,7 @@ private:
         list.repaint();
         updateButtons();
         lastState = captureState(); haveLastState = true;
+        commandManager.commandStatusChanged();
     }
     void forgetUndo (const Item* gone)
     {
@@ -1216,6 +1233,7 @@ private:
             if (transport.getCurrentPosition() >= transport.getLengthInSeconds() - 0.001) transport.setPosition (0);
             transport.start();
         }
+        commandManager.commandStatusChanged(); // Play / Stop en el menú
     }
 
     void updateAB()
@@ -1237,6 +1255,7 @@ private:
         clearLoopButton.setEnabled (has && items[(size_t) current]->hasLoop());
         dragOut.setEnabled (has);
         dragOut.repaint();
+        commandManager.commandStatusChanged(); // el menú habilita / deshabilita lo mismo
     }
 
     bool exportsFloat (const Item& it) const
@@ -1546,6 +1565,106 @@ private:
         juce::String err;
         return writeItem (it, dest, err) ? dest : juce::File();
     }
+
+    //== barra de menú / comandos =============================================
+    juce::ApplicationCommandTarget* getNextCommandTarget() override { return nullptr; }
+    void getAllCommands (juce::Array<juce::CommandID>& c) override
+    {
+        c.addArray ({ cmdOpen, cmdRemove, cmdExport, cmdExportAll, cmdFmtSame, cmdFmt24, cmdFmtFloat,
+                      cmdUndo, cmdRedo, cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView,
+                      cmdFindLoop, cmdNextLoop, cmdClearLoop });
+    }
+    void getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& info) override
+    {
+        const bool has = juce::isPositiveAndBelow (current, (int) items.size());
+        const auto cmd = juce::ModifierKeys::commandModifier, shift = juce::ModifierKeys::shiftModifier;
+        switch (id)
+        {
+            case cmdOpen:      info.setInfo (u8 ("Open…"), "Add 808s", "File", 0); info.addDefaultKeypress ('o', cmd); break;
+            case cmdRemove:    info.setInfo ("Remove from List", "", "File", 0); info.addDefaultKeypress (juce::KeyPress::backspaceKey, cmd); info.setActive (has); break;
+            case cmdExport:    info.setInfo (u8 ("Export…"), "", "File", 0); info.addDefaultKeypress ('e', cmd); info.setActive (has); break;
+            case cmdExportAll: info.setInfo (u8 ("Export All…"), "", "File", 0); info.addDefaultKeypress ('e', cmd | shift); info.setActive (! items.empty()); break;
+            case cmdFmtSame:   info.setInfo ("Same as Original", "", "File", 0); info.setTicked (formatBox.getSelectedId() == 1); break;
+            case cmdFmt24:     info.setInfo ("WAV 24-bit", "", "File", 0); info.setTicked (formatBox.getSelectedId() == 2); break;
+            case cmdFmtFloat:  info.setInfo ("WAV 32-bit Float", "", "File", 0); info.setTicked (formatBox.getSelectedId() == 3); break;
+            case cmdUndo:      info.setInfo ("Undo", "", "Edit", 0); info.addDefaultKeypress ('z', cmd); info.setActive (! undoStack.empty() || pendingRetune || pendingReprocess || (haveLastState && ! captureState().same (lastState))); break;
+            case cmdRedo:      info.setInfo ("Redo", "", "Edit", 0); info.addDefaultKeypress ('z', cmd | shift); info.setActive (! redoStack.empty()); break;
+            case cmdPlay:      info.setInfo (transport.isPlaying() ? "Stop" : "Play", "Space", "Playback", 0); info.setActive (has); break;
+            case cmdLoopPlay:  info.setInfo ("Loop Playback", "", "Playback", 0); info.addDefaultKeypress ('l', cmd | shift); info.setTicked (loopButton.getToggleState()); break;
+            case cmdHearing:   info.setInfo ("Hear Processed", "A", "Playback", 0); info.setTicked (abButton.getToggleState()); break;
+            case cmdFitView:   info.setInfo ("Show Whole Sound", "", "Playback", 0); info.addDefaultKeypress ('0', cmd); info.setActive (has); break;
+            case cmdFindLoop:  info.setInfo (loopJob != nullptr ? "Cancel Loop Search" : "Find Loop", "", "Loop", 0); info.addDefaultKeypress ('l', cmd); info.setActive (has || loopJob != nullptr); break;
+            case cmdNextLoop:  info.setInfo ("Next Loop", "", "Loop", 0); info.addDefaultKeypress ('n', cmd); info.setActive (otherLoopButton.isEnabled()); break;
+            case cmdClearLoop: info.setInfo ("Clear Loop", "", "Loop", 0); info.setActive (clearLoopButton.isEnabled()); break;
+            default: break;
+        }
+    }
+    bool perform (const InvocationInfo& inv) override
+    {
+        auto setFormat = [this] (int id) { formatBox.setSelectedId (id, juce::sendNotificationSync); commandManager.commandStatusChanged(); };
+        switch (inv.commandID)
+        {
+            case cmdOpen:      openFiles(); break;
+            case cmdRemove:    removeSelected(); break;
+            case cmdExport:    exportSelected(); break;
+            case cmdExportAll: exportAll(); break;
+            case cmdFmtSame:   setFormat (1); break;
+            case cmdFmt24:     setFormat (2); break;
+            case cmdFmtFloat:  setFormat (3); break;
+            case cmdUndo:      undo(); break;
+            case cmdRedo:      redo(); break;
+            case cmdPlay:      togglePlay(); break;
+            case cmdLoopPlay:  loopButton.triggerClick(); break;
+            case cmdHearing:   abButton.setToggleState (! abButton.getToggleState(), juce::dontSendNotification); updateAB(); break;
+            case cmdFitView:   wave.showAll(); break;
+            case cmdFindLoop:  findLoopButton.triggerClick(); break;
+            case cmdNextLoop:  nextLoopCandidate(); break;
+            case cmdClearLoop: setLoopForCurrent (0, 0); break;
+            default: return false;
+        }
+        commandManager.commandStatusChanged();
+        return true;
+    }
+    juce::StringArray getMenuBarNames() override { return { "File", "Edit", "Playback", "Loop" }; }
+    juce::PopupMenu getMenuForIndex (int index, const juce::String&) override
+    {
+        juce::PopupMenu m;
+        auto* cm = &commandManager;
+        if (index == 0)
+        {
+            m.addCommandItem (cm, cmdOpen);
+            m.addCommandItem (cm, cmdRemove);
+            m.addSeparator();
+            m.addCommandItem (cm, cmdExport);
+            m.addCommandItem (cm, cmdExportAll);
+            juce::PopupMenu fmt;
+            fmt.addCommandItem (cm, cmdFmtSame);
+            fmt.addCommandItem (cm, cmdFmt24);
+            fmt.addCommandItem (cm, cmdFmtFloat);
+            m.addSubMenu ("Export Format", fmt);
+        }
+        else if (index == 1)
+        {
+            m.addCommandItem (cm, cmdUndo);
+            m.addCommandItem (cm, cmdRedo);
+        }
+        else if (index == 2)
+        {
+            m.addCommandItem (cm, cmdPlay);
+            m.addCommandItem (cm, cmdLoopPlay);
+            m.addCommandItem (cm, cmdHearing);
+            m.addSeparator();
+            m.addCommandItem (cm, cmdFitView);
+        }
+        else if (index == 3)
+        {
+            m.addCommandItem (cm, cmdFindLoop);
+            m.addCommandItem (cm, cmdNextLoop);
+            m.addCommandItem (cm, cmdClearLoop);
+        }
+        return m;
+    }
+    void menuItemSelected (int, int) override {}
 
     //== lista =================================================================
     int getNumRows() override { return (int) items.size(); }
