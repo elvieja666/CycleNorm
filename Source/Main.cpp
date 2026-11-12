@@ -138,14 +138,30 @@ public:
             const bool L = seg == "left", R = seg == "right";
             juce::Path p;
             p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
-            if (! down)
-                juce::DropShadow (juce::Colours::black.withAlpha (0.2f), 5, { 0, 2 }).drawForPath (g, p);
-            const float lift = over && ! down && b.isEnabled() ? 0.02f : 0.0f;
-            g.setGradientFill (juce::ColourGradient (Theme::raisedTop.brighter (lift), 0.0f, shape.getY(),
-                                                     down ? Theme::raisedBot.darker (0.04f) : Theme::raisedBot.brighter (lift), 0.0f, shape.getBottom(), false));
-            g.fillPath (p);
-            g.setColour (juce::Colours::white.withAlpha (down ? 0.3f : 0.9f));
-            g.drawLine (shape.getX() + (L ? rad : 0.0f), shape.getY() + 0.75f, shape.getRight() - (R ? rad : 0.0f), shape.getY() + 0.75f, 1.0f);
+            // la pieza entera mantiene su sombra (así no se "rompe" al apretar una parte); la parte
+            // apretada, o prendida (sonando / loop de escucha), queda hundida: más oscura arriba, sin brillo
+            juce::DropShadow (juce::Colours::black.withAlpha (0.2f), 5, { 0, 2 }).drawForPath (g, p);
+            const bool sunk = down || b.getToggleState() || (bool) b.getProperties()["lit"];
+            if (sunk)
+            {
+                g.setGradientFill (juce::ColourGradient (Theme::raisedBot.darker (down ? 0.10f : 0.07f), 0.0f, shape.getY(),
+                                                         Theme::raisedBot.darker (0.01f), 0.0f, shape.getBottom(), false));
+                g.fillPath (p);
+                juce::Graphics::ScopedSaveState ss (g); // sombrita interna arriba (hundido)
+                g.reduceClipRegion (p);
+                g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.10f), 0.0f, shape.getY(),
+                                                         juce::Colours::transparentBlack, 0.0f, shape.getY() + 6.0f, false));
+                g.fillRect (shape);
+            }
+            else
+            {
+                const float lift = over && b.isEnabled() ? 0.02f : 0.0f;
+                g.setGradientFill (juce::ColourGradient (Theme::raisedTop.brighter (lift), 0.0f, shape.getY(),
+                                                         Theme::raisedBot.brighter (lift), 0.0f, shape.getBottom(), false));
+                g.fillPath (p);
+                g.setColour (juce::Colours::white.withAlpha (0.9f));
+                g.drawLine (shape.getX() + (L ? rad : 0.0f), shape.getY() + 0.75f, shape.getRight() - (R ? rad : 0.0f), shape.getY() + 0.75f, 1.0f);
+            }
             if (! R) // la rayita que separa de la parte de al lado
             {
                 g.setColour (juce::Colours::black.withAlpha (0.12f));
@@ -172,7 +188,8 @@ public:
             const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"];
             auto colour = lit ? Theme::accent : Theme::ink;
             if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
-            const auto box = segmentShape (b).translated (0.0f, b.isDown() ? 1.0f : 0.0f);
+            const bool sunk = b.isDown() || lit;
+            const auto box = segmentShape (b).translated (0.0f, sunk ? 1.0f : 0.0f); // hundido: el ícono baja 1 px
             const float s = box.getHeight() * 0.36f;
             const auto c = box.getCentre();
             g.setColour (colour);
