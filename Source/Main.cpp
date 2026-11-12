@@ -352,6 +352,7 @@ struct Item
     double targetUsedDb = 0.0;
     float outPeak = 0.0f;
     size_t endSample = 0; // dónde se corta el final (la línea de Fin); 0 = hasta el final del archivo
+    size_t startSample = 0; // dónde empieza (la línea de Start); 0 = desde el principio
     size_t loopStart = 0, loopEnd = 0; // zona de loop (0/0 = sin loop): de un cruce ascendente a otro
     double loopQuality = 0;
     int xfadeCycles = 0; // crossfade del loop, en ondas enteras (0 = Off; como máximo, las ondas del loop)
@@ -640,9 +641,30 @@ public:
             auto& it = *items[(size_t) current];
             const size_t full = (size_t) it.original->getNumSamples();
             if (it.hasLoop() && e < it.loopEnd) e = it.loopEnd; // Fin no puede cortar el loop
+            if (e <= it.startSample) return;                      // ni pasar la de Start
             it.endSample = e >= full ? 0 : e;
             source.setEndSample ((juce::int64) it.endSample);
             wave.setEndSample (it.endSample);
+            updateInfo();
+        };
+        // la línea de Start: si pasa la de Skip, la empuja (Skip nunca queda antes de Start)
+        wave.onStartDragged = [this] (size_t s)
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            if (it.hasLoop() && s >= it.loopStart) return;
+            if (s >= (size_t) it.lengthToWrite()) return;
+            it.startSample = s;
+            source.setStartSample ((juce::int64) s);
+            wave.setStartSample (s);
+            const int minSkip = minSkipFor (it);
+            if (skipHalves < minSkip)
+            {
+                skipHalves = minSkip;
+                settingsChanged();
+                updateSkipView();
+            }
+            if (transport.getCurrentPosition() * it.sampleRate < (double) s) transport.setPosition ((double) s / it.sampleRate);
             updateInfo();
         };
         wave.onLoopDragged = [this] (size_t s0, size_t s1) { setLoopForCurrent (s0, s1); };
@@ -662,6 +684,8 @@ public:
         };
         wave.onSkipDragged = [this] (int n)
         {
+            if (juce::isPositiveAndBelow (current, (int) items.size()))
+                n = juce::jmax (n, minSkipFor (*items[(size_t) current])); // Skip no puede quedar antes de Start
             if (skipHalves == n) { wave.refresh(); return; }
             if (juce::isPositiveAndBelow (current, (int) items.size()))
             {   // Skip no puede pasar la línea de Fin
@@ -872,6 +896,17 @@ public:
                 for (auto v : B) if (std::abs ((double) v - testEnd.getDoubleValue()) < bd) { bd = std::abs ((double) v - testEnd.getDoubleValue()); best = v; }
                 it0.endSample = best;
             }
+            const auto testStart = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_START", {});
+            if (testStart.isNotEmpty())
+            {
+                auto& it0 = *items.front();
+                const auto& B = cyclenorm::segmentBounds (it0.analysis, readSettings());
+                size_t best = 0; double bd = 1e300;
+                for (auto v : B) if (std::abs ((double) v - testStart.getDoubleValue()) < bd) { bd = std::abs ((double) v - testStart.getDoubleValue()); best = v; }
+                it0.startSample = best;
+                skipHalves = juce::jmax (skipHalves, minSkipFor (it0));
+                processItem (it0);
+            }
             if (juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_LOOP", {}).isNotEmpty())
             {
                 list.selectRow (0);
@@ -940,12 +975,12 @@ private:
         Item* item = nullptr;
         double amount = 0, ramp = 0, pitch = 0;
         int skip = 0, xfade = 0, candIdx = -1;
-        size_t endS = 0, l0 = 0, l1 = 0;
+        size_t endS = 0, startS = 0, l0 = 0, l1 = 0;
         std::vector<cyclenorm::LoopResult> cands;
         bool same (const EditState& o) const
         {
             return item == o.item && amount == o.amount && ramp == o.ramp && std::abs (pitch - o.pitch) < 1e-9
-                && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS
+                && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS && startS == o.startS
                 && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size();
         }
     };
@@ -1356,7 +1391,7 @@ private:
             const auto& it = *items[(size_t) current];
             st.item = items[(size_t) current].get();
             st.pitch = (double) it.tuneSt * 100.0 + it.tuneCents; // el aplicado
-            st.endS = it.endSample; st.l0 = it.loopStart; st.l1 = it.loopEnd;
+            st.endS = it.endSample; st.startS = it.startSample; st.l0 = it.loopStart; st.l1 = it.loopEnd;
             st.xfade = it.xfadeCycles; st.cands = it.loopCands; st.candIdx = it.loopCandIdx;
         }
         return st;
@@ -1417,9 +1452,11 @@ private:
             pitchShift.setValue (st.pitch, juce::dontSendNotification);
             pendingRetune = false;
             retuneCurrent (0, st.pitch);
-            it.endSample = st.endS; it.loopStart = st.l0; it.loopEnd = st.l1;
+            it.endSample = st.endS; it.startSample = st.startS; it.loopStart = st.l0; it.loopEnd = st.l1;
             it.xfadeCycles = st.xfade; it.loopCands = st.cands; it.loopCandIdx = st.candIdx;
             source.setEndSample ((juce::int64) it.endSample);
+            source.setStartSample ((juce::int64) it.startSample);
+            wave.setStartSample (it.startSample);
             source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
             wave.setEndSample (it.endSample);
             wave.setLoop (it.loopStart, it.loopEnd);
@@ -1464,12 +1501,14 @@ private:
         source.setBuffers (it.original, it.processed);
         source.setFadeLength ((int) std::round (it.sampleRate * 0.010)); // fundidos de 10 ms (original/procesado, cambios)
         source.setEndSample ((juce::int64) it.endSample);
-        source.setNextReadPosition (0);
+        source.setStartSample ((juce::int64) it.startSample);
+        source.setNextReadPosition ((juce::int64) it.startSample);
         transport.setSource (&source, 0, nullptr, it.sampleRate, 2);
         source.setRegionLooping (loopButton.getToggleState());
         source.setLooping (repeatButton.getToggleState());
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
         wave.setEndSample (it.endSample);
+        wave.setStartSample (it.startSample);
         wave.setLoopBounds (it.analysis.bounds);
         wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
         wave.setLoop (it.loopStart, it.loopEnd);
@@ -1481,6 +1520,15 @@ private:
         updateButtons();
     }
 
+    // el Skip más chico que no queda antes de la línea de Start
+    int minSkipFor (const Item& it) const
+    {
+        if (it.startSample == 0) return 0;
+        const auto& B = cyclenorm::segmentBounds (it.analysis, readSettings());
+        for (size_t j = 0; j < B.size() && (int) j < kMaxSkip; ++j)
+            if (B[j] >= it.startSample) return (int) j + 1;
+        return kMaxSkip;
+    }
     // dónde terminan las ondas salteadas con Skip (para pintarlas en gris en el procesado)
     void updateSkipView()
     {
@@ -1491,7 +1539,8 @@ private:
     void stopPlayback()
     {
         transport.stop();
-        transport.setPosition (0);
+        transport.setPosition (juce::isPositiveAndBelow (current, (int) items.size())
+                                   ? (double) items[(size_t) current]->startSample / items[(size_t) current]->sampleRate : 0.0);
         wave.repaint();
         commandManager.commandStatusChanged();
     }
@@ -1596,6 +1645,8 @@ private:
         const size_t li = hadLoop ? nearestBound (B, it.loopStart) : 0, lj = hadLoop ? nearestBound (B, it.loopEnd) : 0;
         const bool hadEnd = it.endSample > 0;
         const size_t ei = hadEnd ? nearestBound (HB, it.endSample) : 0;
+        const bool hadStart = it.startSample > 0;
+        const size_t si = hadStart ? nearestBound (HB, it.startSample) : 0;
         const double semis = (double) st + cents / 100.0;
         const double oldSpeed = std::pow (2.0, it.tuneSemis / 12.0), newSpeed = std::pow (2.0, semis / 12.0);
 
@@ -1625,6 +1676,7 @@ private:
         it.loopCands.clear();
         it.loopCandIdx = -1;
         it.endSample = (hadEnd && ei < HB2.size()) ? HB2[ei] : 0;
+        it.startSample = (hadStart && si < HB2.size()) ? HB2[si] : 0;
 
         // refrescar sin cortar: sigue sonando desde el mismo punto del sonido y mantiene el zoom
         const double factor = oldSpeed / newSpeed; // cuánto se estiró el audio
@@ -1632,11 +1684,13 @@ private:
         processItem (it);
         source.setBuffers (it.original, it.processed);
         source.setEndSample ((juce::int64) it.endSample);
+        source.setStartSample ((juce::int64) it.startSample);
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
         transport.setPosition (pos);
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, false);
         wave.scaleView (factor);
         wave.setEndSample (it.endSample);
+        wave.setStartSample (it.startSample);
         wave.setLoopBounds (it.analysis.bounds);
         wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
         wave.setLoop (it.loopStart, it.loopEnd);
@@ -1691,7 +1745,7 @@ private:
         if (inLoop) return cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8);
         // sin loop: la parte estable (después del glide), en todo el sonido hasta End (el Skip es sólo para la normalización)
         juce::ignoreUnused (st);
-        return cyclenorm::measureSustainPitch (it.analysis, 0, (size_t) it.lengthToWrite());
+        return cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite());
     }
     void updatePitch (const Item& it, double previewSemis = 0.0)
     {
@@ -1769,8 +1823,8 @@ private:
             meta.set ("NumSampleLoops", "1");
             meta.set ("Loop0Identifier", "0");
             meta.set ("Loop0Type", "0"); // hacia adelante
-            meta.set ("Loop0Start", juce::String ((juce::int64) it.loopStart));
-            meta.set ("Loop0End", juce::String ((juce::int64) it.loopEnd - 1)); // en el WAV el fin es la última muestra del loop
+            meta.set ("Loop0Start", juce::String ((juce::int64) (it.loopStart - it.startSample))); // (el archivo empieza en Start)
+            meta.set ("Loop0End", juce::String ((juce::int64) (it.loopEnd - it.startSample) - 1)); // en el WAV el fin es la última muestra del loop
             meta.set ("Loop0Fraction", "0");
             meta.set ("Loop0PlayCount", "0"); // infinito
         }
@@ -1779,7 +1833,8 @@ private:
                                                                           fmtInfo.bits, meta, 0));
         if (w == nullptr) { error = "Format not supported"; return false; }
         stream.release(); // ahora es del writer
-        if (! w->writeFromAudioSampleBuffer (*outBuf, 0, withLoop ? it.exportLength() : it.lengthToWrite())) // hasta el fin del loop (o la línea de End)
+        const int from = juce::jlimit (0, juce::jmax (0, it.lengthToWrite() - 1), (int) it.startSample); // desde la línea de Start
+        if (! w->writeFromAudioSampleBuffer (*outBuf, from, (withLoop ? it.exportLength() : it.lengthToWrite()) - from)) // hasta el fin del loop (o la línea de End)
         {
             error = "Error writing " + dest.getFileName();
             return false;

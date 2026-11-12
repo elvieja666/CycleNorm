@@ -17,6 +17,7 @@ public:
     std::function<void (double)> onSeek;          // clic: mover a esta posición (segundos)
     std::function<void (int)> onSkipDragged;      // arrastrando la línea de Skip: nueva cantidad de semiciclos
     std::function<void (size_t)> onEndDragged;    // arrastrando la línea de Fin: nueva muestra final
+    std::function<void (size_t)> onStartDragged;  // arrastrando la línea de Start: nueva muestra inicial
     std::function<void (size_t, size_t)> onLoopDragged; // arrastrando una punta del loop: nuevo inicio y fin
     std::function<void (size_t)> onXfadeDragged;  // arrastrando la manija del crossfade: dónde empieza el fundido
     int maxSkip = 64;
@@ -45,6 +46,8 @@ public:
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirty = true; repaint(); } }
     // dónde se corta el final (la línea de Fin); el largo total = sin cortar
     void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; dirty = true; repaint(); } }
+    // dónde empieza (la línea de Start); 0 = desde el principio del archivo
+    void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; dirty = true; repaint(); } }
     // zona de loop (0/0 = sin loop) y los cruces ascendentes (ondas enteras) donde pueden caer sus puntas
     void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; dirty = true; repaint(); } }
     void setLoopBounds (std::vector<size_t> b) { loopBounds = std::move (b); }
@@ -194,6 +197,11 @@ public:
         }
         // ⌥ Option + clic sobre la línea de Skip: vuelve a 0 (sin saltear nada)
         const auto nearLines = linesNear (e.position);
+        if (e.mods.isAltDown() && std::find (nearLines.begin(), nearLines.end(), 6) != nearLines.end() && onStartDragged)
+        {
+            onStartDragged (0); // ⌥ + clic sobre Start: vuelve al principio
+            return;
+        }
         if (e.mods.isAltDown() && std::find (nearLines.begin(), nearLines.end(), 1) != nearLines.end() && onSkipDragged)
         {
             onSkipDragged (0);
@@ -206,15 +214,18 @@ public:
         {
             ambiguousLines = nearLines;
             ambiguousDownX = e.position.x;
+            ambiguousDownY = e.position.y;
             return;
         }
         draggingSkip = line == 1;
         draggingEnd = line == 2;
-        draggingLoop = line >= 3 ? line : 0;
+        draggingStart = line == 6;
+        draggingLoop = (line >= 3 && line <= 5) ? line : 0;
+        if (draggingStart) { dragStartTo (e.position.x); return; }
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (draggingEnd) { dragEndTo (e.position.x); return; }
         if (draggingLoop) { dragLoopTo (e.position.x); return; }
-        if (totalLen() > 0 && onSeek) onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
+        if (totalLen() > 0 && onSeek) onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
@@ -235,12 +246,22 @@ public:
         {
             const float dx = e.position.x - ambiguousDownX;
             if (std::abs (dx) < 2.0f) return;
-            const int line = dx < 0 ? ambiguousLines.front() : ambiguousLines.back();
+            int line = dx < 0 ? ambiguousLines.front() : ambiguousLines.back();
+            // Start y Skip pegadas, arrastrando a la derecha: arriba agarra Start (y empuja a Skip), abajo Skip
+            const bool hasStart = ambiguousLines.front() == 6, hasSkip = std::find (ambiguousLines.begin(), ambiguousLines.end(), 1) != ambiguousLines.end();
+            if (dx > 0 && hasStart && hasSkip)
+            {
+                const float laneTop = getHeight() / 2.0f, laneMid = laneTop + (getHeight() - laneTop) / 2.0f;
+                line = ambiguousDownY < laneMid ? 6 : 1;
+                if (line == 1 && ambiguousLines.back() != 1) line = ambiguousLines.back();
+            }
             ambiguousLines.clear();
             draggingSkip = line == 1;
             draggingEnd = line == 2;
-            draggingLoop = line >= 3 ? line : 0;
+            draggingStart = line == 6;
+            draggingLoop = (line >= 3 && line <= 5) ? line : 0;
         }
+        if (draggingStart) { dragStartTo (e.position.x); return; }
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (draggingEnd) { dragEndTo (e.position.x); return; }
         if (draggingLoop) { dragLoopTo (e.position.x); return; }
@@ -250,13 +271,13 @@ public:
     {
         if (showAllClicked) { showAllClicked = false; mouseMove (e); return; }
         if (pendingLoopMove && ! movingLoop && totalLen() > 0 && onSeek) // clic sin arrastrar: mover el cursor
-            onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
+            onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
         if (pitchDragArmed && ! pitchDragging && totalLen() > 0 && onSeek) // clic sobre la línea sin arrastrar: mover el cursor
-            onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
+            onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
         ambiguousLines.clear();
         pitchDragArmed = pitchDragging = false;
         pendingLoopMove = movingLoop = false;
-        draggingSkip = draggingEnd = false;
+        draggingSkip = draggingEnd = draggingStart = false;
         draggingLoop = 0;
         dirty = true; repaint();
         mouseMove (e);
@@ -319,11 +340,11 @@ private:
     juce::Point<float> hoverPoint { -1.0f, -1.0f };
     bool showAllClicked = false;
     std::vector<int> ambiguousLines; // líneas pegadas: se elige al arrastrar
-    float ambiguousDownX = 0.0f;
+    float ambiguousDownX = 0.0f, ambiguousDownY = 0.0f;
     float cacheScale = 1.0f;
     bool dirty = true;
-    size_t skipEnd = 0, endSample = 0, loopStart = 0, loopEnd = 0;
-    bool draggingSkip = false, draggingEnd = false;
+    size_t skipEnd = 0, endSample = 0, startSample = 0, loopStart = 0, loopEnd = 0;
+    bool draggingSkip = false, draggingEnd = false, draggingStart = false;
     int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop, 5 = manija del crossfade
     size_t xfadeLen = 0;
     std::vector<std::pair<double, double>> pitchPts;
@@ -619,6 +640,7 @@ private:
         std::vector<int> v;
         if (p.y < getHeight() / 2.0f) return v;
         auto near = [&] (float d) { return d <= 6.0f; };
+        if (hasStartLine() && startLineVisible() && near (std::abs (p.x - startLineX()))) v.push_back (6);
         if (hasSkipLine() && near (std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))))) v.push_back (1);
         if (hasLoop() && xVisible ((double) loopStart) && near (std::abs (p.x - (float) sampleToX ((double) loopStart)))) v.push_back (3);
         if (hasLoop() && xVisible ((double) loopEnd) && near (std::abs (p.x - (float) sampleToX ((double) loopEnd)))) v.push_back (4);
@@ -636,10 +658,30 @@ private:
         const float dE = (hasEndLine() && endLineVisible()) ? std::abs (p.x - endLineX()) : 1e9f;
         const float dLs = (hasLoop() && xVisible ((double) loopStart)) ? std::abs (p.x - (float) sampleToX ((double) loopStart)) : 1e9f;
         const float dLe = (hasLoop() && xVisible ((double) loopEnd)) ? std::abs (p.x - (float) sampleToX ((double) loopEnd)) : 1e9f;
-        const float d[4] = { dS, dE, dLs, dLe };
+        const float dSt = (hasStartLine() && startLineVisible()) ? std::abs (p.x - startLineX()) : 1e9f;
+        const float d[5] = { dS, dE, dLs, dLe, dSt };
         int best = 0;
-        for (int k = 1; k < 4; ++k) if (d[k] < d[best]) best = k;
-        return d[best] > 6.0f ? 0 : best + 1;
+        for (int k = 1; k < 5; ++k) if (d[k] < d[best]) best = k;
+        if (d[best] > 6.0f) return 0;
+        return best == 4 ? 6 : best + 1;
+    }
+    // la línea de Start: como la de Fin, salta de semiciclo en semiciclo (corta en un cruce por cero)
+    bool hasStartLine() const { return totalLen() > 0 && onStartDragged != nullptr; }
+    float startLineRawX() const { return (float) sampleToX ((double) startSample); }
+    bool startLineVisible() const { const float x = startLineRawX(); return x >= -1.0f && x <= (float) plotWidth() + 1.0f; }
+    float startLineX() const { return juce::jlimit (1.0f, (float) plotWidth() - 2.0f, startLineRawX()); }
+    void dragStartTo (float x)
+    {
+        const double target = xToSample (x);
+        const size_t limit = hasLoop() ? loopStart : endOrLen(); // antes del loop y de Fin
+        size_t best = 0; double bestD = std::abs (target);
+        for (size_t v : bounds)
+        {
+            if (v >= limit) break;
+            const double d = std::abs ((double) v - target);
+            if (d < bestD) { bestD = d; best = v; }
+        }
+        if (onStartDragged) onStartDragged (best);
     }
     // la línea de Fin salta de semiciclo en semiciclo (corta en un cruce por cero), o al final del archivo
     void dragEndTo (float x)
@@ -863,6 +905,29 @@ private:
                     g.setFont (uiFont (11.0f));
                     g.drawText ("Skip", juce::Rectangle<float> (lx + 5.0f, (float) r.getBottom() - 18.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
                 }
+            }
+            // lo que queda antes de la línea de Start: oscurecido (no se exporta ni suena)
+            if (startSample > 0)
+            {
+                const float sx = juce::jmin ((float) r.getRight(), (float) r.getX() + (float) sampleToX ((double) startSample));
+                if (sx > (float) r.getX())
+                {
+                    g.setColour (juce::Colour (0xcc0e1013));
+                    g.fillRect (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), sx - (float) r.getX(), (float) r.getHeight()));
+                }
+            }
+            if (showSkipLine && hasStartLine() && startLineVisible())
+            {
+                const float sx = (float) r.getX() + startLineX();
+                g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
+                const float dashes[] = { 4.0f, 3.0f };
+                g.drawDashedLine (juce::Line<float> (sx, (float) r.getY(), sx, (float) r.getBottom()), dashes, 2, draggingStart ? 2.0f : 1.2f);
+                juce::Path handle;
+                const float hy = (float) r.getY() + 22.0f;
+                handle.addTriangle (sx - 6.0f, hy, sx + 6.0f, hy, sx, hy + 8.0f);
+                g.fillPath (handle);
+                g.setFont (uiFont (11.0f));
+                g.drawText ("Start", juce::Rectangle<float> (sx + 5.0f, hy + 6.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
             }
             // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
             if (endSample > 0 && endSample < (size_t) totalLen())

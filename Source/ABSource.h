@@ -34,6 +34,8 @@ public:
     void setPlayProcessed (bool shouldPlayProcessed) { useB = shouldPlayProcessed; }
     // dónde termina la reproducción (la línea de Fin); 0 = hasta el final del archivo
     void setEndSample (juce::int64 e) { endSample = e; }
+    // dónde empieza (la línea de Start): lo de antes no suena; el loop de escucha vuelve acá
+    void setStartSample (juce::int64 s) { startSample = s; }
     // zona de loop del sample (con Loop activado se repite esta zona; 0/0 = el archivo entero)
     // Si el loop se mueve o cambia de tamaño mientras suena, el cursor se mueve con él y queda en el mismo
     // lugar dentro del loop (así no se escapa del loop al arrastrarlo). Lo aplica el hilo de audio.
@@ -79,6 +81,8 @@ public:
             // el cursor saltó (otro loop, o se movió): mini crossfade de lo que venía sonando a lo nuevo
             if (p != before) { jumpOld = before; jumpFade = 0.0f; }
         }
+        const juce::int64 st = juce::jlimit ((juce::int64) 0, (juce::int64) juce::jmax (0, len - 1), startSample.load());
+        if (p < st) p = st; // antes de Start no suena nada: arranca desde Start
         int done = 0;
         while (done < info.numSamples)
         {
@@ -86,7 +90,7 @@ public:
             if (p >= len)
             {
                 if (! region && ! looping) break; // al final: el loop de sección, el de escucha (desde el principio) o parar
-                p = region ? ls : 0;
+                p = region ? ls : st;
             }
             juce::int64 stop = len;
             if (region && p < le) stop = le;
@@ -156,7 +160,7 @@ private:
     BufferPtr a, b, prevB;
     float mix = 1.0f, swapFade = 1.0f, jumpFade = 1.0f, fadeStep = 1.0f / 441.0f;
     juce::int64 jumpOld = 0; // (salto del cursor: de dónde venía) // (solo los toca el hilo de audio, salvo al cambiar buffers)
-    std::atomic<juce::int64> pos { 0 }, endSample { 0 }, loopStart { 0 }, loopEnd { 0 };
+    std::atomic<juce::int64> pos { 0 }, endSample { 0 }, startSample { 0 }, loopStart { 0 }, loopEnd { 0 };
     std::atomic<juce::int64> prevLoopStart { 0 }, prevLoopEnd { 0 };
     std::atomic<bool> remapPending { false };
     std::atomic<bool> useB { true }, looping { false }, regionLoop { false };
