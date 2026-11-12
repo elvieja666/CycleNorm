@@ -396,6 +396,11 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
+        // Amount y Ramp ya no están en la ventana: fijos en 100 % y 0 % (normalización completa, sin rampa)
+        amount.setValue (100.0, juce::dontSendNotification);
+        ramp.setValue (0.0, juce::dontSendNotification);
+        for (juce::Component* comp : { (juce::Component*) &amount, (juce::Component*) &ramp, (juce::Component*) &amountLabel, (juce::Component*) &rampLabel })
+            comp->setVisible (false);
         // Re-pitch a mano, en cents: de -600 a +600 (6 semitonos para cada lado). Doble clic = 0.
         // Se aplica un instante después de moverla.
         setupSlider (pitchShift, pitchShiftLabel, "Pitch", -600, 600, 0.1, "", 0.0);
@@ -562,29 +567,23 @@ public:
         findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
         otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
         clearLoopButton.setBounds (top.removeFromLeft (95));
+        // Pitch arriba a la derecha: el nombre y la barra
+        {
+            auto p = top.removeFromRight (juce::jmin (380, juce::jmax (220, top.getWidth() - 20)));
+            pitchShift.setBounds (p.removeFromRight (p.getWidth() - 44).reduced (0, 5).withTrimmedBottom (2));
+            pitchShiftLabel.setBounds (p.withTrimmedBottom (2));
+        }
         r.removeFromTop (5);
         separatorY = r.getY();
         r.removeFromTop (10);
 
-        controlsArea = r.removeFromBottom (118);
+        controlsArea = r.removeFromBottom (54);
         auto c = controlsArea.reduced (14, 12);
         auto bottomRow = c.removeFromBottom (30);
         dragOut.setBounds (bottomRow.removeFromRight (260));
         info.setBounds (bottomRow);
         progressBar.setBounds (bottomRow.reduced (0, 4).withTrimmedRight (12));
         progressLabel.setBounds (progressBar.getBounds());
-        c.removeFromBottom (6);
-        const int colW = c.getWidth() / 3;
-        auto place = [&] (juce::Label& l, juce::Slider& s, juce::Component* extra) {
-            auto col = c.removeFromLeft (colW).reduced (6, 0);
-            auto head = col.removeFromTop (20);
-            if (extra != nullptr) extra->setBounds (head.removeFromRight (60));
-            l.setBounds (head);
-            s.setBounds (col.removeFromTop (28));
-        };
-        place (amountLabel, amount, nullptr);
-        place (rampLabel, ramp, nullptr);
-        place (pitchShiftLabel, pitchShift, nullptr);
         r.removeFromBottom (8);
 
         list.setBounds (r.removeFromLeft (230).reduced (4));
