@@ -425,29 +425,18 @@ private:
     {
         if (pitchPts.size() < 2 || viewLen <= 0) return;
         auto midiOf = [this] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0) + pitchPreviewSemis; };
+        // rango fijo: la curva original (sin re-pitch) más los 6 semitonos para cada lado que puede
+        // moverse Pitch. Así al cambiar el pitch el gráfico no cambia nada: sólo se mueve la línea.
         double lo = 1e9, hi = -1e9;
-        // rango: la curva original (sin re-pitch) y la actual juntas, así al mover Pitch se mueve la línea y no la grilla
         for (auto& p : pitchPts)
         {
-            const double m = midiOf (p.second), m0 = m - pitchPreviewSemis - pitchApplied;
-            lo = std::min ({ lo, m, m0 }); hi = std::max ({ hi, m, m0 });
+            const double m0 = midiOf (p.second) - pitchPreviewSemis - pitchApplied;
+            lo = std::min (lo, m0); hi = std::max (hi, m0);
         }
-        const double mid = 0.5 * (lo + hi);
-        if (hi - lo < 1.0) { lo = mid - 0.5; hi = mid + 0.5; }
-        const double pad = (hi - lo) * 0.12;
+        lo -= 6.0; hi += 6.0;
+        const double pad = (hi - lo) * 0.06;
         lo -= pad; hi += pad;
-        if (std::abs (pitchPreviewSemis) > 1e-9 && frozenValid)
-        {
-            // moviendo la barra Pitch: la grilla queda quieta y se mueve la línea;
-            // el rango sólo se agranda si la línea se sale
-            double clo = 1e9, chi = -1e9;
-            for (auto& p : pitchPts) { const double m = midiOf (p.second); clo = std::min (clo, m); chi = std::max (chi, m); }
-            const double margin = (frozenHi - frozenLo) * 0.05;
-            frozenLo = std::min (frozenLo, clo - margin);
-            frozenHi = std::max (frozenHi, chi + margin);
-            lo = frozenLo; hi = frozenHi;
-        }
-        else { frozenLo = lo; frozenHi = hi; frozenValid = true; }
+        frozenLo = lo; frozenHi = hi; frozenValid = true;
         autoSpan = hi - lo;
         if (zoomSpan > 0.0) // zoom vertical: alto fijo en semitonos, centrado donde se hizo zoom
         {
