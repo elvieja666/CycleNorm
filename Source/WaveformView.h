@@ -956,7 +956,7 @@ private:
             g.setColour (juce::Colour (0xff0f1114));
             g.fillRect (r);
         }
-        const float mid = (float) r.getCentreY(), half = r.getHeight() * 0.46f;
+        const float mid = (float) r.getCentreY(), half = r.getHeight() * 0.38f; // (un poco más chica: deja aire arriba y abajo para los textos)
 
         if (pass == 1) {}
         else if (underlay) underlay(); // el carril de arriba: el fondo del piano roll (debajo de la onda)
