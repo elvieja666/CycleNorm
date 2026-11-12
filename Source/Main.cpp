@@ -432,7 +432,15 @@ public:
         list.setRowHeight (34);
         list.setColour (juce::ListBox::backgroundColourId, juce::Colours::transparentBlack);
         list.setWantsKeyboardFocus (false);
-        addAndMakeVisible (list);
+        addChildComponent (list); // oculta: queda como modelo de la selección (el 808 se elige con el selector de arriba)
+        fileBox.setWantsKeyboardFocus (false);
+        fileBox.setTextWhenNothingSelected ("No 808s loaded");
+        fileBox.setTextWhenNoChoicesAvailable ("No 808s loaded");
+        fileBox.onChange = [this] {
+            const int row = fileBox.getSelectedItemIndex();
+            if (row >= 0 && row != current) list.selectRow (row);
+        };
+        addAndMakeVisible (fileBox);
 
         wave.getPlayheadSeconds = [this] { return transport.getCurrentPosition(); };
         wave.isPlaying = [this] { return transport.isPlaying(); };
@@ -537,13 +545,7 @@ public:
         g.setFont (tf);
         const float titleW = juce::GlyphArrangement::getStringWidth (tf, "CYCLENORM");
         g.drawText ("CYCLENORM", titleArea.toFloat(), juce::Justification::centredLeft);
-        g.setColour (Theme::inkFaint);
-        g.setFont (Theme::font (12.5f, 300));
-        g.drawText (u8 ("normalizes half-cycle by half-cycle · space = play · A = original/processed"),
-                    titleArea.withTrimmedLeft ((int) titleW + 18), juce::Justification::centredLeft);
-        // recuadros hundidos: la lista y los controles de abajo
-        Theme::drawWell (g, list.getBounds().toFloat().expanded (1.0f), 12.0f);
-        Theme::drawWell (g, controlsArea.toFloat(), 14.0f);
+        juce::ignoreUnused (titleW);
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
         g.setColour (Theme::darkBg);
         g.fillRoundedRectangle (waveArea.toFloat(), 12.0f);
@@ -556,7 +558,18 @@ public:
     {
         auto r = getLocalBounds().reduced (10);
         titleArea = r.removeFromTop (28);
-        pitchLabel.setBounds (titleArea.withTrimmedLeft (titleArea.getWidth() / 2));
+        {
+            // fila del título: CYCLENORM · selector del 808 · info del loop · pitch medido (a la derecha)
+            auto t = titleArea;
+            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (15.0f), "CYCLENORM");
+            t.removeFromLeft ((int) titleW + 18);
+            pitchLabel.setBounds (t.removeFromRight (juce::jmin (430, t.getWidth() / 2)));
+            fileBox.setBounds (t.removeFromLeft (juce::jmin (280, t.getWidth() / 2)).withTrimmedTop (0).translated (0, 2));
+            t.removeFromLeft (12);
+            info.setBounds (t);
+            progressBar.setBounds (t.reduced (0, 6).withTrimmedRight (12));
+            progressLabel.setBounds (progressBar.getBounds());
+        }
         r.removeFromTop (6);
 
         auto top = r.removeFromTop (36);
@@ -586,16 +599,7 @@ public:
         separatorY = r.getY();
         r.removeFromTop (10);
 
-        controlsArea = r.removeFromBottom (40);
-        auto c = controlsArea.reduced (14, 5);
-        auto bottomRow = c;
-        info.setBounds (bottomRow);
-        progressBar.setBounds (bottomRow.reduced (0, 4).withTrimmedRight (12));
-        progressLabel.setBounds (progressBar.getBounds());
-        r.removeFromBottom (8);
-
-        list.setBounds (r.removeFromLeft (230).reduced (4));
-        r.removeFromLeft (8);
+        // sin lista ni línea de abajo: el visor ocupa todo
         waveArea = r;
         wave.setBounds (r.reduced (8));
     }
@@ -696,7 +700,7 @@ private:
     juce::ProgressBar progressBar { progressValue };
     juce::Label progressLabel;
     std::unique_ptr<LoopSearchJob> loopJob;
-    juce::ComboBox formatBox;
+    juce::ComboBox formatBox, fileBox;
     juce::ApplicationCommandManager commandManager;
     juce::Slider amount, ramp;
     StepSlider pitchShift;
@@ -867,6 +871,7 @@ private:
             if (firstNew < 0) firstNew = (int) items.size() - 1;
         }
         list.updateContent();
+        refreshFileBox();
         if (firstNew >= 0) list.selectRow (firstNew);
         if (! failed.isEmpty())
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open",
@@ -903,6 +908,7 @@ private:
         items.erase (items.begin() + current);
         current = -1;
         list.updateContent();
+        refreshFileBox();
         list.deselectAllRows();
         if (! items.empty()) list.selectRow (juce::jmin (removed, (int) items.size() - 1));
         else { wave.clear(); source.setBuffers (nullptr, nullptr); }
@@ -1190,8 +1196,16 @@ private:
         updateInfo();
     }
 
+    void refreshFileBox()
+    {
+        fileBox.clear (juce::dontSendNotification);
+        for (size_t i = 0; i < items.size(); ++i) fileBox.addItem (items[i]->file.getFileName(), (int) i + 1);
+        if (juce::isPositiveAndBelow (current, (int) items.size())) fileBox.setSelectedItemIndex (current, juce::dontSendNotification);
+    }
+
     void selectItem (int row)
     {
+        fileBox.setSelectedItemIndex (row, juce::dontSendNotification);
         if (! juce::isPositiveAndBelow (row, (int) items.size())) return;
         const bool wasPlaying = transport.isPlaying();
         transport.stop();
@@ -1284,25 +1298,21 @@ private:
         auto& it = *items[(size_t) current];
         updatePitch (it);
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
+        juce::ignoreUnused (peakDb);
+        // corto (va en la fila del título): el loop y los avisos
         juce::String t;
-        t << (int) it.analysis.numCycles() << u8 (" cycles (") << (int) it.analysis.halfPeaks.size() << u8 (" half-cycles) · Skip: ") << skipHalves << u8 (" half-cycles · all at 0 dBFS · output peak ") << juce::String (peakDb, 1) << " dBFS";
-        if (it.endSample > 0)
-            t << u8 (" · End: ") << juce::String ((double) it.endSample / it.sampleRate, 2) << " s (of "
-              << juce::String ((double) it.original->getNumSamples() / it.sampleRate, 2) << " s)";
         if (it.hasLoop())
         {
             const auto& B = it.analysis.bounds;
             const auto nCyc = std::distance (std::lower_bound (B.begin(), B.end(), it.loopStart), std::lower_bound (B.begin(), B.end(), it.loopEnd));
-            t << u8 (" · Loop: ") << juce::String ((double) it.loopStart / it.sampleRate, 3) << u8 ("–")
-              << juce::String ((double) it.loopEnd / it.sampleRate, 3) << " s (" << (int) nCyc << u8 (" cycles, quality ")
-              << juce::String (it.loopQuality * 100.0, 1) << " %)";
-            t << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) + (it.xfadeCycles == 1 ? " cycle" : " cycles") : juce::String ("Off"));
+            t << "Loop " << juce::String (it.loopQuality * 100.0, 1) << u8 (" % · ") << (int) nCyc << " cycles"
+              << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) : juce::String ("Off"));
             if (it.loopCandIdx >= 0 && it.loopCands.size() > 1)
-                t << u8 (" · option ") << (it.loopCandIdx + 1) << " of " << (int) it.loopCands.size();
+                t << u8 (" · option ") << (it.loopCandIdx + 1) << "/" << (int) it.loopCands.size();
         }
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
-            t << u8 ("  ·  CLIPPING! The original attack goes over 0 dBFS: export as 32-bit float");
+            t = u8 ("CLIPPING! The attack goes over 0 dBFS: export as 32-bit float");
             info.setColour (juce::Label::textColourId, Theme::bad);
         }
         else info.setColour (juce::Label::textColourId, Theme::inkDim);
