@@ -823,9 +823,11 @@ public:
 
     void resized() override
     {
+        // altos (diseño de 650): barra de arriba 75 · recuadro del visor 550 (dos visores de 250) · renglón 25
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
-        titleArea = r.removeFromTop (kTitleH);
+        titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
+        r.removeFromTop (32);          // los botones: lo visible de 34 a 67 (el componente lleva 2 de sombra arriba)
         {
             // fila del título: TOOLKIT · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
@@ -894,19 +896,16 @@ public:
         loopInfoX = loopButton.getX() + 4; // la info del loop arranca en el borde izquierdo (visible) de Loop section
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
-        r.removeFromTop (6);
-        separatorY = r.getY();
-        r.removeFromTop (8);
-        // abajo de todo, a la izquierda: el renglón del pitch medido
+        separatorY = -10; // (sin la rayita de abajo de los botones: el visor ya separa)
+        // abajo de todo, a la izquierda: el renglón del pitch medido (25)
         {
-            auto foot = r.removeFromBottom (24);
-            pitchLabel.setBounds (foot.withTrimmedTop (3).withTrimmedBottom (5));
+            auto foot = getLocalBounds().withTrimmedLeft (kMargin).withTrimmedRight (kMargin).removeFromBottom (25);
+            pitchLabel.setBounds (foot.withSizeKeepingCentre (foot.getWidth(), 16));
         }
-        // el visor: con el margen del osciloscopio de UNISON (7)
-        r.removeFromBottom (2);
-        r = getLocalBounds().withTop (r.getY()).withBottom (r.getBottom()).reduced (7, 0);
-        waveArea = r;
-        wave.setBounds (r.reduced (8));
+        // el visor: el recuadro negro de 75 a 625 (550), con el margen del osciloscopio de UNISON (7) a los
+        // costados; adentro, los dos visores de 250 (+ 1 de borde cada uno), centrados
+        waveArea = juce::Rectangle<int> (7, 75, getWidth() - 14, 550);
+        wave.setBounds (waveArea.withSizeKeepingCentre (waveArea.getWidth() - 16, 502));
     }
 
     bool keyPressed (const juce::KeyPress& k) override
