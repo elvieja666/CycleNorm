@@ -613,18 +613,28 @@ private:
             }
             else
             {
-                for (int x = 0; x < w; ++x)
+                // como el osciloscopio de UNISON: la onda como línea (sin rellenar hasta el centro).
+                // Columnas de medio píxel con el mínimo y el máximo reales de sus muestras; cada una
+                // arranca en la última muestra de la anterior, así la línea no se corta en las subidas.
+                auto valueAt = [&] (int s) { // el canal con mayor valor absoluto (igual que la línea de cerca)
+                    float v = 0;
+                    for (int c = 0; c < nCh; ++c) { const float x = buf->getSample (c, s); if (std::abs (x) > std::abs (v)) v = x; }
+                    return v;
+                };
+                const int cols = w * 2;
+                const double spc = viewLen / juce::jmax (1, cols);
+                juce::RectangleList<float> peaks;
+                for (int x = 0; x < cols; ++x)
                 {
-                    const int s0 = (int) (viewStart + x * spp), s1 = juce::jmin (n, (int) (viewStart + (x + 1) * spp) + 1);
-                    float lo = 0, hi = 0;
-                    for (int c = 0; c < nCh; ++c)
-                    {
-                        const float* d = buf->getReadPointer (c);
-                        for (int s = juce::jmax (0, s0); s < s1; ++s) { lo = juce::jmin (lo, d[s]); hi = juce::jmax (hi, d[s]); }
-                    }
+                    const int s0 = juce::jmax (0, (int) (viewStart + x * spc)), s1 = juce::jmin (n, (int) (viewStart + (x + 1) * spc) + 1);
+                    if (s0 >= n) break;
+                    float lo = 1e9f, hi = -1e9f;
+                    for (int s = juce::jmax (0, s0 - 1); s < s1; ++s) { const float v = valueAt (s); lo = juce::jmin (lo, v); hi = juce::jmax (hi, v); }
+                    if (hi < lo) continue;
                     const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
-                    g.fillRect ((float) (r.getX() + x), y0, 1.0f, juce::jmax (1.0f, y1 - y0));
+                    peaks.addWithoutMerging ({ (float) r.getX() + (float) x * 0.5f, y0, 0.85f, juce::jmax (0.9f, y1 - y0) });
                 }
+                g.fillRectList (peaks);
             }
         };
 
