@@ -16,7 +16,7 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 
 ## Controles
 
-La normalización es siempre completa: cada semiciclo a 0 dBFS (Amount ya no está en la ventana). **Ramp** y **Pitch** están arriba a la derecha, en la fila de los botones.
+**Normalize** (botón arriba, al lado de Loop): prendido, cada semiciclo a 0 dBFS (la normalización completa); apagado, el audio queda sin normalizar (sólo con el pitch, el End y el loop que pongas). Se guarda al cerrar y se puede deshacer con ⌘Z. **Ramp** y **Pitch** están arriba a la derecha, en la fila de los botones.
 
 | Control | Qué hace |
 |---|---|
@@ -104,7 +104,7 @@ La app es universal (Apple Silicon e Intel) y anda en macOS 11 o más nuevo.
 
 En la ventana quedan sólo Play, Loop, Hearing y los botones del loop.
 
-**Deshacer / rehacer:** **⌘Z** deshace el último cambio y **⇧⌘Z** (o ⌘Y) lo rehace. Cuenta todo lo que se edita: Pitch, Ramp, Skip, End, el loop (buscarlo, Next loop, moverlo, estirarlo, Clear loop) y el crossfade. Un arrastre entero es un solo paso. Si el cambio era de otro archivo, lo selecciona y lo deshace ahí. Guarda hasta 300 pasos.
+**Deshacer / rehacer:** **⌘Z** deshace el último cambio y **⇧⌘Z** (o ⌘Y) lo rehace. Cuenta todo lo que se edita: Normalize, Pitch, Ramp, Skip, End, el loop (buscarlo, Next loop, moverlo, estirarlo, Clear loop) y el crossfade. Un arrastre entero es un solo paso. Si el cambio era de otro archivo, lo selecciona y lo deshace ahí. Guarda hasta 300 pasos.
 
 **Visor:**
 - **Trackpad:** el **pellizco** hace zoom horizontal (en el tiempo) y **⌥ Option + dos dedos** el zoom vertical del pitch. Con **dos dedos** te movés por dentro: de costado en el tiempo y, con zoom vertical, arriba y abajo en el pitch.

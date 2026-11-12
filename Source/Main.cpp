@@ -342,6 +342,7 @@ public:
         setupButton (removeButton, "Remove");
         setupButton (playButton, "Play");
         setupButton (loopButton, "Loop");
+        setupButton (normButton, "Normalize");
         setupButton (abButton, "Hearing: Processed");
         setupButton (findLoopButton, "Find loop");
         setupButton (clearLoopButton, "Clear loop");
@@ -359,6 +360,9 @@ public:
         setupButton (exportButton, u8 ("Export…"));
         setupButton (exportAllButton, u8 ("Export all…"));
         loopButton.setClickingTogglesState (true);
+        // Normalize: prendido = cada semiciclo a 0 dBFS (Amount 100 %); apagado = sin normalizar (Amount 0 %)
+        normButton.setClickingTogglesState (true);
+        normButton.onClick = [this] { amount.setValue (normButton.getToggleState() ? 100.0 : 0.0, juce::sendNotificationSync); };
         abButton.setClickingTogglesState (true);
         abButton.setToggleState (true, juce::dontSendNotification);
         abButton.getProperties().set ("speaker", true);
@@ -396,8 +400,9 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
-        // Amount ya no está en la ventana: fijo en 100 % (normalización completa)
-        amount.setValue (100.0, juce::dontSendNotification);
+        // Amount ya no está en la ventana: lo maneja el botón Normalize (100 % o 0 %)
+        amount.setValue (props->getDoubleValue ("amount", 100.0) >= 50.0 ? 100.0 : 0.0, juce::dontSendNotification);
+        normButton.setToggleState (amount.getValue() >= 50.0, juce::dontSendNotification);
         amount.setVisible (false);
         amountLabel.setVisible (false);
         // Re-pitch a mano, en cents: de -600 a +600 (6 semitonos para cada lado). Doble clic = 0.
@@ -575,6 +580,7 @@ public:
         auto top = r.removeFromTop (36);
         playButton.setBounds (top.removeFromLeft (70)); top.removeFromLeft (6);
         loopButton.setBounds (top.removeFromLeft (60)); top.removeFromLeft (6);
+        normButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
         abButton.setBounds (top.removeFromLeft (180)); top.removeFromLeft (16);
         findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
         otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
@@ -590,7 +596,7 @@ public:
             };
             top.removeFromLeft (16);
             // las dos barras igual de largas (cada nombre ocupa lo mismo)
-            const int each = juce::jlimit (170, 300, (top.getWidth() - 14) / 2);
+            const int each = juce::jlimit (140, 300, (top.getWidth() - 14) / 2);
             place (top.removeFromRight (each), pitchShiftLabel, pitchShift, 46);
             top.removeFromRight (14);
             place (top.removeFromRight (each), rampLabel, ramp, 46);
@@ -688,6 +694,7 @@ private:
     std::vector<std::unique_ptr<Item>> items;
     int current = -1;
 
+    juce::TextButton normButton;
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton,
                      findLoopButton, otherLoopButton, clearLoopButton;
     double progressValue = 0.0;
@@ -1156,6 +1163,7 @@ private:
         for (size_t i = 0; i < items.size(); ++i) if (items[i].get() == st.item) row = (int) i;
         if (row >= 0 && row != current) { list.selectRow (row); if (current != row) selectItem (row); }
         amount.setValue (st.amount, juce::dontSendNotification);
+        normButton.setToggleState (st.amount >= 50.0, juce::dontSendNotification);
         ramp.setValue (st.ramp, juce::dontSendNotification);
         skipHalves = st.skip;
         saveSettings();
