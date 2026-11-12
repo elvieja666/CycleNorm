@@ -1577,6 +1577,9 @@ public:
     void initialise (const juce::String& commandLine) override
     {
         juce::LookAndFeel::setDefaultLookAndFeel (&laf);
+        // sólo para pruebas: CYCLENORM_TEST_SCALE=2 simula una pantalla Retina
+        const auto testScale = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_SCALE", {}).getFloatValue();
+        if (testScale > 0.5f) juce::Desktop::getInstance().setGlobalScaleFactor (testScale);
         window = std::make_unique<MainWindow>();
         window->content->openFromCommandLine (commandLine);
     }

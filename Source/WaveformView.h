@@ -69,8 +69,11 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        if (dirty || cache.getWidth() != getWidth() || cache.getHeight() != getHeight()) renderCache();
-        g.drawImageAt (cache, 0, 0);
+        // la imagen se arma a la resolución real de la pantalla (Retina = el doble de píxeles), así no se ve borrosa
+        const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
+        const int pw = juce::roundToInt ((float) getWidth() * scale), ph = juce::roundToInt ((float) getHeight() * scale);
+        if (dirty || cache.getWidth() != pw || cache.getHeight() != ph) { cacheScale = scale; renderCache(); }
+        g.drawImage (cache, getLocalBounds().toFloat());
 
         if (totalLen() > 0 && getPlayheadSeconds)
         {
@@ -216,6 +219,7 @@ private:
     std::vector<size_t> bounds;
     double sr = 44100.0, viewStart = 0, viewLen = 0;
     juce::Image cache;
+    float cacheScale = 1.0f;
     bool dirty = true;
     size_t skipEnd = 0, endSample = 0, loopStart = 0, loopEnd = 0;
     bool draggingSkip = false, draggingEnd = false;
@@ -798,8 +802,11 @@ private:
     {
         dirty = false;
         const int w = juce::jmax (1, getWidth()), h = juce::jmax (1, getHeight());
-        cache = juce::Image (juce::Image::RGB, w, h, true);
+        cache = juce::Image (juce::Image::RGB, juce::jmax (1, juce::roundToInt ((float) w * cacheScale)),
+                             juce::jmax (1, juce::roundToInt ((float) h * cacheScale)), true);
         juce::Graphics g (cache);
+        g.addTransform (juce::AffineTransform::scale (cacheScale)); // se dibuja en coordenadas normales
+
         g.fillAll (juce::Colour (0xff0b0c0e));
         if (totalLen() == 0)
         {
