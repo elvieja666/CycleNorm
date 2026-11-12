@@ -1115,6 +1115,9 @@ private:
                     g.fillPath (shade);
                     g.setColour (juce::Colours::white.withAlpha (0.55f));
                     g.drawLine (x0, bot, x1, top, 1.2f);
+                    // hasta dónde llega el fade: una línea vertical
+                    g.setColour (juce::Colours::white.withAlpha (0.45f));
+                    g.drawLine (x1, (float) r.getY(), x1, (float) r.getBottom(), 1.0f);
                 }
                 const auto box = fadeHandleArea().translated ((float) r.getX(), 0.0f);
                 if (box.getRight() >= (float) r.getX() && box.getX() <= (float) r.getRight())
@@ -1147,6 +1150,9 @@ private:
                     g.fillPath (shade);
                     g.setColour (juce::Colours::white.withAlpha (0.55f));
                     g.drawLine (x0, top, x1, bot, 1.2f);
+                    // desde dónde arranca el fade: una línea vertical
+                    g.setColour (juce::Colours::white.withAlpha (0.45f));
+                    g.drawLine (x0, (float) r.getY(), x0, (float) r.getBottom(), 1.0f);
                 }
                 const auto box = fadeOutHandleArea().translated ((float) r.getX(), 0.0f);
                 if (box.getRight() >= (float) r.getX() && box.getX() <= (float) r.getRight())
