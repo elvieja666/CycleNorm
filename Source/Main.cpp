@@ -592,6 +592,8 @@ public:
         pitchShift.wheelStepFine = 0.1;   // Shift + rueda: de a 0,1 cent
         pitchShift.setDoubleClickReturnValue (true, 0.0);
         pitchShift.getProperties().set ("resetValue", 0.0); // ⌥ + clic: 0 cents
+        pitchShift.setVisible (false);
+        pitchShiftLabel.setVisible (false);
         pitchShift.setVelocityModeParameters (0.15, 1, 0.0, true, juce::ModifierKeys::shiftModifier); // Shift + arrastrar = fino
         pitchShift.onValueChange = [this] {
             pendingRetune = true; lastRetuneChange = juce::Time::getMillisecondCounter();
@@ -817,8 +819,8 @@ public:
                 sl.setBounds (p.withHeight (kPillH).withY (cy - kPillH / 2));
             };
             put (row.removeFromLeft (each), rampLabel, ramp);
-            row.removeFromLeft (kGap);
-            put (row.removeFromLeft (each), pitchShiftLabel, pitchShift);
+            // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
+            // (el slider queda oculto, guarda el valor)
         }
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         r.removeFromTop (6);
