@@ -823,11 +823,11 @@ public:
 
     void resized() override
     {
-        // altos (diseño de 650): barra de arriba 75 · recuadro del visor 550 (dos visores de 250) · renglón 25
+        // altos (diseño de 650): barra de arriba 100 · recuadro del visor 530 (dos visores de 250) · renglón 20
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
-        r.removeFromTop (32);          // los botones: lo visible de 34 a 67 (el componente lleva 2 de sombra arriba)
+        r.removeFromTop (45);          // los botones: lo visible de 47 a 80 (20 de aire arriba, hasta el título, y abajo, hasta el visor)
         {
             // fila del título: TOOLKIT · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
@@ -900,12 +900,12 @@ public:
         separatorY = -10; // (sin la rayita de abajo de los botones: el visor ya separa)
         // abajo de todo, a la izquierda: el renglón del pitch medido (25)
         {
-            auto foot = getLocalBounds().withTrimmedLeft (kMargin).withTrimmedRight (kMargin).removeFromBottom (25);
+            auto foot = getLocalBounds().withTrimmedLeft (kMargin).withTrimmedRight (kMargin).removeFromBottom (20);
             pitchLabel.setBounds (foot.withSizeKeepingCentre (foot.getWidth(), 16));
         }
         // el visor: el recuadro negro de 75 a 625 (550), con el margen del osciloscopio de UNISON (7) a los
         // costados; adentro, los dos visores de 250 (+ 1 de borde cada uno), centrados
-        waveArea = juce::Rectangle<int> (kMargin, 75, getWidth() - 2 * kMargin, 550); // a 20 de los dos costados
+        waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, 530); // a 20 de los dos costados
         wave.setBounds (waveArea.withSizeKeepingCentre (waveArea.getWidth() - 16, 502));
     }
 
