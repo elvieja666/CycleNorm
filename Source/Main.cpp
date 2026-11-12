@@ -839,6 +839,7 @@ public:
         // botones: del ancho de su texto (como las pastillas de UNISON); el componente lleva la sombra
         // (4 a los costados, 2 arriba, 6 abajo), así lo visible mide kButtonH de alto
         auto row = r.removeFromTop (kButtonH + 8);
+        row.setLeft (row.getX() - 4); // lo visible del primer botón (el transporte) arranca a 20, justo debajo del título
         const auto bf = Theme::font (14.0f, 400);
         auto widthFor = [&] (juce::Button& b, float extra) {
             return (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, b.getButtonText()) + 2.0f * 14.0f + extra) + 8;
@@ -904,7 +905,7 @@ public:
         }
         // el visor: el recuadro negro de 75 a 625 (550), con el margen del osciloscopio de UNISON (7) a los
         // costados; adentro, los dos visores de 250 (+ 1 de borde cada uno), centrados
-        waveArea = juce::Rectangle<int> (7, 75, getWidth() - 14, 550);
+        waveArea = juce::Rectangle<int> (kMargin, 75, getWidth() - 2 * kMargin, 550); // a 20 de los dos costados
         wave.setBounds (waveArea.withSizeKeepingCentre (waveArea.getWidth() - 16, 502));
     }
 
