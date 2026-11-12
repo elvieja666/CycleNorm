@@ -141,6 +141,7 @@ public:
             drawLane (g, origToDraw(), topLaneRect(), juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
                       hasPitch ? std::function<void()> ([] {}) : std::function<void()>(), 1);
             drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
+            drawTabs (g);
         }
 
         // el cursor: en la x que calculó el timer (la misma franja que mandó a redibujar; si se
@@ -213,7 +214,9 @@ public:
     void mouseMove (const juce::MouseEvent& e) override
     {
         const bool wasHot = showAllArea.contains (hoverPoint);
+        const int oldTab = tabAt (hoverPoint);
         hoverPoint = e.position;
+        if (tabAt (hoverPoint) != oldTab) repaint(); // la pestaña bajo el mouse se ilumina
         if (wasHot != showAllArea.contains (hoverPoint)) repaint (showAllArea.getSmallestIntegerContainer().expanded (2));
         if (showAllArea.contains (e.position)) setMouseCursor (juce::MouseCursor::PointingHandCursor);
         else if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
@@ -714,6 +717,8 @@ private:
     // Skip, inicio del loop, fin del loop, End (de izquierda a derecha)
     std::vector<int> linesNear (juce::Point<float> p) const
     {
+        if (const int t = tabAt (p)) return { t }; // (con pestañas no hay líneas pegadas que elegir)
+        return {};
         std::vector<int> v;
         if (p.y < getHeight() / 2.0f) return v;
         auto near = [&] (float d) { return d <= 6.0f; };
@@ -727,9 +732,7 @@ private:
     int whichLine (juce::Point<float> p) const
     {
         if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
-        // la manija del fade in: el cuadradito de arriba, en donde termina el fade
-        if (hasFadeHandle() && fadeHandleArea().expanded (4.0f).contains (p)) return 7;
-        if (hasFadeOutHandle() && fadeOutHandleArea().expanded (4.0f).contains (p)) return 8;
+        return tabAt (p); // cada línea se agarra sólo de su pestaña
         // la manija del crossfade: el cuadradito de abajo de todo
         if (hasLoop() && onXfadeDragged != nullptr && p.y >= (float) getHeight() - 26.0f
             && std::abs (p.x - xfadeHandleX()) <= 9.0f && xVisible ((double) (loopEnd - std::min (xfadeLen, loopEnd))))
@@ -744,6 +747,71 @@ private:
         for (int k = 1; k < 5; ++k) if (d[k] < d[best]) best = k;
         if (d[best] > 6.0f) return 0;
         return best == 4 ? 6 : best + 1;
+    }
+    // ---- Manijas: cada línea se agarra sólo de su pestaña (con su nombre), y cada una tiene su franja:
+    //      arriba Start / End (1ª fila) y los fades (2ª fila); abajo Skip / crossfade (1ª fila desde abajo)
+    //      y las puntas del loop (2ª). Así, aunque dos líneas estén pegadas, sus pestañas no se pisan.
+    // id: 1 Skip, 2 End, 3 inicio del loop, 4 fin del loop, 5 crossfade, 6 Start, 7 fade in, 8 fade out
+    static constexpr float kTabH = 15.0f;
+    static juce::String tabText (int id)
+    {
+        switch (id) { case 1: return "Skip"; case 2: return "End"; case 3: return "Loop"; case 4: return "Loop end";
+                      case 5: return "Xfade"; case 6: return "Start"; case 7: return "Fade in"; case 8: return "Fade out"; }
+        return {};
+    }
+    juce::Rectangle<float> tabRect (int id) const
+    {
+        if (totalLen() == 0) return {};
+        const auto lane = procLaneRect().toFloat();
+        double sample = 0; int side = 1; float y = 0;
+        switch (id)
+        {
+            case 6: if (! hasStartLine()) return {}; sample = (double) startSample; side = 1;  y = lane.getY() + 22.0f; break;
+            case 2: if (! hasEndLine()) return {};   sample = (double) endOrLen();  side = -1; y = lane.getY() + 22.0f; break;
+            case 7: if (! hasFadeHandle()) return {};    sample = (double) fadeEndSample();      side = 1;  y = lane.getY() + 22.0f + kTabH + 5.0f; break;
+            case 8: if (! hasFadeOutHandle()) return {}; sample = (double) fadeOutStartSample(); side = -1; y = lane.getY() + 22.0f + kTabH + 5.0f; break;
+            case 1: if (! hasSkipLine()) return {}; sample = skipLineSample(); side = 1; y = lane.getBottom() - 6.0f - kTabH; break;
+            case 5: if (! hasLoop() || onXfadeDragged == nullptr) return {}; sample = (double) (loopEnd - std::min (xfadeLen, loopEnd)); side = -1; y = lane.getBottom() - 6.0f - kTabH; break;
+            case 3: if (! hasLoop()) return {}; sample = (double) loopStart; side = 1;  y = lane.getBottom() - 11.0f - 2.0f * kTabH; break;
+            case 4: if (! hasLoop()) return {}; sample = (double) loopEnd;   side = -1; y = lane.getBottom() - 11.0f - 2.0f * kTabH; break;
+            default: return {};
+        }
+        float x = (float) sampleToX (sample);
+        if (x < -1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
+        x = juce::jlimit (1.0f, (float) plotWidth() - 1.0f, x);
+        const float w = juce::GlyphArrangement::getStringWidth (uiFont (10.5f), tabText (id)) + 12.0f;
+        auto rr = side > 0 ? juce::Rectangle<float> (x, y, w, kTabH) : juce::Rectangle<float> (x - w, y, w, kTabH);
+        // que no se salga del gráfico (pegada al borde, se da vuelta)
+        if (rr.getRight() > (float) plotWidth()) rr.setX (x - w);
+        if (rr.getX() < 0.0f) rr.setX (x);
+        return rr;
+    }
+    int tabAt (juce::Point<float> p) const
+    {
+        for (int id : { 7, 8, 6, 2, 1, 5, 3, 4 })
+            if (tabRect (id).expanded (2.0f, 2.0f).contains (p)) return id;
+        return 0;
+    }
+    bool isDraggingTab (int id) const
+    {
+        return (id == 1 && draggingSkip) || (id == 2 && draggingEnd) || (id == 6 && draggingStart) || (id == 7 && draggingFade)
+            || (id == 8 && draggingFadeOut) || (id >= 3 && id <= 5 && draggingLoop == id);
+    }
+    void drawTabs (juce::Graphics& g) const
+    {
+        for (int id : { 3, 4, 5, 1, 6, 2, 7, 8 })
+        {
+            const auto rr = tabRect (id);
+            if (rr.isEmpty()) continue;
+            const bool loopTab = id >= 3 && id <= 5 && id != 5;
+            const bool hot = isDraggingTab (id) || rr.expanded (2.0f).contains (hoverPoint);
+            const juce::Colour base = loopTab ? juce::Colour (0xff3ddc84) : juce::Colour (0xffd9dee5);
+            g.setColour (hot ? base.brighter (0.25f) : base.withAlpha (0.92f));
+            g.fillRoundedRectangle (rr, 3.0f);
+            g.setColour (juce::Colour (0xff15181c));
+            g.setFont (uiFont (10.5f));
+            g.drawText (tabText (id), rr, juce::Justification::centred);
+        }
     }
     // fade in: la manija va arriba (debajo de "Start"), donde termina el fade
     size_t fadeLimit() const { return hasLoop() ? loopStart : endOrLen(); }
@@ -1069,12 +1137,6 @@ private:
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingSkip ? 1.0f : 0.85f));
                     const float dashes[] = { 4.0f, 3.0f };
                     g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, draggingSkip ? 2.0f : 1.2f);
-                    juce::Path handle;
-                    const float hy = (float) r.getY() + 22.0f;
-                    handle.addTriangle (lx - 6.0f, hy, lx + 6.0f, hy, lx, hy + 8.0f);
-                    g.fillPath (handle);
-                    g.setFont (uiFont (11.0f));
-                    g.drawText ("Skip", juce::Rectangle<float> (lx + 5.0f, (float) r.getBottom() - 18.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
                 }
             }
             // lo que queda antes de la línea de Start: oscurecido (no se exporta ni suena)
@@ -1093,12 +1155,6 @@ private:
                 g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
                 const float dashes[] = { 4.0f, 3.0f };
                 g.drawDashedLine (juce::Line<float> (sx, (float) r.getY(), sx, (float) r.getBottom()), dashes, 2, draggingStart ? 2.0f : 1.2f);
-                juce::Path handle;
-                const float hy = (float) r.getY() + 22.0f;
-                handle.addTriangle (sx - 6.0f, hy, sx + 6.0f, hy, sx, hy + 8.0f);
-                g.fillPath (handle);
-                g.setFont (uiFont (11.0f));
-                g.drawText ("Start", juce::Rectangle<float> (sx + 5.0f, hy + 6.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
             }
             // fade in: la rampa (de Start, abajo, hasta donde termina, arriba) y su manija
             if (showSkipLine && hasFadeHandle())
@@ -1119,21 +1175,6 @@ private:
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (x1, (float) r.getY(), x1, (float) r.getBottom(), 1.0f);
                 }
-                const auto box = fadeHandleArea().translated ((float) r.getX(), 0.0f);
-                if (box.getRight() >= (float) r.getX() && box.getX() <= (float) r.getRight())
-                {
-                    g.setColour (draggingFade ? juce::Colours::white : juce::Colour (0xffe8ecf2));
-                    g.fillRoundedRectangle (box, 3.0f);
-                    g.setColour (juce::Colour (0xff1b1e23)); // el dibujito: una rampa que sube
-                    const auto ib = box.reduced (3.5f);
-                    g.drawLine (ib.getX(), ib.getBottom(), ib.getRight(), ib.getY(), 1.6f);
-                    if (fe > startSample)
-                    {
-                        g.setColour (juce::Colours::white.withAlpha (0.8f));
-                        g.setFont (uiFont (11.0f));
-                        g.drawText ("Fade in", juce::Rectangle<float> (box.getRight() + 4.0f, box.getY(), 60.0f, box.getHeight()), juce::Justification::centredLeft);
-                    }
-                }
             }
             // fade out: la rampa (de donde empieza, arriba, hasta End, abajo) y su manija
             if (showSkipLine && hasFadeOutHandle())
@@ -1153,21 +1194,6 @@ private:
                     // desde dónde arranca el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (x0, (float) r.getY(), x0, (float) r.getBottom(), 1.0f);
-                }
-                const auto box = fadeOutHandleArea().translated ((float) r.getX(), 0.0f);
-                if (box.getRight() >= (float) r.getX() && box.getX() <= (float) r.getRight())
-                {
-                    g.setColour (draggingFadeOut ? juce::Colours::white : juce::Colour (0xffe8ecf2));
-                    g.fillRoundedRectangle (box, 3.0f);
-                    g.setColour (juce::Colour (0xff1b1e23)); // el dibujito: una rampa que baja
-                    const auto ib = box.reduced (3.5f);
-                    g.drawLine (ib.getX(), ib.getY(), ib.getRight(), ib.getBottom(), 1.6f);
-                    if (fe > fs)
-                    {
-                        g.setColour (juce::Colours::white.withAlpha (0.8f));
-                        g.setFont (uiFont (11.0f));
-                        g.drawText ("Fade out", juce::Rectangle<float> (box.getX() - 64.0f, box.getY(), 60.0f, box.getHeight()), juce::Justification::centredRight);
-                    }
                 }
             }
             // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
@@ -1200,10 +1226,6 @@ private:
                     const bool grabbed = draggingLoop == 3 + k;
                     g.setColour (juce::Colour (0xff3ddc84).withAlpha (grabbed ? 1.0f : 0.9f));
                     g.drawDashedLine (juce::Line<float> (lx, (float) r.getY(), lx, (float) r.getBottom()), dashes, 2, grabbed ? 2.0f : 1.2f);
-                    juce::Path handle;
-                    const float hy = (float) r.getBottom() - 38.0f;
-                    handle.addTriangle (lx - 6.0f, hy + 8.0f, lx + 6.0f, hy + 8.0f, lx, hy);
-                    g.fillPath (handle);
                 }
                 // crossfade (como en el Quick Sampler): lo que entra, antes del inicio, sube; lo que sale,
                 // antes del fin, baja. La manija ✕ (abajo) marca dónde empieza el fundido.
@@ -1235,20 +1257,8 @@ private:
                             g.setColour (juce::Colours::white.withAlpha (0.8f));
                             g.drawVerticalLine ((int) hx, top, bot);
                         }
-                        const auto box = juce::Rectangle<float> (hx - 8.0f, (float) r.getBottom() - 20.0f, 16.0f, 16.0f);
-                        g.setColour (grabbedX ? juce::Colours::white : juce::Colour (0xffe8ecf2));
-                        g.fillRoundedRectangle (box, 3.0f);
-                        g.setColour (juce::Colour (0xff1b1e23));
-                        const auto ib = box.reduced (4.5f);
-                        g.drawLine (ib.getX(), ib.getY(), ib.getRight(), ib.getBottom(), 1.6f);
-                        g.drawLine (ib.getRight(), ib.getY(), ib.getX(), ib.getBottom(), 1.6f);
+                        juce::ignoreUnused (grabbedX);
                     }
-                }
-                if (x0 >= (float) r.getX() && x0 + 44.0f < (float) r.getRight())
-                {
-                    g.setColour (juce::Colour (0xff3ddc84));
-                    g.setFont (uiFont (11.0f));
-                    g.drawText ("Loop", juce::Rectangle<float> (x0 + 5.0f, (float) r.getY() + 4.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
                 }
             }
             if (showSkipLine && hasEndLine() && endLineVisible())
@@ -1258,12 +1268,6 @@ private:
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingEnd ? 1.0f : 0.9f));
                     const float dashes[] = { 4.0f, 3.0f };
                     g.drawDashedLine (juce::Line<float> (ex, (float) r.getY(), ex, (float) r.getBottom()), dashes, 2, draggingEnd ? 2.0f : 1.2f);
-                    juce::Path handle;
-                    const float hy = (float) r.getY() + 22.0f;
-                    handle.addTriangle (ex - 6.0f, hy, ex + 6.0f, hy, ex, hy + 8.0f);
-                    g.fillPath (handle);
-                    g.setFont (uiFont (11.0f));
-                    g.drawText ("End", juce::Rectangle<float> (ex - 34.0f, (float) r.getBottom() - 18.0f, 30.0f, 14.0f), juce::Justification::centredRight);
                 }
             }
             // la línea de 0 dBFS (arriba y abajo), en blanco
