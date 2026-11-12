@@ -514,7 +514,7 @@ public:
         setWantsKeyboardFocus (true);
         setSize (1290, 680);
         updateButtons();
-        startTimerHz (15);
+        startTimerHz (60);
     }
 
     ~MainComponent() override
@@ -737,7 +737,7 @@ private:
     juce::uint32 lastRetuneChange = 0;
     int outputCheckTicks = 0;
     juce::String lastFailedOutput;
-    juce::uint32 lastChange = 0;
+    juce::uint32 lastChange = 0, lastProcessMs = 0;
 
     //==========================================================================
     void setupSlider (juce::Slider& s, juce::Label& l, const juce::String& name, double lo, double hi, double step,
@@ -777,10 +777,19 @@ private:
         props->saveIfNeeded();
     }
 
+    // Re-procesar es rápido (0,5 a 2 ms), así que se hace al toque mientras arrastrás Skip o movés Ramp:
+    // como mucho una vez cada ~16 ms (lo que dura un cuadro de pantalla); si llega antes, lo hace el timer.
     void settingsChanged()
     {
-        pendingReprocess = true;
         lastChange = juce::Time::getMillisecondCounter();
+        if (loopJob == nullptr && lastChange - lastProcessMs >= 16)
+        {
+            pendingReprocess = false;
+            lastProcessMs = lastChange;
+            processCurrent();
+            list.repaint();
+        }
+        else pendingReprocess = true;
     }
 
     void timerCallback() override
@@ -799,14 +808,15 @@ private:
             pendingRetune = false;
             retuneCurrent (0, pitchShift.getValue());
         }
-        if (pendingReprocess && juce::Time::getMillisecondCounter() - lastChange > 40)
+        if (pendingReprocess && juce::Time::getMillisecondCounter() - lastProcessMs >= 16)
         {
             pendingReprocess = false;
+            lastProcessMs = juce::Time::getMillisecondCounter();
             processCurrent();
             list.repaint();
         }
         playButton.setButtonText (transport.isPlaying() ? "Stop" : "Play");
-        if (++outputCheckTicks >= 15) { outputCheckTicks = 0; followSystemOutput(); } // una vez por segundo
+        if (++outputCheckTicks >= 60) { outputCheckTicks = 0; followSystemOutput(); } // una vez por segundo
         // que espacio / A / flechas anden siempre (salvo mientras se escribe un valor)
         if (juce::Component::getCurrentlyFocusedComponent() == nullptr && isShowing()
             && juce::Process::isForegroundProcess())
