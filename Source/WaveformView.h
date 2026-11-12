@@ -288,13 +288,27 @@ private:
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
         g.setFont (juce::FontOptions (10.5f));
         auto noteStr = [&] (int m) { return juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1); };
+        // nombres: las notas en amarillo fuerte y negrita; los cents más apagados
         auto label = [&] (float y, const juce::String& txt, bool strong) {
             const float w = strong ? 30.0f : 58.0f;
             const auto lb = juce::Rectangle<float> ((float) r.getRight() - w - 4.0f, y - 6.5f, w, 13.0f);
-            g.setColour (juce::Colour (0xcc15171b));
+            g.setColour (juce::Colour (0xdd0b0c0e));
             g.fillRoundedRectangle (lb, 2.0f);
-            g.setColour (juce::Colour (strong ? 0xe8ffd34d : 0xa0ffd34d));
+            g.setColour (juce::Colour (strong ? 0xffffd34d : 0x99ffd34d));
+            g.setFont (juce::FontOptions (strong ? 11.0f : 10.5f, strong ? juce::Font::bold : juce::Font::plain));
             g.drawText (txt, lb, juce::Justification::centred);
+        };
+        // líneas: la de una nota, entera y clara (C más todavía: marca la octava);
+        // la de cents, punteada y tenue
+        auto noteLine = [&] (float y, int midiNote, float x1) {
+            const bool isC = ((midiNote % 12) + 12) % 12 == 0;
+            g.setColour (juce::Colour (isC ? 0x99ffd34d : 0x66ffd34d));
+            g.fillRect (juce::Rectangle<float> ((float) r.getX(), std::round (y) - 0.5f, x1 - (float) r.getX(), isC ? 1.5f : 1.0f));
+        };
+        auto centsLine = [&] (float y, float x1) {
+            g.setColour (juce::Colour (0x4dffd34d));
+            const float dashes[] = { 3.0f, 4.0f };
+            g.drawDashedLine (juce::Line<float> ((float) r.getX(), std::round (y), x1, std::round (y)), dashes, 2, 1.0f);
         };
         const double spanSemis = hi - lo;
         // columna de los nombres: las líneas (grilla y curva) se cortan antes de llegar
@@ -310,8 +324,7 @@ private:
             for (int m = s0; m <= s1; m += stepS)
             {
                 const float y = yOf ((double) m);
-                g.setColour (juce::Colour (0x28ffd34d));
-                g.drawHorizontalLine ((int) y, (float) r.getX(), lineEnd);
+                noteLine (y, m, lineEnd);
                 label (y, noteStr (m), true);
             }
         }
@@ -332,8 +345,7 @@ private:
                 if (dev > 100.0 - 1e-4) { ++note; dev = 0.0; }
                 const bool isNote = std::abs (dev) < 1e-4;
                 const float y = yOf (m);
-                g.setColour (juce::Colour (isNote ? 0x70ffd34d : 0x22ffd34d));
-                g.drawHorizontalLine ((int) y, (float) r.getX(), lineEnd);
+                if (isNote) noteLine (y, note, lineEnd); else centsLine (y, lineEnd);
                 const int dec = stepC < 1.0 ? 1 : 0;
                 label (y, isNote ? noteStr (note) : noteStr (note) + " " + (dev > 0 ? "+" : "") + juce::String (dev, dec) + "c", isNote);
             }
