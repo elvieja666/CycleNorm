@@ -445,6 +445,48 @@ int main()
         std::printf ("ondas con rulo al cruzar por cero: %d de %d fuera de +-5 cents  %s\n", bad, total, ok ? "OK" : "FALLA");
         fails += ! ok;
     }
+    // Reese sintético: dos serruchos desafinados 2 Hz (batido cada 0,5 s), estéreo. Tiene que
+    // detectarse como sonido que modula, y el loop tiene que durar ciclos enteros del batido
+    // (si no, al repetirse se corta el movimiento), con buena calidad.
+    {
+        const double fs = 44100, f1 = 43.65, f2 = 45.65, secs = 3.0;
+        const size_t n = (size_t) (fs * secs);
+        Channels in (2, std::vector<float> (n));
+        double p1 = 0.0, p2 = 0.3;
+        for (size_t i = 0; i < n; ++i)
+        {
+            const double t = i / fs;
+            p1 += f1 / fs; p2 += f2 / fs; p1 -= std::floor (p1); p2 -= std::floor (p2);
+            const double s1 = 2.0 * p1 - 1.0, s2 = 2.0 * p2 - 1.0, env = 0.7 * std::min (1.0, t / 0.01);
+            in[0][i] = (float) (env * (0.6 * s1 + 0.4 * s2));
+            in[1][i] = (float) (env * (0.4 * s1 + 0.6 * s2));
+        }
+        auto a = analyse (in, fs);
+        Settings st;
+        auto y = render (in, a, st);
+        AudioView v; for (auto& ch : y) v.ch.push_back (ch.data()); v.n = y[0].size();
+        const bool mod = modloop::isModulated (modloop::build (a, v, 0, v.n));
+        auto r = findLoops (a, v, 0, v.n, 4, 3);
+        bool ok = mod && ! r.empty();
+        double len = 0, beats = 0;
+        if (ok)
+        {
+            len = (double) (r[0].end - r[0].start) / fs;
+            beats = len / 0.5;
+            ok = std::abs (beats - std::round (beats)) < 0.08 && std::round (beats) >= 1 && r[0].quality > 0.85;
+        }
+        std::printf ("reese (batido cada 0,5 s): %s, loop %.3f s = %.2f batidos, calidad %.0f%%  %s\n",
+                     mod ? "modula" : "NO modula", len, beats, r.empty() ? 0.0 : r[0].quality * 100.0, ok ? "OK" : "FALLA");
+        fails += ! ok;
+        // y un 808 normal (de los de arriba) no se toma como que modula
+        auto d = make808 (fs, 2.0, 55, 41.2, 0.05, 0.5, 2.0, 0.0, -80, true);
+        auto ad = analyse (d, fs);
+        auto yd = render (d, ad, st);
+        AudioView vd; for (auto& ch : yd) vd.ch.push_back (ch.data()); vd.n = yd[0].size();
+        const bool mod808 = modloop::isModulated (modloop::build (ad, vd, 0, vd.n));
+        std::printf ("808 normal: %s  %s\n", mod808 ? "modula (mal)" : "no modula", mod808 ? "FALLA" : "OK");
+        fails += mod808;
+    }
     // casos raros: silencio, archivo cortísimo, mono
     {
         Channels z (1, std::vector<float> (1000, 0.0f));
