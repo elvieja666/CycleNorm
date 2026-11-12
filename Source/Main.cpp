@@ -458,7 +458,8 @@ public:
         setupButton (findLoopButton, "Find loop");
         setupButton (clearLoopButton, "Clear loop");
         findLoopButton.onClick = [this] { if (loopJob != nullptr) cancelLoopSearch(); else findLoopForCurrent(); };
-        setupButton (otherLoopButton, "Next loop");
+        setupButton (otherLoopButton, "Loop 1"); // "Loop N": la opción de loop que está puesta; cada clic pasa a la siguiente
+        otherLoopButton.setTooltip ("Next loop option");
         otherLoopButton.onClick = [this] { nextLoopCandidate(); };
         addChildComponent (progressBar);
         progressBar.setTextToDisplay (" "); // el texto va en una etiqueta encima (el de la barra no se leía)
@@ -737,9 +738,11 @@ public:
         row.removeFromRight (kGap); groupDividersRight = row.getRight(); row.removeFromRight (kGap + 1);
         // 4) el loop de sección (el que se exporta): prenderlo, buscarlo, el siguiente, borrarlo
         {
-            auto loopRow = row.removeFromRight (widthFor (loopButton, 0) + widthFor (findLoopButton, 0) + widthFor (otherLoopButton, 0) + widthFor (clearLoopButton, 0));
+            const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Loop 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
+            auto wOf = [&] (juce::Button& b) { return &b == &otherLoopButton ? wNum : widthFor (b, 0); };
+            auto loopRow = row.removeFromRight (wOf (loopButton) + wOf (findLoopButton) + wOf (otherLoopButton) + wOf (clearLoopButton));
             for (auto* b : { (juce::Button*) &loopButton, (juce::Button*) &findLoopButton, (juce::Button*) &otherLoopButton, (juce::Button*) &clearLoopButton })
-                b->setBounds (loopRow.removeFromLeft (widthFor (*b, 0)));
+                b->setBounds (loopRow.removeFromLeft (wOf (*b)));
         }
         row.removeFromRight (kGap); groupDividers.push_back (row.getRight()); row.removeFromRight (kGap + 1);
         // 3) el proceso: Normalize, Ramp y Pitch (las dos barras igual de largas)
@@ -1463,6 +1466,10 @@ private:
         exportAllButton.setEnabled (! items.empty());
         findLoopButton.setEnabled (has || loopJob != nullptr);
         otherLoopButton.setEnabled (has && loopJob == nullptr && items[(size_t) current]->loopCands.size() > 1);
+        {   // "Loop N": el número de la opción que está sonando (o "Loop" solo si no hay opciones)
+            const bool any = has && items[(size_t) current]->loopCandIdx >= 0 && ! items[(size_t) current]->loopCands.empty();
+            otherLoopButton.setButtonText (any ? "Loop " + juce::String (items[(size_t) current]->loopCandIdx + 1) : juce::String ("Loop"));
+        }
         clearLoopButton.setEnabled (has && items[(size_t) current]->hasLoop());
         dragOut.setEnabled (has);
         dragOut.repaint();
@@ -1499,7 +1506,7 @@ private:
             t << "Loop " << juce::String (it.loopQuality * 100.0, 1) << u8 (" % · ") << (int) nCyc << " cycles"
               << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) : juce::String ("Off"));
             if (it.loopCandIdx >= 0 && it.loopCands.size() > 1)
-                t << u8 (" · option ") << (it.loopCandIdx + 1) << "/" << (int) it.loopCands.size();
+                t << u8 (" · ") << (int) it.loopCands.size() << " options";
         }
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
