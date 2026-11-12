@@ -849,8 +849,13 @@ public:
         r.removeFromTop (6);
         separatorY = r.getY();
         r.removeFromTop (8);
+        // abajo de todo, a la izquierda: el renglón del pitch medido
+        {
+            auto foot = r.removeFromBottom (24);
+            pitchLabel.setBounds (foot.withTrimmedTop (3).withTrimmedBottom (5));
+        }
         // el visor: con el margen del osciloscopio de UNISON (7)
-        r.removeFromBottom (7);
+        r.removeFromBottom (2);
         r = getLocalBounds().withTop (r.getY()).withBottom (r.getBottom()).reduced (7, 0);
         waveArea = r;
         wave.setBounds (r.reduced (8));
@@ -1595,8 +1600,8 @@ private:
         return it.isFloat || it.bits > 24;
     }
 
-    // fila del título: el nombre del 808 hasta la línea de Processed | Normalize; desde ahí el pitch
-    // (del ancho de su texto) y a la derecha de todo la info del loop
+    // fila del título: el nombre del 808 hasta la línea de Processed | Normalize y a la derecha de todo
+    // la info del loop (el pitch va abajo de los gráficos)
     void layoutTitleRow()
     {
         auto t = titleRest;
@@ -1604,9 +1609,6 @@ private:
         const int px = juce::jlimit (t.getX(), t.getRight(), pitchInfoX);
         fileName = t.withRight (px - 12);
         auto rest = t.withLeft (px);
-        const int pw = (int) std::ceil (juce::GlyphArrangement::getStringWidth (pitchLabel.getFont(), pitchLabel.getText())) + 4;
-        pitchLabel.setBounds (rest.removeFromLeft (juce::jmin (pw, rest.getWidth())));
-        rest.removeFromLeft (16);
         info.setBounds (rest);
         progressBar.setBounds (rest.withSizeKeepingCentre (rest.getWidth() - 12, 18).withX (rest.getX()));
         progressLabel.setBounds (progressBar.getBounds());
