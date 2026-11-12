@@ -255,7 +255,7 @@ public:
         g.drawRoundedRectangle (r, radius, 1.0f);
         g.setColour (isEnabled() ? Theme::accent : Theme::inkFaint);
         g.setFont (Theme::font (13.5f, 400));
-        g.drawText (u8 ("⇢  Drag the processed audio to your DAW"), getLocalBounds(), juce::Justification::centred);
+        g.drawText ("Drag to DAW", getLocalBounds(), juce::Justification::centred);
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
@@ -565,7 +565,9 @@ public:
         abButton.setBounds (top.removeFromLeft (180)); top.removeFromLeft (16);
         findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
         otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
-        clearLoopButton.setBounds (top.removeFromLeft (95));
+        clearLoopButton.setBounds (top.removeFromLeft (95)); top.removeFromLeft (16);
+        // la pastilla para arrastrar el procesado al DAW (mismo alto visible que los botones)
+        dragOut.setBounds (top.removeFromLeft (118).withTrimmedTop (2).withTrimmedBottom (5).reduced (3, 0));
         // Ramp y Pitch arriba a la derecha: el nombre y la barra de cada uno
         {
             auto place = [] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl, int labelW) {
@@ -583,10 +585,9 @@ public:
         separatorY = r.getY();
         r.removeFromTop (10);
 
-        controlsArea = r.removeFromBottom (54);
-        auto c = controlsArea.reduced (14, 12);
-        auto bottomRow = c.removeFromBottom (30);
-        dragOut.setBounds (bottomRow.removeFromRight (260));
+        controlsArea = r.removeFromBottom (40);
+        auto c = controlsArea.reduced (14, 5);
+        auto bottomRow = c;
         info.setBounds (bottomRow);
         progressBar.setBounds (bottomRow.reduced (0, 4).withTrimmedRight (12));
         progressLabel.setBounds (progressBar.getBounds());

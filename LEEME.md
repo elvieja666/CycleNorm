@@ -12,7 +12,7 @@ App para Mac que **normaliza un 808 semiciclo por semiciclo**: detecta cada semi
 4. **Espacio** = play / stop (cada play arranca desde el principio; si con el stop puesto hacés clic en la forma de onda, el próximo play arranca desde ahí), **A** = alternar entre escuchar el original y el procesado (sin cortar, con un fundido de 10 ms para que no haga click; también hay fundido cuando el procesado cambia mientras suena, por ejemplo al mover Amount o el loop), **↑ / ↓** = pasar de archivo. **Loop** repite: si el archivo tiene loop (zona verde), repite esa zona infinitamente; si no, todo el archivo.
 5. Para llevarlo al DAW tenés dos caminos:
    - **File ▸ Export…** (⌘E) guarda el archivo seleccionado (por defecto con `_norm` al final del nombre). **File ▸ Export All…** (⇧⌘E) procesa toda la lista con los ajustes actuales y la guarda en la carpeta que elijas.
-   - **Drag the processed audio to your DAW**: arrastrás ese botón a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
+   - **Drag to DAW** (arriba, en la fila de los botones): arrastrás esa pastilla a una pista y listo. El archivo queda guardado en `~/Music/CycleNorm/`, así el DAW lo puede seguir leyendo.
 
 ## Controles
 
