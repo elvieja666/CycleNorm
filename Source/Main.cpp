@@ -145,7 +145,7 @@ public:
             const auto edge = shape.reduced (0.5f);
             juce::Path outline;
             outline.addRoundedRectangle (edge.getX(), edge.getY(), edge.getWidth(), edge.getHeight(), rad, rad, L, R, L, R);
-            g.setColour (Theme::inkStrong.withAlpha (0.8f)); // el borde siempre igual (sólo el ícono se pone azul)
+            g.setColour (Theme::inkDim); // el borde siempre igual, en el gris de "Ramp" (sólo el ícono se pone azul)
             g.strokePath (outline, juce::PathStrokeType (1.0f));
             return;
         }
