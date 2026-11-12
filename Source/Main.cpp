@@ -396,11 +396,10 @@ public:
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
-        // Amount y Ramp ya no están en la ventana: fijos en 100 % y 0 % (normalización completa, sin rampa)
+        // Amount ya no está en la ventana: fijo en 100 % (normalización completa)
         amount.setValue (100.0, juce::dontSendNotification);
-        ramp.setValue (0.0, juce::dontSendNotification);
-        for (juce::Component* comp : { (juce::Component*) &amount, (juce::Component*) &ramp, (juce::Component*) &amountLabel, (juce::Component*) &rampLabel })
-            comp->setVisible (false);
+        amount.setVisible (false);
+        amountLabel.setVisible (false);
         // Re-pitch a mano, en cents: de -600 a +600 (6 semitonos para cada lado). Doble clic = 0.
         // Se aplica un instante después de moverla.
         setupSlider (pitchShift, pitchShiftLabel, "Pitch", -600, 600, 0.1, "", 0.0);
@@ -567,11 +566,18 @@ public:
         findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
         otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
         clearLoopButton.setBounds (top.removeFromLeft (95));
-        // Pitch arriba a la derecha: el nombre y la barra
+        // Ramp y Pitch arriba a la derecha: el nombre y la barra de cada uno
         {
-            auto p = top.removeFromRight (juce::jmin (380, juce::jmax (220, top.getWidth() - 20)));
-            pitchShift.setBounds (p.removeFromRight (p.getWidth() - 44).reduced (0, 5).withTrimmedBottom (2));
-            pitchShiftLabel.setBounds (p.withTrimmedBottom (2));
+            auto place = [] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl, int labelW) {
+                sl.setBounds (p.removeFromRight (p.getWidth() - labelW).reduced (0, 5).withTrimmedBottom (2));
+                l.setBounds (p.withTrimmedBottom (2));
+            };
+            top.removeFromLeft (16);
+            const int avail = top.getWidth();
+            const int pitchW = juce::jlimit (240, 360, avail * 6 / 10), rampW = juce::jlimit (150, 200, avail - pitchW - 14);
+            place (top.removeFromRight (pitchW), pitchShiftLabel, pitchShift, 44);
+            top.removeFromRight (14);
+            place (top.removeFromRight (rampW), rampLabel, ramp, 46);
         }
         r.removeFromTop (5);
         separatorY = r.getY();
