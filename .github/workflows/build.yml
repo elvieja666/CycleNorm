@@ -21,19 +21,19 @@ jobs:
           clang++ -O2 -std=c++17 -ISource Tests/EngineTest.cpp -o engine_test
           ./engine_test
 
-      - name: Armar CycleNorm.zip (todo en la misma carpeta)
+      - name: Armar Toolkit.zip (todo en la misma carpeta)
         run: |
           mkdir pkg
-          cp -R build/CycleNorm_artefacts/Release/CycleNorm.app pkg/
+          cp -R build/Toolkit_artefacts/Release/Toolkit.app pkg/
           cp Instalador/Install.command Instalador/Uninstall.command pkg/
           chmod +x pkg/Install.command pkg/Uninstall.command
-          codesign --force --deep --sign - pkg/CycleNorm.app
-          lipo -info pkg/CycleNorm.app/Contents/MacOS/CycleNorm
-          (cd pkg && zip -ry ../CycleNorm.zip .)
-          unzip -l CycleNorm.zip | head -20
+          codesign --force --deep --sign - pkg/Toolkit.app
+          lipo -info pkg/Toolkit.app/Contents/MacOS/Toolkit
+          (cd pkg && zip -ry ../Toolkit.zip .)
+          unzip -l Toolkit.zip | head -20
 
-      - name: Subir CycleNorm.zip
+      - name: Subir Toolkit.zip
         uses: actions/upload-artifact@v7
         with:
-          path: CycleNorm.zip
+          path: Toolkit.zip
           archive: false

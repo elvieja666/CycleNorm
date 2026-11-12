@@ -77,7 +77,7 @@ namespace Theme
         return juce::Font (juce::FontOptions (titleTypeface()).withHeight (capHeight / capPerHeight));
     }
 
-    constexpr float textScale = 1.0f; // en CycleNorm los tamaños ya van en px finales
+    constexpr float textScale = 1.0f; // en Toolkit los tamaños ya van en px finales
 
     inline juce::Font font (float height, int weight = 400, float kerning = 0.0f)
     {

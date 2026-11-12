@@ -1,4 +1,4 @@
-// CycleNorm: normaliza un 808 onda por onda (cada ciclo al mismo pico) y lo exporta.
+// Toolkit (antes CycleNorm): normaliza un 808 onda por onda (cada ciclo al mismo pico) y lo exporta.
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "CycleEngine.h"
 #include "LoopFinder.h"
@@ -350,9 +350,14 @@ public:
         formats.registerBasicFormats();
 
         juce::PropertiesFile::Options o;
-        o.applicationName = "CycleNorm";
+        o.applicationName = "Toolkit";
         o.filenameSuffix = ".settings";
         o.osxLibrarySubFolder = "Application Support";
+        {   // la app se llamaba CycleNorm: si hay ajustes con el nombre viejo y no con el nuevo, se pasan
+            auto oldOpts = o; oldOpts.applicationName = "CycleNorm";
+            const auto newFile = o.getDefaultFile(), oldFile = oldOpts.getDefaultFile();
+            if (! newFile.existsAsFile() && oldFile.existsAsFile()) { newFile.getParentDirectory().createDirectory(); oldFile.copyFileTo (newFile); }
+        }
         props = std::make_unique<juce::PropertiesFile> (o);
 
         auto setupButton = [this] (juce::Button& b, const juce::String& text) {
@@ -563,8 +568,8 @@ public:
         g.setColour (Theme::inkStrong);
         const auto tf = Theme::titleFont (15.0f);
         g.setFont (tf);
-        const float titleW = juce::GlyphArrangement::getStringWidth (tf, "CYCLENORM");
-        g.drawText ("CYCLENORM", titleArea.toFloat(), juce::Justification::centredLeft);
+        const float titleW = juce::GlyphArrangement::getStringWidth (tf, "TOOLKIT");
+        g.drawText ("TOOLKIT", titleArea.toFloat(), juce::Justification::centredLeft);
         juce::ignoreUnused (titleW);
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
@@ -586,9 +591,9 @@ public:
         auto r = getLocalBounds().reduced (10);
         titleArea = r.removeFromTop (28);
         {
-            // fila del título: CYCLENORM · selector del 808 · info del loop · pitch medido (a la derecha)
+            // fila del título: TOOLKIT · selector del 808 · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
-            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (15.0f), "CYCLENORM");
+            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (15.0f), "TOOLKIT");
             t.removeFromLeft ((int) titleW + 18);
             pitchLabel.setBounds (t.removeFromRight (juce::jmin (430, t.getWidth() / 2)));
             fileName = t.removeFromLeft (juce::jmin (300, t.getWidth() / 2));
@@ -1613,7 +1618,7 @@ private:
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return {};
         auto& it = *items[(size_t) current];
         // carpeta fija (no temporal): el DAW puede seguir leyendo el archivo después
-        auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("CycleNorm");
+        auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Toolkit");
         dir.createDirectory();
         auto dest = dir.getChildFile (defaultName (it)).getNonexistentSibling (false);
         juce::String err;
@@ -1742,7 +1747,7 @@ private:
 class CycleNormApp : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override { return "CycleNorm"; }
+    const juce::String getApplicationName() override { return "Toolkit"; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
     bool moreThanOneInstanceAllowed() override { return false; }
 
@@ -1770,7 +1775,7 @@ private:
     class MainWindow : public juce::DocumentWindow
     {
     public:
-        MainWindow() : DocumentWindow ("CycleNorm", kBg, DocumentWindow::allButtons)
+        MainWindow() : DocumentWindow ("Toolkit", kBg, DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
             content = new MainComponent();
