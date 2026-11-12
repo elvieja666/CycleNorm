@@ -343,6 +343,7 @@ struct Item
     int bits = 24;
     bool isFloat = false;
     std::shared_ptr<juce::AudioBuffer<float>> original, processed; // original = el cargado, o el afinado con Tune
+    std::shared_ptr<juce::AudioBuffer<float>> shownProcessed; // para dibujar: el procesado sin re-afinar (el dibujo no cambia con el pitch)
     cyclenorm::Analysis analysis;
     std::shared_ptr<juce::AudioBuffer<float>> loaded; // el archivo tal como se abrió (antes de Tune)
     cyclenorm::Analysis loadedAnalysis;
@@ -1291,6 +1292,38 @@ private:
         }
         it.processed = out;
         it.outPeak = peak;
+        processShown (it);
+    }
+    // El dibujo de abajo con el pitch movido: el mismo proceso (normalizar, Ramp, fade in, crossfade)
+    // pero sobre el audio sin re-afinar, así el dibujo no cambia con el pitch (sólo se estira al largo).
+    void processShown (Item& it) const
+    {
+        if (std::abs (it.tuneSemis) < 1e-9 || it.loaded == nullptr) { it.shownProcessed = nullptr; return; }
+        Item d;
+        d.original = it.loaded; d.analysis = it.loadedAnalysis; d.sampleRate = it.sampleRate;
+        d.fadeHalves = it.fadeHalves; d.xfadeCycles = it.xfadeCycles;
+        // las posiciones, llevadas por número de semiciclo / onda (como al re-afinar)
+        auto mapHalf = [&] (size_t v) {
+            const auto& A = it.analysis.halfBounds; const auto& L = it.loadedAnalysis.halfBounds;
+            if (v == 0 || A.empty() || L.empty()) return (size_t) 0;
+            return L[juce::jmin (nearestBound (A, v), L.size() - 1)];
+        };
+        auto mapCycle = [&] (size_t v) {
+            const auto& A = it.analysis.bounds; const auto& L = it.loadedAnalysis.bounds;
+            if (A.empty() || L.empty()) return (size_t) 0;
+            return L[juce::jmin (nearestBound (A, v), L.size() - 1)];
+        };
+        d.startSample = mapHalf (it.startSample);
+        d.endSample = mapHalf (it.endSample);
+        if (it.hasLoop()) { d.loopStart = mapCycle (it.loopStart); d.loopEnd = mapCycle (it.loopEnd); }
+        processItem (d); // (d no está re-afinado: no vuelve a entrar acá)
+        it.shownProcessed = d.processed;
+    }
+    // lo que dibuja el visor: con el pitch movido, el audio sin re-afinar (estirado al largo actual)
+    void showBuffersOf (const Item& it)
+    {
+        const bool tuned = std::abs (it.tuneSemis) > 1e-9 && it.loaded != nullptr && it.shownProcessed != nullptr;
+        wave.setDisplay (tuned ? it.loaded : nullptr, tuned ? it.shownProcessed : nullptr);
     }
 
     //== loop ==================================================================
@@ -1555,6 +1588,7 @@ private:
         processItem (it);
         source.setProcessed (it.processed);
         wave.setProcessed (it.processed);
+        showBuffersOf (it);
         updateSkipView();
         updateInfo();
     }
@@ -1578,6 +1612,7 @@ private:
         source.setRegionLooping (loopButton.getToggleState());
         source.setLooping (repeatButton.getToggleState());
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
+        showBuffersOf (it);
         wave.setEndSample (it.endSample);
         wave.setStartSample (it.startSample);
         wave.setFadeHalves (it.fadeHalves);
@@ -1773,6 +1808,7 @@ private:
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
         transport.setPosition (pos);
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, false);
+        showBuffersOf (it);
         wave.setEndSample (it.endSample);
         wave.setStartSample (it.startSample);
         wave.setLoopBounds (it.analysis.bounds);

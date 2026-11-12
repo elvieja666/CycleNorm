@@ -45,6 +45,15 @@ public:
         repaint();
     }
     void setProcessed (BufferPtr processed) { proc = std::move (processed); dirtyProc = true; repaint(); }
+    // lo que se dibuja (si no, los de setData): el original y el procesado sin re-afinar, así el
+    // dibujo no cambia al mover el pitch (se estiran al largo del audio afinado)
+    void setDisplay (BufferPtr original, BufferPtr processed)
+    {
+        if (original != showOrig) dirty = true;
+        if (processed != showProc) dirtyProc = true;
+        showOrig = std::move (original); showProc = std::move (processed);
+        repaint();
+    }
     void clear() { setData (nullptr, nullptr, {}, 44100.0, true); }
     void refresh() { dirty = true; repaint(); }
     // el audio se estiró (re-pitch): la vista se estira igual, así se sigue viendo la misma parte del sonido
@@ -111,9 +120,9 @@ public:
             g.reduceClipRegion (0, 0, plotWidth(), getHeight()); // sin pisar el teclado
             const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
             const bool hasPitch = pitchPts.size() >= 2;
-            drawLane (g, orig.get(), topLaneRect(), juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
+            drawLane (g, origToDraw(), topLaneRect(), juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
                       hasPitch ? std::function<void()> ([] {}) : std::function<void()>(), 1);
-            drawLane (g, proc.get(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
+            drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
         }
 
         if (totalLen() > 0 && getPlayheadSeconds)
@@ -378,7 +387,9 @@ public:
     }
 
 private:
-    BufferPtr orig, proc;
+    BufferPtr orig, proc, showOrig, showProc;
+    const juce::AudioBuffer<float>* origToDraw() const { return showOrig ? showOrig.get() : orig.get(); }
+    const juce::AudioBuffer<float>* procToDraw() const { return showProc ? showProc.get() : proc.get(); }
     std::vector<size_t> bounds;
     double sr = 44100.0, viewStart = 0, viewLen = 0;
     juce::Image cache;
@@ -913,16 +924,20 @@ private:
             const int w = juce::jmin (r.getWidth(), plotWidth()); // (sin la columna del teclado)
             const double spp = viewLen / juce::jmax (1, w);
             const int nCh = buf->getNumChannels(), n = buf->getNumSamples();
+            // el buffer que se dibuja puede ser el sin re-afinar (otro largo): se estira al largo actual,
+            // así el dibujo no cambia con el pitch
+            const double k = totalLen() > 0 ? (double) n / (double) totalLen() : 1.0;
+            const double vs = viewStart * k, vl = viewLen * k;
             g.setColour (waveColour);
             if (spp < 1.0)
             {
                 juce::Path p;
-                const int s0 = juce::jmax (0, (int) std::floor (viewStart)), s1 = juce::jmin (n - 1, (int) std::ceil (viewStart + viewLen) + 1);
+                const int s0 = juce::jmax (0, (int) std::floor (vs)), s1 = juce::jmin (n - 1, (int) std::ceil (vs + vl) + 1);
                 for (int s = s0; s <= s1; ++s)
                 {
                     float v = 0; // el canal con mayor valor absoluto
                     for (int c = 0; c < nCh; ++c) { const float x = buf->getSample (c, s); if (std::abs (x) > std::abs (v)) v = x; }
-                    const float px = (float) sampleToX (s) + (float) r.getX(), py = mid - juce::jlimit (-1.2f, 1.2f, v) * half;
+                    const float px = (float) sampleToX (s / k) + (float) r.getX(), py = mid - juce::jlimit (-1.2f, 1.2f, v) * half;
                     if (s == s0) p.startNewSubPath (px, py); else p.lineTo (px, py);
                 }
                 g.strokePath (p, juce::PathStrokeType (1.3f));
@@ -941,12 +956,12 @@ private:
                 // máxima resolución posible, sin columnas superpuestas (la mitad de trabajo que antes)
                 const float colW = 1.0f / juce::jmax (1.0f, cacheScale);
                 const int cols = juce::jmax (1, juce::roundToInt ((float) w / colW));
-                const double spc = viewLen / juce::jmax (1, cols);
+                const double spc = vl / juce::jmax (1, cols);
                 juce::RectangleList<float> peaks, greyPeaks;
                 peaks.ensureStorageAllocated (cols);
                 for (int x = 0; x < cols; ++x)
                 {
-                    const int s0 = juce::jmax (0, (int) (viewStart + x * spc)), s1 = juce::jmin (n, (int) (viewStart + (x + 1) * spc) + 1);
+                    const int s0 = juce::jmax (0, (int) (vs + x * spc)), s1 = juce::jmin (n, (int) (vs + (x + 1) * spc) + 1);
                     if (s0 >= n) break;
                     float lo = 1e9f, hi = -1e9f;
                     for (int s = juce::jmax (0, s0 - 1); s < s1; ++s) { const float v = valueAt (s); lo = juce::jmin (lo, v); hi = juce::jmax (hi, v); }
@@ -1188,10 +1203,10 @@ private:
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
         const bool hasPitch = pitchPts.size() >= 2;
-        drawLane (g, orig.get(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
+        drawLane (g, origToDraw(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
                   hasPitch ? std::function<void()> ([&] { drawPitchCurve (g, top, 0); }) : std::function<void()>());
         drawPitchCurve (g, top, 1);
-        drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
+        drawLane (g, procToDraw(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
         drawKeyboardStrip (g);
     }
     juce::Rectangle<int> topLaneRect() const { return getLocalBounds().removeFromTop (getHeight() / 2).withTrimmedBottom (1); }
@@ -1205,7 +1220,7 @@ private:
         g.reduceClipRegion (procLaneRect());
         g.fillAll (juce::Colour (0xff0b0c0e));
         const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
-        drawLane (g, proc.get(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
+        drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
         drawKeyboardStrip (g);
     }
     void drawKeyboardStrip (juce::Graphics& g)
