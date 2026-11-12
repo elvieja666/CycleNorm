@@ -813,7 +813,7 @@ private:
             if (rr.isEmpty()) continue;
             const bool loopTab = id >= 3 && id <= 5 && id != 5;
             const bool hot = isDraggingTab (id) || rr.expanded (2.0f).contains (hoverPoint);
-            const juce::Colour base = loopTab ? juce::Colour (0xff3ddc84) : juce::Colour (0xffd9dee5);
+            const juce::Colour base = loopTab ? juce::Colour (0xffe0782f) : juce::Colour (0xffd9dee5);
             g.setColour (hot ? base.brighter (0.25f) : base.withAlpha (0.92f));
             g.fillRoundedRectangle (rr, 3.0f);
             g.setColour (juce::Colour (0xff15181c));
@@ -1223,7 +1223,7 @@ private:
                 const float a0 = juce::jmax ((float) r.getX(), x0), a1 = juce::jmin ((float) r.getRight(), x1);
                 if (a1 > a0)
                 {
-                    g.setColour (juce::Colour (movingLoop ? 0x483ddc84 : 0x2a3ddc84));
+                    g.setColour (juce::Colour (movingLoop ? 0x48e0782f : 0x2ae0782f));
                     g.fillRect (juce::Rectangle<float> (a0, (float) r.getY(), a1 - a0, (float) r.getHeight()));
                 }
                 const float dashes[] = { 4.0f, 3.0f };
@@ -1232,7 +1232,7 @@ private:
                     const float lx = k == 0 ? x0 : x1;
                     if (lx < (float) r.getX() - 1.0f || lx > (float) r.getRight() + 1.0f) continue;
                     const bool grabbed = draggingLoop == 3 + k;
-                    g.setColour (juce::Colour (0xff3ddc84).withAlpha (grabbed ? 1.0f : 0.9f));
+                    g.setColour (juce::Colour (0xffe0782f).withAlpha (grabbed ? 1.0f : 0.9f));
                     g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, (float) r.getY(), std::round (lx) + 0.5f, (float) r.getBottom()), dashes, 2, grabbed ? 1.5f : 1.0f);
                 }
                 // crossfade (como en el Quick Sampler): lo que entra, antes del inicio, sube; lo que sale,
