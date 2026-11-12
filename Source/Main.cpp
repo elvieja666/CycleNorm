@@ -565,9 +565,10 @@ public:
         abButton.setBounds (top.removeFromLeft (180)); top.removeFromLeft (16);
         findLoopButton.setBounds (top.removeFromLeft (100)); top.removeFromLeft (6);
         otherLoopButton.setBounds (top.removeFromLeft (85)); top.removeFromLeft (6);
-        clearLoopButton.setBounds (top.removeFromLeft (95)); top.removeFromLeft (16);
-        // la pastilla para arrastrar el procesado al DAW (mismo alto visible que los botones)
-        dragOut.setBounds (top.removeFromLeft (118).withTrimmedTop (2).withTrimmedBottom (5).reduced (3, 0));
+        clearLoopButton.setBounds (top.removeFromLeft (95));
+        // la pastilla para arrastrar el procesado al DAW, a la derecha de todo (mismo alto visible que los botones)
+        dragOut.setBounds (top.removeFromRight (118).withTrimmedTop (2).withTrimmedBottom (5).reduced (3, 0));
+        top.removeFromRight (14);
         // Ramp y Pitch arriba a la derecha: el nombre y la barra de cada uno
         {
             auto place = [] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl, int labelW) {
@@ -575,11 +576,11 @@ public:
                 l.setBounds (p.withTrimmedBottom (2));
             };
             top.removeFromLeft (16);
-            const int avail = top.getWidth();
-            const int pitchW = juce::jlimit (240, 360, avail * 6 / 10), rampW = juce::jlimit (150, 200, avail - pitchW - 14);
-            place (top.removeFromRight (pitchW), pitchShiftLabel, pitchShift, 44);
+            // las dos barras igual de largas (cada nombre ocupa lo mismo)
+            const int each = juce::jlimit (170, 300, (top.getWidth() - 14) / 2);
+            place (top.removeFromRight (each), pitchShiftLabel, pitchShift, 46);
             top.removeFromRight (14);
-            place (top.removeFromRight (rampW), rampLabel, ramp, 46);
+            place (top.removeFromRight (each), rampLabel, ramp, 46);
         }
         r.removeFromTop (5);
         separatorY = r.getY();
