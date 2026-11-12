@@ -84,19 +84,82 @@ public:
                 g.fillRect ((float) x, 0.0f, 1.5f, (float) getHeight());
             }
         }
+        drawZoomBar (g);
+    }
+
+    // Con zoom (como el osciloscopio de UNISON): abajo, una barrita con la parte que se ve
+    // y "Zoom ×2.4 · Show all"; "Show all" se clickea y vuelve a mostrar todo.
+    bool isZoomed() const
+    {
+        return totalLen() > 0 && (viewStart > 0.5 || viewLen < (double) totalLen() - 0.5 || zoomSpan > 0.0);
+    }
+    void drawZoomBar (juce::Graphics& g)
+    {
+        showAllArea = {};
+        if (! isZoomed()) return;
+        const auto b = getLocalBounds().toFloat();
+        const double total = (double) totalLen();
+        if (viewStart > 0.5 || viewLen < total - 0.5)
+        {
+            const auto track = juce::Rectangle<float> (b.getX() + 6.0f, b.getBottom() - 4.0f, b.getWidth() - 12.0f, 3.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.08f));
+            g.fillRoundedRectangle (track, 1.5f);
+            g.setColour (juce::Colours::white.withAlpha (0.45f));
+            g.fillRoundedRectangle (track.withX (track.getX() + (float) (viewStart / total) * track.getWidth())
+                                         .withWidth (juce::jmax (4.0f, (float) (viewLen / total) * track.getWidth())), 1.5f);
+        }
+        juce::String text;
+        const double hf = total / juce::jmax (1.0, viewLen);
+        if (hf > 1.001) text << "Zoom x" << (hf < 10.0 ? juce::String (hf, 1) : juce::String (juce::roundToInt (hf)));
+        if (zoomSpan > 0.0)
+        {
+            const double vf = autoSpan / zoomSpan;
+            if (text.isNotEmpty()) text << juce::String::fromUTF8 ("  \xc2\xb7  ");
+            text << "Pitch x" << (vf < 10.0 ? juce::String (vf, 1) : juce::String (juce::roundToInt (vf)));
+        }
+        text << juce::String::fromUTF8 ("  \xc2\xb7  ");
+        g.setFont (juce::FontOptions (12.5f));
+        const juce::String showAll ("Show all");
+        const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text);
+        const float sw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), showAll);
+        // abajo al centro (a los costados están Skip y End)
+        const auto area = juce::Rectangle<float> (b.getCentreX() - (w + sw) * 0.5f - 8.0f, b.getBottom() - 26.0f, w + sw + 16.0f, 18.0f);
+        g.setColour (juce::Colour (0xcc0b0c0e));
+        g.fillRoundedRectangle (area, 4.0f);
+        g.setColour (juce::Colour (0xffe8e6e3).withAlpha (0.75f));
+        g.drawText (text, area.withTrimmedLeft (8.0f).toNearestInt(), juce::Justification::centredLeft);
+        const auto textArea = juce::Rectangle<float> (area.getX() + 8.0f + w, area.getY(), sw + 4.0f, area.getHeight());
+        showAllArea = textArea.expanded (4.0f, 3.0f);
+        const bool hot = showAllArea.contains (hoverPoint);
+        const juce::Colour accentBright (0xff5aa9ff);
+        g.setColour (hot ? accentBright.brighter (0.4f) : accentBright);
+        g.drawText (showAll, textArea.toNearestInt(), juce::Justification::centredLeft);
+        if (hot) g.fillRect (textArea.getX(), textArea.getCentreY() + 7.0f, sw, 1.0f);
     }
 
     void resized() override { dirty = true; }
 
     void mouseMove (const juce::MouseEvent& e) override
     {
-        if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+        const bool wasHot = showAllArea.contains (hoverPoint);
+        hoverPoint = e.position;
+        if (wasHot != showAllArea.contains (hoverPoint)) repaint (showAllArea.getSmallestIntegerContainer().expanded (2));
+        if (showAllArea.contains (e.position)) setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        else if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
         else if (nearPitchCurve (e.position)) setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         else if (insideLoop (e.position)) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         else setMouseCursor (juce::MouseCursor::NormalCursor);
     }
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        if (showAllArea.contains (hoverPoint)) repaint (showAllArea.getSmallestIntegerContainer().expanded (2));
+        hoverPoint = { -1.0f, -1.0f };
+    }
     void mouseDown (const juce::MouseEvent& e) override
     {
+        pitchDragArmed = pitchDragging = false;
+        if (showAllArea.contains (e.position)) { showAll(); showAllClicked = true; return; } // "Show all"
+        showAllClicked = false;
         const int line = whichLine (e.position);
         // sobre la línea celeste: arrastrando arriba/abajo se cambia el Pitch
         pitchDragArmed = pitchDragging = false;
@@ -139,6 +202,7 @@ public:
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
+        if (showAllClicked) return;
         if (pitchDragArmed)
         {
             if (! pitchDragging && std::abs (e.position.y - pitchDownY) >= 2.0f) pitchDragging = true;
@@ -158,6 +222,7 @@ public:
     }
     void mouseUp (const juce::MouseEvent& e) override
     {
+        if (showAllClicked) { showAllClicked = false; mouseMove (e); return; }
         if (pendingLoopMove && ! movingLoop && totalLen() > 0 && onSeek) // clic sin arrastrar: mover el cursor
             onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
         if (pitchDragArmed && ! pitchDragging && totalLen() > 0 && onSeek) // clic sobre la línea sin arrastrar: mover el cursor
@@ -220,6 +285,9 @@ private:
     std::vector<size_t> bounds;
     double sr = 44100.0, viewStart = 0, viewLen = 0;
     juce::Image cache;
+    juce::Rectangle<float> showAllArea;            // "Show all" (con zoom)
+    juce::Point<float> hoverPoint { -1.0f, -1.0f };
+    bool showAllClicked = false;
     float cacheScale = 1.0f;
     bool dirty = true;
     size_t skipEnd = 0, endSample = 0, loopStart = 0, loopEnd = 0;

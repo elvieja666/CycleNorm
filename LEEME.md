@@ -109,3 +109,4 @@ En la ventana quedan sólo Play, Loop, Hearing y los botones del loop.
 - **Trackpad:** el **pellizco** hace zoom horizontal (en el tiempo) y **⌥ Option + dos dedos** el zoom vertical del pitch. Con **dos dedos** te movés por dentro: de costado en el tiempo y, con zoom vertical, arriba y abajo en el pitch.
 - **Mouse:** la rueda hace zoom horizontal, Shift + rueda desplaza y ⌥ Option + rueda hace el zoom vertical del pitch (también funciona con el trackpad).
 - Un clic mueve el cursor de reproducción y el **doble clic** vuelve a mostrar todo (horizontal y vertical).
+- **Con zoom** (como en UNISON) aparece abajo, al centro, "Zoom x3.4 · Pitch x2.0 · **Show all**" y una barrita con la parte que estás viendo. Clic en **Show all** vuelve a mostrar todo (horizontal y vertical). También: Playback ▸ Show Whole Sound (⌘0).
