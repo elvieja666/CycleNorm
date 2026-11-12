@@ -1558,19 +1558,12 @@ private:
         if (! stream->openedOk()) { error = "Could not write " + dest.getFullPathName(); return false; }
         // Puntos de loop adentro del WAV (bloque "smpl", el que leen el Sampler de Logic, Kontakt,
         // Simpler...) y la nota raíz medida, así el sampler lo afina y lo loopea solo.
-        // con Loop apagado lo que suena no tiene el crossfade: el archivo lo lleva igual (el sampler lo loopea)
+        // con Loop apagado se exporta sin loop: sin crossfade (ya no lo tiene), sin puntos de loop y
+        // hasta la línea de End (no se corta en el fin del loop)
+        const bool withLoop = it.hasLoop() && loopButton.getToggleState();
         auto outBuf = it.processed;
-        if (it.hasLoop() && ! loopButton.getToggleState() && outBuf != nullptr && it.loopEnd <= (size_t) outBuf->getNumSamples())
-            if (const size_t xf = xfadeSamples (it); xf > 0)
-            {
-                auto c = std::make_shared<juce::AudioBuffer<float>> (*outBuf);
-                std::vector<float*> chs;
-                for (int ch = 0; ch < c->getNumChannels(); ++ch) chs.push_back (c->getWritePointer (ch));
-                cyclenorm::applyLoopCrossfade (chs, it.loopStart, it.loopEnd, xf);
-                outBuf = c;
-            }
         juce::StringPairArray meta;
-        if (it.hasLoop() && ! fmtInfo.aiff)
+        if (withLoop && ! fmtInfo.aiff)
         {
             bool inLoop = false;
             const auto pm = pitchOf (it, readSettings(), inLoop);
@@ -1593,7 +1586,7 @@ private:
                                                                           fmtInfo.bits, meta, 0));
         if (w == nullptr) { error = "Format not supported"; return false; }
         stream.release(); // ahora es del writer
-        if (! w->writeFromAudioSampleBuffer (*outBuf, 0, it.exportLength())) // hasta el fin del loop (o la línea de End)
+        if (! w->writeFromAudioSampleBuffer (*outBuf, 0, withLoop ? it.exportLength() : it.lengthToWrite())) // hasta el fin del loop (o la línea de End)
         {
             error = "Error writing " + dest.getFileName();
             return false;
