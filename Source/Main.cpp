@@ -511,13 +511,13 @@ public:
         repeatButton.setTooltip ("Loop playback (listening only)");
         repeatButton.onClick = [this] { source.setLooping (repeatButton.getToggleState()); props->setValue ("repeat", repeatButton.getToggleState()); };
         stopButton.onClick = [this] { stopPlayback(); };
-        setupButton (loopButton, "Loop section");
+        setupButton (loopButton, "Loop");
         setupButton (normButton, "Normalize");
         setupButton (abButton, "Processed");
         setupButton (findLoopButton, "Find loop");
         setupButton (clearLoopButton, "Clear loop");
         findLoopButton.onClick = [this] { if (loopJob != nullptr) cancelLoopSearch(); else findLoopForCurrent(); };
-        setupButton (otherLoopButton, "Loop 1"); // "Loop N": la opción de loop que está puesta; cada clic pasa a la siguiente
+        setupButton (otherLoopButton, "Option 1"); // "Option N": la opción de loop que está puesta; cada clic pasa a la siguiente
         otherLoopButton.setTooltip ("Next loop option");
         otherLoopButton.onClick = [this] { nextLoopCandidate(); };
         addChildComponent (progressBar);
@@ -541,11 +541,21 @@ public:
         openButton.onClick = [this] { openFiles(); };
         removeButton.onClick = [this] { removeSelected(); };
         playButton.onClick = [this] { if (! transport.isPlaying()) togglePlay(); };
+        // Loop: prende o apaga el loop. Prendido y sin loop, lo busca; apagado, se escucha y exporta sin loop
         loopButton.onClick = [this] {
-            source.setRegionLooping (loopButton.getToggleState());
-            props->setValue ("loop", loopButton.getToggleState());
-            if (juce::isPositiveAndBelow (current, (int) items.size()) && items[(size_t) current]->hasLoop())
+            const bool on = loopButton.getToggleState();
+            source.setRegionLooping (on);
+            props->setValue ("loop", on);
+            if (! on && loopJob != nullptr) cancelLoopSearch();
+            if (juce::isPositiveAndBelow (current, (int) items.size()))
+            {
+                auto& it = *items[(size_t) current];
+                showLoopInView (it);
+                updateXfadeView();
                 processCurrent(); // con / sin el crossfade del loop
+                if (on) ensureLoop (false);
+            }
+            updateButtons();
         };
         abButton.onClick = [this] { updateAB(); };
         exportButton.onClick = [this] { exportSelected(); };
@@ -641,7 +651,7 @@ public:
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
             auto& it = *items[(size_t) current];
             const size_t full = (size_t) it.original->getNumSamples();
-            if (it.hasLoop() && e < it.loopEnd) e = it.loopEnd; // Fin no puede cortar el loop
+            if (loopActive (it) && e < it.loopEnd) e = it.loopEnd; // Fin no puede cortar el loop
             if (e <= it.startSample) return;                      // ni pasar la de Start
             it.endSample = e >= full ? 0 : e;
             source.setEndSample ((juce::int64) it.endSample);
@@ -653,7 +663,7 @@ public:
         {
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
             auto& it = *items[(size_t) current];
-            if (it.hasLoop() && s >= it.loopStart) return;
+            if (loopActive (it) && s >= it.loopStart) return;
             if (s >= (size_t) it.lengthToWrite()) return;
             it.startSample = s;
             source.setStartSample ((juce::int64) s);
@@ -705,7 +715,7 @@ public:
                 auto& it = *items[(size_t) current];
                 auto st = readSettings(); st.skipHalves = n;
                 if (it.endSample > 0 && cyclenorm::skipEndSample (it.analysis, st) >= it.endSample) return;
-                if (it.hasLoop() && cyclenorm::skipEndSample (it.analysis, st) > it.loopStart) return; // ni el loop
+                if (loopActive (it) && cyclenorm::skipEndSample (it.analysis, st) > it.loopStart) return; // ni el loop
             }
             skipHalves = n;
             settingsChanged();  // reprocesa
@@ -852,10 +862,12 @@ public:
         divider();
         // 4) al lado de Ramp, el loop de sección (el que se exporta): prenderlo, buscarlo, el siguiente, borrarlo
         {
-            const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Loop 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
+            const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Option 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
             auto wOf = [&] (juce::Button& b) { return &b == &otherLoopButton ? wNum : widthFor (b, 0); };
-            for (auto* b : { (juce::Button*) &loopButton, (juce::Button*) &findLoopButton, (juce::Button*) &otherLoopButton, (juce::Button*) &clearLoopButton })
+            for (auto* b : { (juce::Button*) &loopButton, (juce::Button*) &otherLoopButton })
                 b->setBounds (row.removeFromLeft (wOf (*b)));
+            findLoopButton.setVisible (false);  // (quedan para el menú y los atajos: Loop ya busca solo)
+            clearLoopButton.setVisible (false);
         }
         loopInfoX = loopButton.getX() + 4; // la info del loop arranca en el borde izquierdo (visible) de Loop section
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
@@ -1247,7 +1259,7 @@ private:
         // fade in: desde Start, lineal, hasta n semiciclos después (siempre termina en un cruce)
         if (it.fadeHalves > 0)
         {
-            const size_t limit = it.hasLoop() ? it.loopStart : (size_t) it.lengthToWrite();
+            const size_t limit = loopActive (it) ? it.loopStart : (size_t) it.lengthToWrite();
             const size_t f0 = it.startSample;
             const size_t f1 = WaveformView::fadeEndOf (cyclenorm::segmentBounds (it.analysis, s), f0, it.fadeHalves, limit);
             if (f1 > f0)
@@ -1315,6 +1327,29 @@ private:
         wave.setLoopXfade (xfadeSamples (*items[(size_t) current]));
     }
 
+    // Loop prendido y con un loop puesto (apagado, el loop queda guardado pero no se usa ni se ve)
+    bool loopActive (const Item& it) const { return it.hasLoop() && loopButton.getToggleState(); }
+    void showLoopInView (const Item& it)
+    {
+        const bool on = loopButton.getToggleState();
+        wave.setLoop (on ? it.loopStart : 0, on ? it.loopEnd : 0);
+    }
+    // Loop prendido y sin loop (o con uno que quedó afuera de Start / Skip / End): lo busca solo
+    void ensureLoop (bool silent)
+    {
+        if (! loopButton.getToggleState() || loopJob != nullptr || ! juce::isPositiveAndBelow (current, (int) items.size())) return;
+        auto& it = *items[(size_t) current];
+        if (it.hasLoop())
+        {
+            const size_t from = cyclenorm::skipEndSample (it.analysis, readSettings());
+            if (it.loopStart >= juce::jmax (from, it.startSample) && (int) it.loopEnd <= it.lengthToWrite()) return;
+            it.loopStart = it.loopEnd = 0; it.loopCands.clear(); it.loopCandIdx = -1;
+        }
+        silentLoopSearch = silent;
+        findLoopForCurrent();
+    }
+    bool silentLoopSearch = false;
+
     void findLoopForCurrent()
     {
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
@@ -1367,6 +1402,7 @@ private:
         auto& it = *job->item;
         if (job->results.empty())
         {
+            if (silentLoopSearch) return; // (búsqueda automática al abrir otro 808: sin cartel)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Find loop",
                 u8 ("No loop found between the Skip and End lines: at least about 6 steady cycles are needed."));
             return;
@@ -1409,7 +1445,7 @@ private:
         if (s1 == 0) it.loopCands.clear();
         it.xfadeCycles = juce::jmin (it.xfadeCycles, maxXfadeCycles (it)); // si el loop se achicó
         source.setLoopRegion ((juce::int64) s0, (juce::int64) s1);
-        wave.setLoop (s0, s1);
+        showLoopInView (it);
         updateXfadeView();
         processCurrent();   // aplica el crossfade y mide la calidad
         updateButtons();
@@ -1494,7 +1530,7 @@ private:
             wave.setFadeHalves (it.fadeHalves);
             source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
             wave.setEndSample (it.endSample);
-            wave.setLoop (it.loopStart, it.loopEnd);
+            showLoopInView (it);
             updateXfadeView();
             processCurrent();
             updatePitch (it);
@@ -1547,13 +1583,14 @@ private:
         wave.setFadeHalves (it.fadeHalves);
         wave.setLoopBounds (it.analysis.bounds);
         wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
-        wave.setLoop (it.loopStart, it.loopEnd);
+        showLoopInView (it);
         wave.setLoopXfade (xfadeSamples (it));
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
         updateSkipView();
         if (wasPlaying) transport.start();
         updateInfo();
         updateButtons();
+        ensureLoop (true); // con Loop prendido: busca el loop de este 808 si no tiene
     }
 
     // el Skip más chico que no queda antes de la línea de Start
@@ -1612,10 +1649,10 @@ private:
         exportButton.setEnabled (has);
         exportAllButton.setEnabled (! items.empty());
         findLoopButton.setEnabled (has || loopJob != nullptr);
-        otherLoopButton.setEnabled (has && loopJob == nullptr && items[(size_t) current]->loopCands.size() > 1);
+        otherLoopButton.setEnabled (has && loopJob == nullptr && loopButton.getToggleState() && items[(size_t) current]->loopCands.size() > 1);
         {   // "Loop N": el número de la opción que está sonando (o "Loop" solo si no hay opciones)
             const bool any = has && items[(size_t) current]->loopCandIdx >= 0 && ! items[(size_t) current]->loopCands.empty();
-            otherLoopButton.setButtonText (any ? "Loop " + juce::String (items[(size_t) current]->loopCandIdx + 1) : juce::String ("Loop"));
+            otherLoopButton.setButtonText ("Option " + juce::String (any ? items[(size_t) current]->loopCandIdx + 1 : 1));
         }
         clearLoopButton.setEnabled (has && items[(size_t) current]->hasLoop());
         dragOut.setEnabled (has);
@@ -1660,7 +1697,7 @@ private:
         juce::ignoreUnused (peakDb);
         // corto (va en la fila del título): el loop y los avisos
         juce::String t;
-        if (it.hasLoop())
+        if (loopActive (it))
         {
             const auto& B = it.analysis.bounds;
             const auto nCyc = std::distance (std::lower_bound (B.begin(), B.end(), it.loopStart), std::lower_bound (B.begin(), B.end(), it.loopEnd));
@@ -1740,7 +1777,7 @@ private:
         wave.setStartSample (it.startSample);
         wave.setLoopBounds (it.analysis.bounds);
         wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
-        wave.setLoop (it.loopStart, it.loopEnd);
+        showLoopInView (it);
         wave.setLoopXfade (xfadeSamples (it));
         updateSkipView();
         updateInfo();
@@ -1786,9 +1823,9 @@ private:
     }
 
     // Pitch preciso: en el loop si hay, si no entre la línea de Skip y la de End
-    static cyclenorm::PitchInfo pitchOf (const Item& it, const cyclenorm::Settings& st, bool& inLoop)
+    cyclenorm::PitchInfo pitchOf (const Item& it, const cyclenorm::Settings& st, bool& inLoop) const
     {
-        inLoop = it.hasLoop();
+        inLoop = loopActive (it); // con Loop apagado: el sustain
         if (inLoop) return cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8);
         // sin loop: la parte estable (después del glide), en todo el sonido hasta End (el Skip es sólo para la normalización)
         juce::ignoreUnused (st);
@@ -1824,7 +1861,7 @@ private:
         const int id = formatBox.getSelectedId();
         if (id == 2) return { false, 24 };
         if (id == 3) return { false, 32 };
-        const bool srcAiff = it.file.hasFileExtension ("aif;aiff") && ! it.hasLoop(); // con loop: WAV (lleva los puntos de loop)
+        const bool srcAiff = it.file.hasFileExtension ("aif;aiff") && ! loopActive (it); // con loop: WAV (lleva los puntos de loop)
         if (srcAiff && ! it.isFloat && it.bits <= 24) return { true, juce::jmax (8, it.bits) };
         if (it.isFloat || it.bits > 24) return { false, 32 };
         return { false, it.bits == 8 || it.bits == 16 || it.bits == 24 ? it.bits : 24 };
@@ -1976,7 +2013,7 @@ private:
             case cmdRedo:      info.setInfo ("Redo", "", "Edit", 0); info.addDefaultKeypress ('z', cmd | shift); info.setActive (! redoStack.empty()); break;
             case cmdPlay:      info.setInfo (transport.isPlaying() ? "Stop" : "Play", "Space", "Playback", 0); info.setActive (has); break;
             case cmdLoopPlay:  info.setInfo ("Loop Playback", "", "Playback", 0); info.addDefaultKeypress ('r', cmd); info.setTicked (repeatButton.getToggleState()); break;
-            case cmdLoopSection: info.setInfo ("Loop Section", "", "Loop", 0); info.addDefaultKeypress ('l', cmd | shift); info.setTicked (loopButton.getToggleState()); break;
+            case cmdLoopSection: info.setInfo ("Loop", "", "Loop", 0); info.addDefaultKeypress ('l', cmd | shift); info.setTicked (loopButton.getToggleState()); break;
             case cmdHearing:   info.setInfo ("Hear Processed", "A", "Playback", 0); info.setTicked (abButton.getToggleState()); break;
             case cmdFitView:   info.setInfo ("Show Whole Sound", "", "Playback", 0); info.addDefaultKeypress ('0', cmd); info.setActive (has); break;
             case cmdFindLoop:  info.setInfo (loopJob != nullptr ? "Cancel Loop Search" : "Find Loop", "", "Loop", 0); info.addDefaultKeypress ('l', cmd); info.setActive (has || loopJob != nullptr); break;
