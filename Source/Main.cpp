@@ -1741,7 +1741,9 @@ private:
         auto t = titleRest;
         if (t.isEmpty()) return;
         const int px = juce::jlimit (t.getX(), t.getRight(), pitchInfoX);
-        fileName = t.withRight (px - 12);
+        fileName = t.withRight (juce::jlimit (t.getX(), t.getRight(), loopInfoX - 16)); // hasta donde empieza la info del loop
+        // el nombre arranca justo en el borde izquierdo (visible) del botón Processed / Original
+        fileName.setLeft (juce::jlimit (t.getX(), fileName.getRight(), abButton.getX() + 4));
         auto rest = t.withLeft (juce::jlimit (px, t.getRight(), loopInfoX));
         info.setBounds (rest);
         progressBar.setBounds (rest.withSizeKeepingCentre (rest.getWidth() - 12, 18).withX (rest.getX()));
