@@ -27,11 +27,18 @@ public:
 
     void setData (BufferPtr original, BufferPtr processed, std::vector<size_t> cycleBounds, double sampleRate, bool resetView)
     {
+        const double oldTotal = (double) totalLen();
         orig = std::move (original);
         proc = std::move (processed);
         bounds = std::move (cycleBounds);
         sr = sampleRate;
-        if (resetView || viewLen <= 0) { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; }
+        if (resetView || viewLen <= 0 || oldTotal <= 0) { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; }
+        else
+        {   // el audio cambió de largo (re-pitch): se ve la misma parte del sonido, del mismo ancho
+            // (el gráfico no cambia: con la vista completa, sigue completa)
+            const double k = (double) totalLen() / oldTotal;
+            viewStart *= k; viewLen *= k;
+        }
         clampView();
         dirty = true;
         repaint();

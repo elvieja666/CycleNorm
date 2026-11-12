@@ -1706,7 +1706,6 @@ private:
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
         transport.setPosition (pos);
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, false);
-        wave.scaleView (factor);
         wave.setEndSample (it.endSample);
         wave.setStartSample (it.startSample);
         wave.setLoopBounds (it.analysis.bounds);
