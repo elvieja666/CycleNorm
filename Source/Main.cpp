@@ -864,7 +864,7 @@ public:
         // 5) a la derecha de todo: Drag to DAW
         {
             const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
-            dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (2).withHeight (kButtonH + 1));
+            dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (2).withHeight (kButtonH + 1).translated (1, 0)); // (el borde visible a 20 del de la ventana, como el título)
         }
         row.removeFromRight (kGap); groupDividersRight = row.getRight(); row.removeFromRight (kGap + 1);
         // 3) el proceso: Normalize y Ramp
