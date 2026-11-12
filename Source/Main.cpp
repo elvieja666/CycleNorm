@@ -781,12 +781,21 @@ public:
         g.setGradientFill (juce::ColourGradient (Theme::topLight, 0.0f, 0.0f, Theme::topDark, 0.0f, (float) getHeight(), false));
         g.fillAll();
         // título en Akira Expanded
+        // (igual que "UNISON": la T empieza justo a 20 del borde izquierdo y las mayúsculas quedan a la
+        // misma distancia del borde de arriba que de la píldora de abajo en UNISON (que está en y = 40))
         g.setColour (Theme::inkStrong);
-        const auto tf = Theme::titleFont (kTitleCap);
-        g.setFont (tf);
-        const float titleW = juce::GlyphArrangement::getStringWidth (tf, "TOOLKIT");
-        g.drawText ("TOOLKIT", titleArea.toFloat(), juce::Justification::centredLeft);
-        juce::ignoreUnused (titleW);
+        {
+            const auto tf = Theme::titleFont (kTitleCap);
+            juce::GlyphArrangement ga, first;
+            ga.addLineOfText (tf, "TOOLKIT", 0.0f, 0.0f);
+            first.addLineOfText (tf, "T", 0.0f, 0.0f);
+            juce::Path text, t;
+            ga.createPath (text);
+            first.createPath (t);
+            const auto tb = t.getBounds();                       // la "T" marca el alto de las mayúsculas
+            const float capTop = (40.0f - tb.getHeight()) * 0.5f; // = 13 (como UNISON)
+            g.fillPath (text, juce::AffineTransform::translation ((float) kMargin - tb.getX(), capTop - tb.getY()));
+        }
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
