@@ -319,7 +319,8 @@ private:
         return midiOf (a.second) + t * (midiOf (b.second) - midiOf (a.second));
     }
 
-    void drawPitchCurve (juce::Graphics& g, juce::Rectangle<int> r)
+    // layer 0: el fondo (franjas del piano roll, debajo de la onda); layer 1: teclado, cents, curva y etiqueta
+    void drawPitchCurve (juce::Graphics& g, juce::Rectangle<int> r, int layer)
     {
         if (pitchPts.size() < 2 || viewLen <= 0) return;
         auto midiOf = [this] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0) + pitchPreviewSemis; };
@@ -357,71 +358,106 @@ private:
 
         juce::Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (r);
-        // líneas de semitono, con nombre (si no son demasiadas)
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-        g.setFont (juce::FontOptions (10.5f));
         auto noteStr = [&] (int m) { return juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1); };
-        // nombres: las notas en gris claro y negrita; los cents más apagados
-        auto label = [&] (float y, const juce::String& txt, bool strong) {
-            const float w = strong ? 30.0f : 58.0f;
-            const auto lb = juce::Rectangle<float> ((float) r.getRight() - w - 4.0f, y - 6.5f, w, 13.0f);
-            g.setColour (juce::Colour (0xdd0b0c0e));
-            g.fillRoundedRectangle (lb, 2.0f);
-            g.setColour (juce::Colour (strong ? 0xffd5d7da : 0xff8b9096));
-            g.setFont (juce::FontOptions (strong ? 11.0f : 10.5f, strong ? juce::Font::bold : juce::Font::plain));
-            g.drawText (txt, lb, juce::Justification::centred);
-        };
-        // líneas: la de una nota, entera y clara (C más todavía: marca la octava);
-        // la de cents, punteada y tenue
-        auto noteLine = [&] (float y, int midiNote, float x1) {
-            const bool isC = ((midiNote % 12) + 12) % 12 == 0;
-            g.setColour (juce::Colour (isC ? 0x80ffffff : 0x4dffffff));
-            g.fillRect (juce::Rectangle<float> ((float) r.getX(), std::round (y) - 0.5f, x1 - (float) r.getX(), isC ? 1.5f : 1.0f));
-        };
-        auto centsLine = [&] (float y, float x1) {
-            g.setColour (juce::Colour (0x33ffffff));
-            const float dashes[] = { 3.0f, 4.0f };
-            g.drawDashedLine (juce::Line<float> ((float) r.getX(), std::round (y), x1, std::round (y)), dashes, 2, 1.0f);
-        };
+        auto isBlack = [] (int m) { const int pc = ((m % 12) + 12) % 12; return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10; };
         const double spanSemis = hi - lo;
-        // columna de los nombres: las líneas (grilla y curva) se cortan antes de llegar
-        const float lineEnd = (float) r.getRight() - ((spanSemis >= 1.5 ? 30.0f : 58.0f) + 4.0f + 8.0f);
+        // el teclado (a la derecha) y donde terminan las líneas
+        constexpr float kbW = 34.0f;
+        const float kbX = (float) r.getRight() - kbW;
+        const float lineEnd = kbX - 2.0f;
         pitchLineEnd = lineEnd;
-        if (spanSemis >= 1.5)
+        // la nota del pitch medido (la de arriba a la derecha), para resaltarla
+        const double ref = getPitchReference ? getPitchReference() : 0.0;
+        const bool hasRef = ref > 1.0 && std::isfinite (ref);
+        const int refNote = hasRef ? (int) std::lround (ref) : -1000;
+        const int n0 = (int) std::floor (lo) - 1, n1 = (int) std::ceil (hi) + 1;
+
+        if (layer == 0)
         {
-            // semitonos (de a 2 si el rango es muy grande; siempre aparece C)
-            const int s1 = (int) std::floor (hi);
-            const int stepS = (s1 - (int) std::ceil (lo)) > 14 ? 2 : 1;
-            int s0 = (int) std::ceil (lo);
-            while (((s0 % stepS) + stepS) % stepS != 0) ++s0;
-            for (int m = s0; m <= s1; m += stepS)
+            // franjas por semitono (como el piano roll): las de teclas blancas apenas más claras,
+            // la de la nota medida en celeste; una línea fina en el centro de cada nota
+            for (int m = n0; m <= n1; ++m)
             {
-                const float y = yOf ((double) m);
-                noteLine (y, m, lineEnd);
-                label (y, noteStr (m), true);
+                const float y0 = yOf (m + 0.5), y1 = yOf (m - 0.5);
+                const auto row = juce::Rectangle<float> ((float) r.getX(), y0, lineEnd - (float) r.getX(), y1 - y0);
+                if (m == refNote) { g.setColour (juce::Colour (0x226fd6ff)); g.fillRect (row); }
+                else if (! isBlack (m)) { g.setColour (juce::Colour (0x0bffffff)); g.fillRect (row); }
+                g.setColour (juce::Colour (0x12ffffff));
+                g.fillRect (row.withHeight (1.0f)); // borde entre carriles
+                const bool isC = ((m % 12) + 12) % 12 == 0;
+                const float yc = yOf ((double) m);
+                if (y1 - y0 >= 6.0f || isC)
+                {
+                    g.setColour (juce::Colour (m == refNote ? 0x806fd6ff : (isC ? 0x40ffffff : 0x1fffffff)));
+                    g.fillRect (juce::Rectangle<float> ((float) r.getX(), std::round (yc) - 0.5f, lineEnd - (float) r.getX(), 1.0f));
+                }
             }
+            return;
         }
-        else
+
+        // con zoom fino: líneas de cents punteadas, con su valor al lado del teclado
+        if (spanSemis < 1.5)
         {
-            // zoom fino: líneas de cents (paso para que entren unas 4 a 10), la nota más fuerte
             const double spanC = spanSemis * 100.0;
             double stepC = 0.1;
             for (double cand : { 50.0, 25.0, 10.0, 5.0, 2.0, 1.0, 0.5, 0.2, 0.1 })
                 if (spanC / cand >= 4.0) { stepC = cand; break; }
             const double c0 = std::ceil (lo * 100.0 / stepC) * stepC, c1 = hi * 100.0;
+            g.setFont (juce::FontOptions (10.5f));
             for (double cc = c0; cc <= c1 + 1e-9; cc += stepC)
             {
                 const double m = cc / 100.0;
-                // siempre desde la nota de abajo: C1, C1 +25c, C1 +50c, C1 +75c, C#1...
-                int note = (int) std::floor (m + 1e-6);
-                double dev = (m - note) * 100.0;
-                if (dev > 100.0 - 1e-4) { ++note; dev = 0.0; }
-                const bool isNote = std::abs (dev) < 1e-4;
+                const int note = (int) std::lround (m);
+                const double dev = (m - note) * 100.0;
+                if (std::abs (dev) < 1e-4) continue; // la nota ya tiene su línea
                 const float y = yOf (m);
-                if (isNote) noteLine (y, note, lineEnd); else centsLine (y, lineEnd);
+                g.setColour (juce::Colour (0x2effffff));
+                const float dashes[] = { 3.0f, 4.0f };
+                g.drawDashedLine (juce::Line<float> ((float) r.getX(), std::round (y), lineEnd - 40.0f, std::round (y)), dashes, 2, 1.0f);
+                g.setColour (juce::Colour (0xff7c8188));
                 const int dec = stepC < 1.0 ? 1 : 0;
-                label (y, isNote ? noteStr (note) : noteStr (note) + " " + (dev > 0 ? "+" : "") + juce::String (dev, dec) + "c", isNote);
+                g.drawText ((dev > 0 ? "+" : "") + juce::String (dev, dec) + "c", juce::Rectangle<float> (lineEnd - 40.0f, y - 6.5f, 38.0f, 13.0f), juce::Justification::centredRight);
             }
+        }
+
+        // el teclado (como el de un piano roll, a la derecha): teclas blancas y negras,
+        // nombre en las C (y en la nota medida, resaltada en celeste)
+        {
+            const auto kb = juce::Rectangle<float> (kbX, area.getY() - 22.0f, kbW, area.getHeight() + 44.0f);
+            juce::Graphics::ScopedSaveState ks (g);
+            g.reduceClipRegion (kb.toNearestInt());
+            g.setColour (juce::Colour (0xffd9dce1));
+            g.fillRect (kb);
+            for (int m = n0; m <= n1; ++m)
+            {
+                const float y0 = yOf (m + 0.5), y1 = yOf (m - 0.5), yc = 0.5f * (y0 + y1);
+                const int pc = ((m % 12) + 12) % 12;
+                if (m == refNote && ! isBlack (m)) { g.setColour (juce::Colour (0xff6fd6ff)); g.fillRect (juce::Rectangle<float> (kbX, y0, kbW, y1 - y0)); }
+                if (isBlack (m))
+                {
+                    g.setColour (m == refNote ? juce::Colour (0xff2f9fd0) : juce::Colour (0xff1c1f24));
+                    g.fillRoundedRectangle (juce::Rectangle<float> (kbX, y0, kbW * 0.6f, y1 - y0).reduced (0.0f, 0.5f), 1.5f);
+                    // el borde entre las dos blancas pasa por el medio de la negra
+                    g.setColour (juce::Colour (0x40000000));
+                    g.fillRect (juce::Rectangle<float> (kbX + kbW * 0.6f, std::round (yc) - 0.5f, kbW * 0.4f, 1.0f));
+                }
+                if (pc == 0 || pc == 5) // borde entre B|C y E|F (dos blancas juntas)
+                {
+                    g.setColour (juce::Colour (0x40000000));
+                    g.fillRect (juce::Rectangle<float> (kbX, std::round (y1) - 0.5f, kbW, 1.0f));
+                }
+                const float keyH = y1 - y0;
+                if ((pc == 0 || m == refNote) && keyH >= 8.0f)
+                {
+                    g.setColour (m == refNote ? (isBlack (m) ? juce::Colours::white : juce::Colour (0xff0b0c0e)) : juce::Colour (0xff2b2e33));
+                    g.setFont (juce::FontOptions (juce::jlimit (8.5f, 11.0f, keyH * 0.8f), juce::Font::bold));
+                    g.drawText (noteStr (m), juce::Rectangle<float> (kbX + 1.0f, yc - 7.0f, kbW - 3.0f, 14.0f),
+                                isBlack (m) ? juce::Justification::centredLeft : juce::Justification::centredRight);
+                }
+            }
+            g.setColour (juce::Colour (0x66000000));
+            g.fillRect (juce::Rectangle<float> (kbX, kb.getY(), 1.0f, kb.getHeight()));
         }
         {
             // la curva (recortada antes de la columna de los nombres)
@@ -446,11 +482,26 @@ private:
                 g.fillEllipse (x - 2.0f, yOf (midiOf (p.second)) - 2.0f, 4.0f, 4.0f);
             }
         }
+        // etiqueta con los cents, pegada al teclado a la altura del pitch medido: cuánto se aleja de la nota
+        if (hasRef)
+        {
+            const double dev = (ref - (double) refNote) * 100.0;
+            const float y = juce::jlimit (area.getY() - 14.0f, area.getBottom() + 14.0f, yOf (ref));
+            const juce::String t = (dev >= 0.0 ? "+" : juce::String::fromUTF8 ("\xe2\x88\x92")) + juce::String (std::abs (dev), 1) + "c";
+            g.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+            const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), t) + 10.0f;
+            const auto tag = juce::Rectangle<float> (lineEnd - tw - 2.0f, y - 8.0f, tw, 16.0f);
+            g.setColour (juce::Colour (0xff6fd6ff));
+            g.fillRoundedRectangle (tag, 8.0f);
+            g.setColour (juce::Colour (0xff0b0c0e));
+            g.drawText (t, tag, juce::Justification::centred);
+        }
         g.setColour (juce::Colour (0xff8b9096));
+        g.setFont (juce::FontOptions (12.0f));
         const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
                                     : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
-                    juce::Rectangle<float> ((float) r.getRight() - 330.0f, (float) r.getY() + 4.0f, 286.0f, 13.0f), juce::Justification::centredRight);
+                    juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY() + 4.0f, 320.0f, 13.0f), juce::Justification::centredRight);
     }
     std::vector<size_t> loopBounds;
     bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
@@ -654,7 +705,8 @@ private:
     }
 
     void drawLane (juce::Graphics& g, const juce::AudioBuffer<float>* buf, juce::Rectangle<int> r,
-                   juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0, bool showSkipLine = false)
+                   juce::Colour col, const juce::String& title, bool active, size_t greyUntil = 0, bool showSkipLine = false,
+                   std::function<void()> underlay = {})
     {
         juce::Graphics::ScopedSaveState save (g);
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
@@ -662,12 +714,16 @@ private:
         g.fillRect (r);
         const float mid = (float) r.getCentreY(), half = r.getHeight() * 0.46f;
 
-        // líneas de -6 dB y centro
-        g.setColour (juce::Colour (0xff22262c));
-        g.drawHorizontalLine ((int) (mid - half * 0.5f), (float) r.getX(), (float) r.getRight());
-        g.drawHorizontalLine ((int) (mid + half * 0.5f), (float) r.getX(), (float) r.getRight());
-        g.setColour (juce::Colour (0xff2c3138));
-        g.drawHorizontalLine ((int) mid, (float) r.getX(), (float) r.getRight());
+        if (underlay) underlay(); // el carril de arriba: el fondo del piano roll (debajo de la onda)
+        else
+        {
+            // líneas de -6 dB y centro
+            g.setColour (juce::Colour (0xff22262c));
+            g.drawHorizontalLine ((int) (mid - half * 0.5f), (float) r.getX(), (float) r.getRight());
+            g.drawHorizontalLine ((int) (mid + half * 0.5f), (float) r.getX(), (float) r.getRight());
+            g.setColour (juce::Colour (0xff2c3138));
+            g.drawHorizontalLine ((int) mid, (float) r.getX(), (float) r.getRight());
+        }
 
         // zona salteada con Skip: fondo apenas distinto y una línea donde empieza a normalizar
         const float skipX = greyUntil > 0 ? (float) r.getX() + (float) sampleToX ((double) greyUntil) : (float) r.getX();
@@ -887,8 +943,10 @@ private:
         const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
-        drawLane (g, orig.get(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc);
-        drawPitchCurve (g, top);
+        const bool hasPitch = pitchPts.size() >= 2;
+        drawLane (g, orig.get(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
+                  hasPitch ? std::function<void()> ([&] { drawPitchCurve (g, top, 0); }) : std::function<void()>());
+        drawPitchCurve (g, top, 1);
         drawLane (g, proc.get(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
     }
 };
