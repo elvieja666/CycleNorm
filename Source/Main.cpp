@@ -19,6 +19,29 @@ const juce::Colour kBg = Theme::topLight;
 // con la propiedad "resetValue".
 struct ResetLabel : juce::Label
 {
+    ResetLabel()
+    {
+        setJustificationType (juce::Justification::centred);
+        setBorderSize ({});
+    }
+    // como la píldora "3000 ms" de UNISON: se escribe encima de la misma píldora, centrado, con la
+    // misma letra; sin caja, sin fondo y sin borde
+    juce::TextEditor* createEditorComponent() override
+    {
+        auto* ed = juce::Label::createEditorComponent();
+        const auto clear = juce::Colours::transparentBlack;
+        ed->setColour (juce::TextEditor::backgroundColourId, clear);
+        ed->setColour (juce::TextEditor::outlineColourId, clear);
+        ed->setColour (juce::TextEditor::focusedOutlineColourId, clear);
+        ed->setColour (juce::TextEditor::shadowColourId, clear);
+        ed->setColour (juce::TextEditor::textColourId, findColour (juce::Label::textColourId));
+        ed->setColour (juce::TextEditor::highlightColourId, Theme::accent.withAlpha (0.25f));
+        ed->setColour (juce::CaretComponent::caretColourId, Theme::inkStrong);
+        ed->setJustification (juce::Justification::centred);
+        ed->setIndents (2, 0); // (el editor de JUCE centra 1 px más a la izquierda que el texto dibujado)
+        ed->setBorder ({});
+        return ed;
+    }
     bool altClick = false;
     juce::Slider* slider() const { return dynamic_cast<juce::Slider*> (getParentComponent()); }
     void mouseDown (const juce::MouseEvent& e) override
@@ -253,8 +276,8 @@ public:
     juce::Label* createSliderTextBox (juce::Slider& s) override
     {
         auto* base = LookAndFeel_V4::createSliderTextBox (s);
-        auto* l = new ResetLabel();                      // igual que el de JUCE, más el ⌥ + clic
-        l->setJustificationType (base->getJustificationType());
+        auto* l = new ResetLabel();                      // igual que el de JUCE, más el ⌥ + clic y sin caja al escribir
+        l->setMinimumHorizontalScale (base->getMinimumHorizontalScale());
         l->setEditable (base->isEditableOnSingleClick(), base->isEditableOnDoubleClick(), base->doesLossOfFocusDiscardChanges());
         delete base;
         l->setFont (Theme::font (14.0f, 400)); // como el valor de Window (3000 ms)
