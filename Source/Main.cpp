@@ -80,6 +80,8 @@ public:
     }
     // la forma del botón grande PRE / POST FX de UNISON (esquinas suaves, no píldora): radio 18 sobre 74 de alto
     static float bigCorner (float height) { return height * 18.0f / 74.0f; }
+    // la misma curvatura en todas las píldoras: la del transporte (33 de alto -> radio ≈ 8)
+    static float pillCorner (float height) { return juce::jmin (bigCorner (33.0f), height * 0.5f); }
 
     juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (14.0f, 400); } // como Measure / Bypass / Scope
 
@@ -90,7 +92,7 @@ public:
         {
             const auto seg = b.getProperties()["segment"].toString();
             const auto shape = segmentShape (b);
-            const float rad = bigCorner (shape.getHeight()); // la proporción del PRE / POST FX (≈ 8 con 33 de alto)
+            const float rad = pillCorner (shape.getHeight()); // la proporción del PRE / POST FX (≈ 8 con 33 de alto)
             const bool L = seg == "left", R = seg == "right";
             juce::Path p;
             p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
@@ -112,7 +114,7 @@ public:
         if (b.getClickingTogglesState()) // Loop / Hearing: pastilla; prendido = clara con borde azul
         {
             auto p = raisedShape (r).expanded (0.0f, 1.0f);
-            const float radius = p.getHeight() * 0.5f;
+            const float radius = pillCorner (p.getHeight());
             const bool on = b.getToggleState();
             g.setColour (on ? Theme::raisedTop : Theme::pill.brighter (over ? 0.03f : 0.0f));
             g.fillRoundedRectangle (p, radius);
@@ -120,7 +122,7 @@ public:
             return;
         }
         const auto shape = raisedShape (r);
-        Theme::drawRaised (g, shape, shape.getHeight() * 0.5f, over && b.isEnabled(), down);
+        Theme::drawRaised (g, shape, pillCorner (shape.getHeight()), over && b.isEnabled(), down);
     }
 
     void drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool) override
@@ -185,7 +187,7 @@ public:
     void drawComboBox (juce::Graphics& g, int w, int h, bool, int, int, int, int, juce::ComboBox& box) override
     {
         auto r = raisedShape ({ 0.0f, 0.0f, (float) w, (float) h }).expanded (0.0f, 1.0f);
-        const float radius = r.getHeight() * 0.5f;
+        const float radius = pillCorner (r.getHeight());
         g.setColour (Theme::pill.darker (box.isMouseOver (true) ? 0.03f : 0.0f));
         g.fillRoundedRectangle (r, radius);
         const float cx = r.getRight() - radius - 2.0f, cy = r.getCentreY();
@@ -212,7 +214,7 @@ public:
     {
         if (style != juce::Slider::LinearBar) { LookAndFeel_V4::drawLinearSlider (g, x, y, w, h, pos, 0, 0, style, s); return; }
         const auto r = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
-        const float radius = r.getHeight() * 0.5f;
+        const float radius = pillCorner (r.getHeight());
         Theme::drawWell (g, r, radius);
         float from = r.getX();
         if (s.getMinimum() < 0.0 && s.getMaximum() > 0.0) from = r.getX() + (float) s.valueToProportionOfLength (0.0) * r.getWidth();
@@ -242,12 +244,12 @@ public:
     void drawProgressBar (juce::Graphics& g, juce::ProgressBar&, int w, int h, double progress, const juce::String&) override
     {
         const auto r = juce::Rectangle<float> (0.0f, 0.0f, (float) w, (float) h);
-        Theme::drawWell (g, r, r.getHeight() * 0.5f);
+        Theme::drawWell (g, r, pillCorner (r.getHeight()));
         if (progress > 0.0)
         {
             const auto f = r.withWidth (juce::jmax (r.getHeight(), r.getWidth() * (float) juce::jlimit (0.0, 1.0, progress)));
             g.setColour (Theme::accent.withAlpha (0.85f));
-            g.fillRoundedRectangle (f, r.getHeight() * 0.5f);
+            g.fillRoundedRectangle (f, pillCorner (r.getHeight()));
         }
     }
 };
@@ -324,7 +326,7 @@ public:
         // botón azul en relieve (paleta de UNISON): degradé de celeste (arriba) a azul (abajo),
         // sombrita y un brillo fino arriba; se aclara con el mouse encima, gris si no hay 808
         auto r = getLocalBounds().toFloat().reduced (1.0f);
-        const float radius = r.getHeight() * 0.5f;
+        const float radius = CycleNormLookAndFeel::pillCorner (r.getHeight());
         juce::Colour text = juce::Colours::white;
         if (! isEnabled())
         {
