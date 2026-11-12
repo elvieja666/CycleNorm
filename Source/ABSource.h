@@ -67,7 +67,7 @@ public:
         const int srcCh = src->getNumChannels();
         juce::int64 p = pos.load();
         const juce::int64 ls = loopStart.load(), le = loopEnd.load();
-        const bool region = looping && le > ls && le <= len;
+        const bool region = regionLoop && le > ls && le <= len; // el loop de sección (como en el sampler)
         if (remapPending.exchange (false) && region)
         {
             const juce::int64 before = p;
@@ -85,7 +85,7 @@ public:
             if (region && p >= le && p < le + 1) p = ls; // fin del loop: vuelve al inicio del loop
             if (p >= len)
             {
-                if (! looping) break;
+                if (! region && ! looping) break; // al final: el loop de sección, el de escucha (desde el principio) o parar
                 p = region ? ls : 0;
             }
             juce::int64 stop = len;
@@ -145,8 +145,11 @@ public:
         const juce::int64 full = src ? src->getNumSamples() : 0, e = endSample.load();
         return (e > 0 && e < full) ? e : full;
     }
-    bool isLooping() const override { return looping; }
+    // dos loops distintos: el de escucha (setLooping: al terminar vuelve al principio) y el de sección
+    // (setRegionLooping: repite la zona del loop, como el sampler)
+    bool isLooping() const override { return looping || regionLoop; }
     void setLooping (bool shouldLoop) override { looping = shouldLoop; }
+    void setRegionLooping (bool on) { regionLoop = on; }
 
 private:
     mutable juce::SpinLock lock;
@@ -156,5 +159,5 @@ private:
     std::atomic<juce::int64> pos { 0 }, endSample { 0 }, loopStart { 0 }, loopEnd { 0 };
     std::atomic<juce::int64> prevLoopStart { 0 }, prevLoopEnd { 0 };
     std::atomic<bool> remapPending { false };
-    std::atomic<bool> useB { true }, looping { false };
+    std::atomic<bool> useB { true }, looping { false }, regionLoop { false };
 };

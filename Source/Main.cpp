@@ -74,6 +74,12 @@ public:
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
     {
         auto r = b.getLocalBounds().toFloat();
+        if (b.getProperties().contains ("icon")) // transporte (▶ ■ ⟲): siempre en relieve, como un botón
+        {
+            const auto shape = raisedShape (r);
+            Theme::drawRaised (g, shape, shape.getHeight() * 0.5f, over && b.isEnabled(), down);
+            return;
+        }
         if (b.getClickingTogglesState()) // Loop / Hearing: pastilla; prendido = clara con borde azul
         {
             auto p = raisedShape (r).expanded (0.0f, 1.0f);
@@ -90,6 +96,40 @@ public:
 
     void drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool) override
     {
+        if (b.getProperties().contains ("icon")) // ▶ ■ ⟲, en azul cuando está prendido (sonando / loop de escucha)
+        {
+            const auto icon = b.getProperties()["icon"].toString();
+            const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"];
+            auto colour = lit ? Theme::accent : Theme::ink;
+            if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
+            const auto box = raisedShape (b.getLocalBounds().toFloat()).translated (0.0f, b.isDown() ? 1.0f : 0.0f);
+            const float s = box.getHeight() * 0.36f;
+            const auto c = box.getCentre();
+            g.setColour (colour);
+            if (icon == "play")
+            {
+                juce::Path p;
+                p.addTriangle (c.x - s * 0.42f, c.y - s * 0.55f, c.x - s * 0.42f, c.y + s * 0.55f, c.x + s * 0.55f, c.y);
+                g.fillPath (p, juce::AffineTransform());
+                g.strokePath (p, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+            else if (icon == "stop")
+            {
+                g.fillRoundedRectangle (juce::Rectangle<float> (s * 0.95f, s * 0.95f).withCentre (c), 1.5f);
+            }
+            else // loop de escucha: flecha en círculo
+            {
+                const float rr = s * 0.55f;
+                juce::Path arc;
+                arc.addCentredArc (c.x, c.y, rr, rr, 0.0f, 0.55f, juce::MathConstants<float>::twoPi - 0.25f, true);
+                g.strokePath (arc, juce::PathStrokeType (1.7f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                const auto tip = c.getPointOnCircumference (rr, juce::MathConstants<float>::twoPi - 0.25f);
+                juce::Path head;
+                head.addTriangle (tip.x - 3.6f, tip.y - 3.4f, tip.x + 3.6f, tip.y - 0.4f, tip.x - 1.2f, tip.y + 3.4f);
+                g.fillPath (head);
+            }
+            return;
+        }
         auto colour = b.getClickingTogglesState() ? (b.getToggleState() ? Theme::accent : Theme::inkDim) : Theme::ink;
         if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
         auto r = raisedShape (b.getLocalBounds().toFloat()).toNearestInt();
@@ -341,7 +381,7 @@ public:
     {
         cmdOpen = 1, cmdRemove, cmdExport, cmdExportAll, cmdFmtSame, cmdFmt24, cmdFmtFloat,
         cmdUndo, cmdRedo,
-        cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView,
+        cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView, cmdLoopSection,
         cmdFindLoop, cmdNextLoop, cmdClearLoop
     };
 
@@ -368,9 +408,19 @@ public:
         setupButton (openButton, u8 ("Open…"));
         setupButton (removeButton, "Remove");
         setupButton (playButton, "Play");
-        setupButton (loopButton, "Loop");
+        setupButton (stopButton, "Stop");
+        setupButton (repeatButton, "Loop");
+        // transporte con íconos (como un DAW): el texto queda para el menú / accesibilidad
+        playButton.getProperties().set ("icon", "play");
+        stopButton.getProperties().set ("icon", "stop");
+        repeatButton.getProperties().set ("icon", "repeat");
+        repeatButton.setClickingTogglesState (true);
+        repeatButton.setTooltip ("Loop playback (listening only)");
+        repeatButton.onClick = [this] { source.setLooping (repeatButton.getToggleState()); props->setValue ("repeat", repeatButton.getToggleState()); };
+        stopButton.onClick = [this] { stopPlayback(); };
+        setupButton (loopButton, "Loop section");
         setupButton (normButton, "Normalize");
-        setupButton (abButton, "Hearing: Processed");
+        setupButton (abButton, "Processed");
         setupButton (findLoopButton, "Find loop");
         setupButton (clearLoopButton, "Clear loop");
         findLoopButton.onClick = [this] { if (loopJob != nullptr) cancelLoopSearch(); else findLoopForCurrent(); };
@@ -396,9 +446,9 @@ public:
 
         openButton.onClick = [this] { openFiles(); };
         removeButton.onClick = [this] { removeSelected(); };
-        playButton.onClick = [this] { togglePlay(); };
+        playButton.onClick = [this] { if (! transport.isPlaying()) togglePlay(); };
         loopButton.onClick = [this] {
-            source.setLooping (loopButton.getToggleState());
+            source.setRegionLooping (loopButton.getToggleState());
             props->setValue ("loop", loopButton.getToggleState());
             if (juce::isPositiveAndBelow (current, (int) items.size()) && items[(size_t) current]->hasLoop())
                 processCurrent(); // con / sin el crossfade del loop
@@ -463,7 +513,9 @@ public:
         };
 
         loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
-        source.setLooping (loopButton.getToggleState());
+        source.setRegionLooping (loopButton.getToggleState());
+        repeatButton.setToggleState (props->getBoolValue ("repeat", false), juce::dontSendNotification);
+        source.setLooping (repeatButton.getToggleState());
 
         list.setModel (this);
         list.setRowHeight (34);
@@ -586,6 +638,10 @@ public:
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
         g.setColour (Theme::darkBg);
         g.fillRoundedRectangle (waveArea.toFloat(), 12.0f);
+        // divisores finos entre los grupos de botones
+        g.setColour (juce::Colours::black.withAlpha (0.10f));
+        for (int x : groupDividers) g.fillRect ((float) x, (float) buttonRowY, 1.0f, (float) buttonRowH);
+        if (groupDividersRight > 0) g.fillRect ((float) groupDividersRight, (float) buttonRowY, 1.0f, (float) buttonRowH);
         // separador fino debajo de la fila de botones
         g.setColour (juce::Colours::black.withAlpha (0.07f));
         g.fillRect (juce::Rectangle<float> ((float) titleArea.getX(), (float) separatorY, (float) titleArea.getWidth(), 1.0f));
@@ -620,34 +676,51 @@ public:
         auto row = r.removeFromTop (kButtonH + 8);
         const auto bf = Theme::font (14.0f, 400);
         auto widthFor = [&] (juce::Button& b, float extra) {
-            return (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, b.getButtonText()) + 2.0f * 17.0f + extra) + 8;
+            return (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, b.getButtonText()) + 2.0f * 14.0f + extra) + 8;
         };
         auto place = [&] (juce::Button& b, float extra) { b.setBounds (row.removeFromLeft (widthFor (b, extra))); };
-        place (playButton, 0); place (loopButton, 0); place (normButton, 0);
-        place (abButton, 24.0f); // con el parlante
-        row.removeFromLeft (kGap);
-        place (findLoopButton, 0); place (otherLoopButton, 0); place (clearLoopButton, 0);
-        // Drag to DAW, a la derecha de todo (mismo alto visible que los botones)
+        auto placeIcon = [&] (juce::Button& b) { b.setBounds (row.removeFromLeft (kButtonH + 18 + 8)); };
+        auto divider = [&] { row.removeFromLeft (kGap); groupDividers.push_back (row.getX()); row.removeFromLeft (kGap + 1); };
+        groupDividers.clear();
+        // 1) transporte: ▶ ■ ⟲ (el loop de escucha)
+        placeIcon (playButton); placeIcon (stopButton); placeIcon (repeatButton);
+        divider();
+        // 2) qué se escucha
+        {
+            const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Processed") + 2.0f * 14.0f + 24.0f) + 8;
+            abButton.setBounds (row.removeFromLeft (w)); // con el parlante (mismo ancho con Processed u Original)
+        }
+        divider();
+        // 5) a la derecha de todo: Drag to DAW
         {
             const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
             dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (2).withHeight (kButtonH + 1));
         }
-        row.removeFromRight (kGap + 6);
-        // Ramp y Pitch: el nombre y la barra (de 24 de alto, como las pastillas de UNISON), las dos igual de largas
+        row.removeFromRight (kGap); groupDividersRight = row.getRight(); row.removeFromRight (kGap + 1);
+        // 4) el loop de sección (el que se exporta): prenderlo, buscarlo, el siguiente, borrarlo
+        {
+            auto loopRow = row.removeFromRight (widthFor (loopButton, 0) + widthFor (findLoopButton, 0) + widthFor (otherLoopButton, 0) + widthFor (clearLoopButton, 0));
+            for (auto* b : { (juce::Button*) &loopButton, (juce::Button*) &findLoopButton, (juce::Button*) &otherLoopButton, (juce::Button*) &clearLoopButton })
+                b->setBounds (loopRow.removeFromLeft (widthFor (*b, 0)));
+        }
+        row.removeFromRight (kGap); groupDividers.push_back (row.getRight()); row.removeFromRight (kGap + 1);
+        // 3) el proceso: Normalize, Ramp y Pitch (las dos barras igual de largas)
+        place (normButton, 0);
         {
             const auto lf = Theme::font (12.5f, 300);
             const int labelW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp")) + 10;
             row.removeFromLeft (kGap);
-            const int each = juce::jmax (120, (row.getWidth() - kGap) / 2);
+            const int each = juce::jmax (100, (row.getWidth() - kGap) / 2);
             auto put = [&] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl) {
                 const int cy = p.getY() + 2 + kButtonH / 2;
                 l.setBounds (p.removeFromLeft (labelW).withHeight (kPillH).withCentre ({ p.getX() - labelW / 2, cy }));
                 sl.setBounds (p.withHeight (kPillH).withY (cy - kPillH / 2));
             };
-            put (row.removeFromRight (each), pitchShiftLabel, pitchShift);
-            row.removeFromRight (kGap);
-            put (row.removeFromRight (each), rampLabel, ramp);
+            put (row.removeFromLeft (each), rampLabel, ramp);
+            row.removeFromLeft (kGap);
+            put (row.removeFromLeft (each), pitchShiftLabel, pitchShift);
         }
+        buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         r.removeFromTop (6);
         separatorY = r.getY();
         r.removeFromTop (8);
@@ -744,7 +817,7 @@ private:
     std::vector<std::unique_ptr<Item>> items;
     int current = -1;
 
-    juce::TextButton normButton;
+    juce::TextButton normButton, stopButton, repeatButton;
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton,
                      findLoopButton, otherLoopButton, clearLoopButton;
     double progressValue = 0.0;
@@ -783,6 +856,7 @@ private:
     juce::Rectangle<int> titleArea, controlsArea;
     int separatorY = 0;
     juce::Rectangle<int> waveArea, fileName;
+    std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
     int outputCheckTicks = 0;
@@ -865,7 +939,11 @@ private:
             processCurrent();
             list.repaint();
         }
-        playButton.setButtonText (transport.isPlaying() ? "Stop" : "Play");
+        if ((bool) playButton.getProperties()["lit"] != transport.isPlaying()) // Play prendido (azul) mientras suena
+        {
+            playButton.getProperties().set ("lit", transport.isPlaying());
+            playButton.repaint();
+        }
         if (++outputCheckTicks >= 60) { outputCheckTicks = 0; followSystemOutput(); } // una vez por segundo
         // que espacio / A / flechas anden siempre (salvo mientras se escribe un valor)
         if (juce::Component::getCurrentlyFocusedComponent() == nullptr && isShowing()
@@ -1285,7 +1363,8 @@ private:
         source.setEndSample ((juce::int64) it.endSample);
         source.setNextReadPosition (0);
         transport.setSource (&source, 0, nullptr, it.sampleRate, 2);
-        source.setLooping (loopButton.getToggleState());
+        source.setRegionLooping (loopButton.getToggleState());
+        source.setLooping (repeatButton.getToggleState());
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, true);
         wave.setEndSample (it.endSample);
         wave.setLoopBounds (it.analysis.bounds);
@@ -1306,6 +1385,13 @@ private:
         wave.setSkipEnd (cyclenorm::skipEndSample (items[(size_t) current]->analysis, readSettings()));
     }
 
+    void stopPlayback()
+    {
+        transport.stop();
+        transport.setPosition (0);
+        wave.repaint();
+        commandManager.commandStatusChanged();
+    }
     void togglePlay()
     {
         if (current < 0) return;
@@ -1326,7 +1412,7 @@ private:
     void updateAB()
     {
         source.setPlayProcessed (abButton.getToggleState());
-        abButton.setButtonText (abButton.getToggleState() ? "Hearing: Processed" : "Hearing: Original");
+        abButton.setButtonText (abButton.getToggleState() ? "Processed" : "Original"); // (el parlante ya dice que es lo que se escucha)
         wave.refresh();
     }
 
@@ -1659,7 +1745,7 @@ private:
     void getAllCommands (juce::Array<juce::CommandID>& c) override
     {
         c.addArray ({ cmdOpen, cmdRemove, cmdExport, cmdFmtSame, cmdFmt24, cmdFmtFloat,
-                      cmdUndo, cmdRedo, cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView,
+                      cmdUndo, cmdRedo, cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView, cmdLoopSection,
                       cmdFindLoop, cmdNextLoop, cmdClearLoop });
     }
     void getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& info) override
@@ -1678,7 +1764,8 @@ private:
             case cmdUndo:      info.setInfo ("Undo", "", "Edit", 0); info.addDefaultKeypress ('z', cmd); info.setActive (! undoStack.empty() || pendingRetune || pendingReprocess || (haveLastState && ! captureState().same (lastState))); break;
             case cmdRedo:      info.setInfo ("Redo", "", "Edit", 0); info.addDefaultKeypress ('z', cmd | shift); info.setActive (! redoStack.empty()); break;
             case cmdPlay:      info.setInfo (transport.isPlaying() ? "Stop" : "Play", "Space", "Playback", 0); info.setActive (has); break;
-            case cmdLoopPlay:  info.setInfo ("Loop Playback", "", "Playback", 0); info.addDefaultKeypress ('l', cmd | shift); info.setTicked (loopButton.getToggleState()); break;
+            case cmdLoopPlay:  info.setInfo ("Loop Playback", "", "Playback", 0); info.addDefaultKeypress ('r', cmd); info.setTicked (repeatButton.getToggleState()); break;
+            case cmdLoopSection: info.setInfo ("Loop Section", "", "Loop", 0); info.addDefaultKeypress ('l', cmd | shift); info.setTicked (loopButton.getToggleState()); break;
             case cmdHearing:   info.setInfo ("Hear Processed", "A", "Playback", 0); info.setTicked (abButton.getToggleState()); break;
             case cmdFitView:   info.setInfo ("Show Whole Sound", "", "Playback", 0); info.addDefaultKeypress ('0', cmd); info.setActive (has); break;
             case cmdFindLoop:  info.setInfo (loopJob != nullptr ? "Cancel Loop Search" : "Find Loop", "", "Loop", 0); info.addDefaultKeypress ('l', cmd); info.setActive (has || loopJob != nullptr); break;
@@ -1702,7 +1789,8 @@ private:
             case cmdUndo:      undo(); break;
             case cmdRedo:      redo(); break;
             case cmdPlay:      togglePlay(); break;
-            case cmdLoopPlay:  loopButton.triggerClick(); break;
+            case cmdLoopPlay:  repeatButton.triggerClick(); break;
+            case cmdLoopSection: loopButton.triggerClick(); break;
             case cmdHearing:   abButton.setToggleState (! abButton.getToggleState(), juce::dontSendNotification); updateAB(); break;
             case cmdFitView:   wave.showAll(); break;
             case cmdFindLoop:  findLoopButton.triggerClick(); break;
@@ -1745,6 +1833,8 @@ private:
         }
         else if (index == 3)
         {
+            m.addCommandItem (cm, cmdLoopSection);
+            m.addSeparator();
             m.addCommandItem (cm, cmdFindLoop);
             m.addCommandItem (cm, cmdNextLoop);
             m.addCommandItem (cm, cmdClearLoop);
