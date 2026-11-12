@@ -19,6 +19,7 @@ public:
     std::function<void (size_t)> onEndDragged;    // arrastrando la línea de Fin: nueva muestra final
     std::function<void (size_t)> onStartDragged;  // arrastrando la línea de Start: nueva muestra inicial
     std::function<void (int)> onFadeDragged;      // arrastrando la manija del fade in: cuántos semiciclos dura
+    std::function<void (int)> onFadeOutDragged;   // arrastrando la manija del fade out: cuántos semiciclos dura
     std::function<void (size_t, size_t)> onLoopDragged; // arrastrando una punta del loop: nuevo inicio y fin
     std::function<void (size_t)> onXfadeDragged;  // arrastrando la manija del crossfade: dónde empieza el fundido
     int maxSkip = 64;
@@ -67,6 +68,23 @@ public:
     void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; repaint(); } }
     // fade in desde Start: cuántos semiciclos dura (0 = sin fade)
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
+    void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; repaint(); } }
+    // dónde empieza el fade out: n semiciclos antes de End (en los cortes), sin pasar 'lower'
+    static size_t fadeOutStartOf (const std::vector<size_t>& B, size_t end, int halves, size_t lower)
+    {
+        if (halves <= 0) return end;
+        size_t st = end;
+        int k = 0;
+        for (auto it = B.rbegin(); it != B.rend(); ++it)
+        {
+            const size_t v = *it;
+            if (v >= end) continue;
+            if (v < lower) break;
+            st = v;
+            if (++k >= halves) break;
+        }
+        return st;
+    }
     // dónde termina el fade in: n semiciclos después de Start (en los cortes), sin pasar el loop ni End
     static size_t fadeEndOf (const std::vector<size_t>& B, size_t start, int halves, size_t limit)
     {
@@ -214,6 +232,13 @@ public:
         if (showAllArea.contains (e.position)) { showAll(); showAllClicked = true; return; } // "Show all"
         showAllClicked = false;
         const int line = whichLine (e.position);
+        if (line == 8) // la manija del fade out (⌥ + clic: sin fade)
+        {
+            if (e.mods.isAltDown()) { if (onFadeOutDragged) onFadeOutDragged (0); return; }
+            draggingFadeOut = true;
+            dragFadeOutTo (e.position.x);
+            return;
+        }
         if (line == 7) // la manija del fade in (⌥ + clic: sin fade)
         {
             if (e.mods.isAltDown()) { if (onFadeDragged) onFadeDragged (0); return; }
@@ -300,6 +325,7 @@ public:
             return;
         }
         if (draggingFade) { dragFadeTo (e.position.x); return; }
+        if (draggingFadeOut) { dragFadeOutTo (e.position.x); return; }
         if (! ambiguousLines.empty())
         {
             const float dx = e.position.x - ambiguousDownX;
@@ -335,7 +361,7 @@ public:
         ambiguousLines.clear();
         pitchDragArmed = pitchDragging = false;
         pendingLoopMove = movingLoop = false;
-        draggingSkip = draggingEnd = draggingStart = draggingFade = false;
+        draggingSkip = draggingEnd = draggingStart = draggingFade = draggingFadeOut = false;
         draggingLoop = 0;
         dirty = true; repaint();
         mouseMove (e);
@@ -405,8 +431,8 @@ private:
     bool dirty = true;      // rehacer toda la imagen de las ondas
     bool dirtyProc = false; // rehacer sólo el carril de abajo (el procesado cambió)
     size_t skipEnd = 0, endSample = 0, startSample = 0, loopStart = 0, loopEnd = 0;
-    bool draggingSkip = false, draggingEnd = false, draggingStart = false, draggingFade = false;
-    int fadeHalves = 0;
+    bool draggingSkip = false, draggingEnd = false, draggingStart = false, draggingFade = false, draggingFadeOut = false;
+    int fadeHalves = 0, fadeOutHalves = 0;
     int draggingLoop = 0; // 3 = inicio del loop, 4 = fin del loop, 5 = manija del crossfade
     size_t xfadeLen = 0;
     std::vector<std::pair<double, double>> pitchPts;
@@ -703,6 +729,7 @@ private:
         if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
         // la manija del fade in: el cuadradito de arriba, en donde termina el fade
         if (hasFadeHandle() && fadeHandleArea().expanded (4.0f).contains (p)) return 7;
+        if (hasFadeOutHandle() && fadeOutHandleArea().expanded (4.0f).contains (p)) return 8;
         // la manija del crossfade: el cuadradito de abajo de todo
         if (hasLoop() && onXfadeDragged != nullptr && p.y >= (float) getHeight() - 26.0f
             && std::abs (p.x - xfadeHandleX()) <= 9.0f && xVisible ((double) (loopEnd - std::min (xfadeLen, loopEnd))))
@@ -743,6 +770,33 @@ private:
             if (d < bestD) { bestD = d; best = k; }
         }
         if (onFadeDragged) onFadeDragged (best);
+    }
+    // fade out: termina en End; la manija va arriba, donde empieza. Con loop no hay (se corta en el loop)
+    size_t fadeOutLower() const { return std::max (fadeEndSample(), startSample); }
+    size_t fadeOutStartSample() const { return fadeOutStartOf (bounds, endOrLen(), fadeOutHalves, fadeOutLower()); }
+    bool hasFadeOutHandle() const { return totalLen() > 0 && onFadeOutDragged != nullptr && ! hasLoop(); }
+    juce::Rectangle<float> fadeOutHandleArea() const
+    {
+        const float x = juce::jlimit (7.0f, (float) plotWidth() - 9.0f, (float) sampleToX ((double) fadeOutStartSample()));
+        const float top = (float) procLaneRect().getY();
+        return { x - 7.0f, top + 46.0f, 14.0f, 14.0f };
+    }
+    void dragFadeOutTo (float x)
+    {
+        const double target = xToSample (x);
+        const size_t end = endOrLen(), lower = fadeOutLower();
+        int best = 0; double bestD = std::abs (target - (double) end);
+        int k = 0;
+        for (auto it = bounds.rbegin(); it != bounds.rend(); ++it)
+        {
+            const size_t v = *it;
+            if (v >= end) continue;
+            if (v < lower) break;
+            ++k;
+            const double d = std::abs ((double) v - target);
+            if (d < bestD) { bestD = d; best = k; }
+        }
+        if (onFadeOutDragged) onFadeOutDragged (best);
     }
     // la línea de Start: como la de Fin, salta de semiciclo en semiciclo (corta en un cruce por cero)
     bool hasStartLine() const { return totalLen() > 0 && onStartDragged != nullptr; }
@@ -1075,6 +1129,38 @@ private:
                         g.setColour (juce::Colours::white.withAlpha (0.8f));
                         g.setFont (uiFont (11.0f));
                         g.drawText ("Fade in", juce::Rectangle<float> (box.getRight() + 4.0f, box.getY(), 60.0f, box.getHeight()), juce::Justification::centredLeft);
+                    }
+                }
+            }
+            // fade out: la rampa (de donde empieza, arriba, hasta End, abajo) y su manija
+            if (showSkipLine && hasFadeOutHandle())
+            {
+                const size_t fs = fadeOutStartSample(), fe = endOrLen();
+                const float x0 = (float) r.getX() + (float) sampleToX ((double) fs);
+                const float x1 = (float) r.getX() + (float) sampleToX ((double) fe);
+                const float top = (float) r.getY() + 2.0f, bot = (float) r.getBottom() - 2.0f;
+                if (fe > fs && x1 > (float) r.getX() && x0 < (float) r.getRight())
+                {
+                    juce::Path shade; // lo que el fade le saca (arriba de la rampa)
+                    shade.addTriangle (x0, top, x1, top, x1, bot);
+                    g.setColour (juce::Colour (0x66000000));
+                    g.fillPath (shade);
+                    g.setColour (juce::Colours::white.withAlpha (0.55f));
+                    g.drawLine (x0, top, x1, bot, 1.2f);
+                }
+                const auto box = fadeOutHandleArea().translated ((float) r.getX(), 0.0f);
+                if (box.getRight() >= (float) r.getX() && box.getX() <= (float) r.getRight())
+                {
+                    g.setColour (draggingFadeOut ? juce::Colours::white : juce::Colour (0xffe8ecf2));
+                    g.fillRoundedRectangle (box, 3.0f);
+                    g.setColour (juce::Colour (0xff1b1e23)); // el dibujito: una rampa que baja
+                    const auto ib = box.reduced (3.5f);
+                    g.drawLine (ib.getX(), ib.getY(), ib.getRight(), ib.getBottom(), 1.6f);
+                    if (fe > fs)
+                    {
+                        g.setColour (juce::Colours::white.withAlpha (0.8f));
+                        g.setFont (uiFont (11.0f));
+                        g.drawText ("Fade out", juce::Rectangle<float> (box.getX() - 64.0f, box.getY(), 60.0f, box.getHeight()), juce::Justification::centredRight);
                     }
                 }
             }

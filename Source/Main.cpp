@@ -355,6 +355,7 @@ struct Item
     size_t endSample = 0; // dónde se corta el final (la línea de Fin); 0 = hasta el final del archivo
     size_t startSample = 0; // dónde empieza (la línea de Start); 0 = desde el principio
     int fadeHalves = 0;     // fade in desde Start, en semiciclos (0 = sin fade)
+    int fadeOutHalves = 0;  // fade out hasta End, en semiciclos (0 = sin fade; con loop no se usa)
     size_t loopStart = 0, loopEnd = 0; // zona de loop (0/0 = sin loop): de un cruce ascendente a otro
     double loopQuality = 0;
     int xfadeCycles = 0; // crossfade del loop, en ondas enteras (0 = Off; como máximo, las ondas del loop)
@@ -657,6 +658,7 @@ public:
             it.endSample = e >= full ? 0 : e;
             source.setEndSample ((juce::int64) it.endSample);
             wave.setEndSample (it.endSample);
+            if (it.fadeOutHalves > 0) settingsChanged(); // el fade out termina en End: se corre con ella
             updateInfo();
         };
         // la línea de Start: si pasa la de Skip, la empuja (Skip nunca queda antes de Start)
@@ -690,6 +692,16 @@ public:
             it.fadeHalves = n;
             wave.setFadeHalves (n);
             settingsChanged(); // reprocesa (al toque, como Ramp)
+        };
+        wave.onFadeOutDragged = [this] (int n)
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            n = juce::jmax (0, n);
+            if (n == it.fadeOutHalves) return;
+            it.fadeOutHalves = n;
+            wave.setFadeOutHalves (n);
+            settingsChanged();
         };
         wave.onLoopDragged = [this] (size_t s0, size_t s1) { setLoopForCurrent (s0, s1); };
         // la manija del crossfade: la muestra donde empieza el fundido -> ondas enteras hasta el fin del loop
@@ -1005,13 +1017,13 @@ private:
     {
         Item* item = nullptr;
         double amount = 0, ramp = 0, pitch = 0;
-        int skip = 0, xfade = 0, candIdx = -1, fade = 0;
+        int skip = 0, xfade = 0, candIdx = -1, fade = 0, fadeOut = 0;
         size_t endS = 0, startS = 0, l0 = 0, l1 = 0;
         std::vector<cyclenorm::LoopResult> cands;
         bool same (const EditState& o) const
         {
             return item == o.item && amount == o.amount && ramp == o.ramp && std::abs (pitch - o.pitch) < 1e-9
-                && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS && startS == o.startS && fade == o.fade
+                && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS && startS == o.startS && fade == o.fade && fadeOut == o.fadeOut
                 && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size();
         }
     };
@@ -1272,6 +1284,23 @@ private:
                         d[i] *= (float) ((double) (i - f0) / len);
                 }
         }
+        // fade out: hasta End, lineal, desde n semiciclos antes (con loop no: se corta en el fin del loop)
+        if (it.fadeOutHalves > 0 && ! loopActive (it))
+        {
+            const auto& B = cyclenorm::segmentBounds (it.analysis, s);
+            size_t lower = it.startSample;
+            if (it.fadeHalves > 0) lower = WaveformView::fadeEndOf (B, it.startSample, it.fadeHalves, (size_t) it.lengthToWrite());
+            const size_t f1 = (size_t) it.lengthToWrite();
+            const size_t f0 = WaveformView::fadeOutStartOf (B, f1, it.fadeOutHalves, lower);
+            if (f1 > f0)
+                for (int ch = 0; ch < out->getNumChannels(); ++ch)
+                {
+                    auto* d = out->getWritePointer (ch);
+                    const double len = (double) (f1 - f0);
+                    for (size_t i = f0; i < f1 && i < (size_t) out->getNumSamples(); ++i)
+                        d[i] *= (float) ((double) (f1 - i) / len);
+                }
+        }
         // crossfade del loop (metido en el audio, así suena igual al tocarlo que en el sampler)
         if (it.hasLoop() && it.loopEnd <= (size_t) out->getNumSamples())
         {
@@ -1301,7 +1330,7 @@ private:
         if (std::abs (it.tuneSemis) < 1e-9 || it.loaded == nullptr) { it.shownProcessed = nullptr; return; }
         Item d;
         d.original = it.loaded; d.analysis = it.loadedAnalysis; d.sampleRate = it.sampleRate;
-        d.fadeHalves = it.fadeHalves; d.xfadeCycles = it.xfadeCycles;
+        d.fadeHalves = it.fadeHalves; d.fadeOutHalves = it.fadeOutHalves; d.xfadeCycles = it.xfadeCycles;
         // las posiciones, llevadas por número de semiciclo / onda (como al re-afinar)
         auto mapHalf = [&] (size_t v) {
             const auto& A = it.analysis.halfBounds; const auto& L = it.loadedAnalysis.halfBounds;
@@ -1494,7 +1523,7 @@ private:
             const auto& it = *items[(size_t) current];
             st.item = items[(size_t) current].get();
             st.pitch = (double) it.tuneSt * 100.0 + it.tuneCents; // el aplicado
-            st.endS = it.endSample; st.startS = it.startSample; st.fade = it.fadeHalves; st.l0 = it.loopStart; st.l1 = it.loopEnd;
+            st.endS = it.endSample; st.startS = it.startSample; st.fade = it.fadeHalves; st.fadeOut = it.fadeOutHalves; st.l0 = it.loopStart; st.l1 = it.loopEnd;
             st.xfade = it.xfadeCycles; st.cands = it.loopCands; st.candIdx = it.loopCandIdx;
         }
         return st;
@@ -1555,12 +1584,13 @@ private:
             pitchShift.setValue (st.pitch, juce::dontSendNotification);
             pendingRetune = false;
             retuneCurrent (0, st.pitch);
-            it.endSample = st.endS; it.startSample = st.startS; it.fadeHalves = st.fade; it.loopStart = st.l0; it.loopEnd = st.l1;
+            it.endSample = st.endS; it.startSample = st.startS; it.fadeHalves = st.fade; it.fadeOutHalves = st.fadeOut; it.loopStart = st.l0; it.loopEnd = st.l1;
             it.xfadeCycles = st.xfade; it.loopCands = st.cands; it.loopCandIdx = st.candIdx;
             source.setEndSample ((juce::int64) it.endSample);
             source.setStartSample ((juce::int64) it.startSample);
             wave.setStartSample (it.startSample);
             wave.setFadeHalves (it.fadeHalves);
+            wave.setFadeOutHalves (it.fadeOutHalves);
             source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
             wave.setEndSample (it.endSample);
             showLoopInView (it);
@@ -1616,6 +1646,7 @@ private:
         wave.setEndSample (it.endSample);
         wave.setStartSample (it.startSample);
         wave.setFadeHalves (it.fadeHalves);
+        wave.setFadeOutHalves (it.fadeOutHalves);
         wave.setLoopBounds (it.analysis.bounds);
         wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
         showLoopInView (it);
