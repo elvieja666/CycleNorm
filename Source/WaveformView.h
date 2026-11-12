@@ -192,6 +192,22 @@ public:
             moveCycles = (int) indexOfLoopBound (loopEnd) - (int) moveStartIdx;
             return;
         }
+        // ⌥ Option + clic sobre la línea de Skip: vuelve a 0 (sin saltear nada)
+        const auto nearLines = linesNear (e.position);
+        if (e.mods.isAltDown() && std::find (nearLines.begin(), nearLines.end(), 1) != nearLines.end() && onSkipDragged)
+        {
+            onSkipDragged (0);
+            return;
+        }
+        // dos líneas pegadas (por ejemplo Skip al lado de End): se decide cuál agarrar según para
+        // dónde arrastrás (a la izquierda, la de la izquierda; a la derecha, la de la derecha)
+        ambiguousLines.clear();
+        if (line != 0 && line != 5 && nearLines.size() > 1)
+        {
+            ambiguousLines = nearLines;
+            ambiguousDownX = e.position.x;
+            return;
+        }
         draggingSkip = line == 1;
         draggingEnd = line == 2;
         draggingLoop = line >= 3 ? line : 0;
@@ -215,6 +231,16 @@ public:
             if (movingLoop) moveLoopBy (e.position.x - moveDownX);
             return;
         }
+        if (! ambiguousLines.empty())
+        {
+            const float dx = e.position.x - ambiguousDownX;
+            if (std::abs (dx) < 2.0f) return;
+            const int line = dx < 0 ? ambiguousLines.front() : ambiguousLines.back();
+            ambiguousLines.clear();
+            draggingSkip = line == 1;
+            draggingEnd = line == 2;
+            draggingLoop = line >= 3 ? line : 0;
+        }
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (draggingEnd) { dragEndTo (e.position.x); return; }
         if (draggingLoop) { dragLoopTo (e.position.x); return; }
@@ -227,6 +253,7 @@ public:
             onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
         if (pitchDragArmed && ! pitchDragging && totalLen() > 0 && onSeek) // clic sobre la línea sin arrastrar: mover el cursor
             onSeek (juce::jlimit (0.0, (double) endOrLen(), xToSample (e.position.x)) / sr);
+        ambiguousLines.clear();
         pitchDragArmed = pitchDragging = false;
         pendingLoopMove = movingLoop = false;
         draggingSkip = draggingEnd = false;
@@ -288,6 +315,8 @@ private:
     juce::Rectangle<float> showAllArea;            // "Show all" (con zoom)
     juce::Point<float> hoverPoint { -1.0f, -1.0f };
     bool showAllClicked = false;
+    std::vector<int> ambiguousLines; // líneas pegadas: se elige al arrastrar
+    float ambiguousDownX = 0.0f;
     float cacheScale = 1.0f;
     bool dirty = true;
     size_t skipEnd = 0, endSample = 0, loopStart = 0, loopEnd = 0;
@@ -580,6 +609,19 @@ private:
     float endLineX() const { return juce::jlimit (1.0f, (float) plotWidth() - 2.0f, endLineRawX()); }
     // 0 = ninguna, 1 = Skip, 2 = Fin (si las dos están cerca, la más cercana)
     float xfadeHandleX() const { return (float) sampleToX ((double) (loopEnd - std::min (xfadeLen, loopEnd))); }
+    // todas las líneas a menos de 6 px (sin la manija del crossfade), en orden lógico:
+    // Skip, inicio del loop, fin del loop, End (de izquierda a derecha)
+    std::vector<int> linesNear (juce::Point<float> p) const
+    {
+        std::vector<int> v;
+        if (p.y < getHeight() / 2.0f) return v;
+        auto near = [&] (float d) { return d <= 6.0f; };
+        if (hasSkipLine() && near (std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))))) v.push_back (1);
+        if (hasLoop() && xVisible ((double) loopStart) && near (std::abs (p.x - (float) sampleToX ((double) loopStart)))) v.push_back (3);
+        if (hasLoop() && xVisible ((double) loopEnd) && near (std::abs (p.x - (float) sampleToX ((double) loopEnd)))) v.push_back (4);
+        if (hasEndLine() && endLineVisible() && near (std::abs (p.x - endLineX()))) v.push_back (2);
+        return v;
+    }
     int whichLine (juce::Point<float> p) const
     {
         if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
