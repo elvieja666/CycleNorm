@@ -69,7 +69,7 @@ public:
         const int srcCh = src->getNumChannels();
         juce::int64 p = pos.load();
         const juce::int64 ls = loopStart.load(), le = loopEnd.load();
-        const bool region = regionLoop && le > ls && le <= len; // el loop de sección (como en el sampler)
+        const bool region = regionLoop && useB && le > ls && le <= len; // el loop de sección (como en el sampler): sólo en el procesado
         if (remapPending.exchange (false) && region)
         {
             const juce::int64 before = p;
@@ -151,7 +151,7 @@ public:
     }
     // dos loops distintos: el de escucha (setLooping: al terminar vuelve al principio) y el de sección
     // (setRegionLooping: repite la zona del loop, como el sampler)
-    bool isLooping() const override { return looping || regionLoop; }
+    bool isLooping() const override { return looping || (regionLoop && useB); }
     void setLooping (bool shouldLoop) override { looping = shouldLoop; }
     void setRegionLooping (bool on) { regionLoop = on; }
 
