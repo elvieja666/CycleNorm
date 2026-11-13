@@ -794,10 +794,12 @@ private:
         if (x < -1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
         x = juce::jlimit (1.0f, (float) plotWidth() - 1.0f, x);
         const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
-        auto rr = side > 0 ? juce::Rectangle<float> (x, y, w, kTabH) : juce::Rectangle<float> (x - w, y, w, kTabH);
+        // 1 px de aire con la línea vertical (que ocupa el píxel de x)
+        const float lx = std::round (x), xr = lx + 2.0f, xl = lx - 1.0f - w;
+        auto rr = juce::Rectangle<float> (side > 0 ? xr : xl, y, w, kTabH);
         // que no se salga del gráfico (pegada al borde, se da vuelta)
-        if (rr.getRight() > (float) plotWidth()) rr.setX (x - w);
-        if (rr.getX() < 0.0f) rr.setX (x);
+        if (rr.getRight() > (float) plotWidth()) rr.setX (xl);
+        if (rr.getX() < 0.0f) rr.setX (xr);
         return rr;
     }
     int tabAt (juce::Point<float> p) const
