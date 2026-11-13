@@ -258,7 +258,7 @@ public:
         if (wasHot != showAllArea.contains (hoverPoint)) repaint (showAllArea.getSmallestIntegerContainer().expanded (2));
         if (showAllArea.contains (e.position)) setMouseCursor (juce::MouseCursor::PointingHandCursor);
         else if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
-        else if (nearPitchCurve (e.position)) setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+        else if (nearPitchCurve (e.position) || pitchTagArea.expanded (2.0f).contains (e.position)) setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         else if (insideLoop (e.position)) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         else setMouseCursor (juce::MouseCursor::NormalCursor);
     }
@@ -305,7 +305,8 @@ public:
         // sobre la línea celeste: arrastrando arriba/abajo se cambia el Pitch
         pitchDragArmed = pitchDragging = false;
         // ⌥ Option + clic sobre la línea: vuelve al pitch original (0 cents)
-        if (line == 0 && e.mods.isAltDown() && nearPitchCurve (e.position) && onPitchDragged)
+        const bool onPitch = nearPitchCurve (e.position) || pitchTagArea.expanded (2.0f).contains (e.position); // la línea o su pildorita
+        if (line == 0 && e.mods.isAltDown() && onPitch && onPitchDragged)
         {
             onPitchDragged (0.0);
             return;
@@ -318,7 +319,7 @@ public:
             dirty = true; repaint();
             return;
         }
-        if (line == 0 && nearPitchCurve (e.position) && onPitchDragged && getPitchCents)
+        if (line == 0 && onPitch && onPitchDragged && getPitchCents)
         {
             pitchDragArmed = true;
             pitchDragLastY = pitchDownY = e.position.y;
@@ -460,7 +461,8 @@ private:
     std::vector<size_t> bounds;
     double sr = 44100.0, viewStart = 0, viewLen = 0;
     juce::Image cache;
-    juce::Rectangle<float> showAllArea;            // "Show all" (con zoom)
+    juce::Rectangle<float> showAllArea;
+    juce::Rectangle<float> pitchTagArea;           // la pildorita de los cents (se arrastra como la línea)            // "Show all" (con zoom)
     juce::Point<float> hoverPoint { -1.0f, -1.0f };
     bool showAllClicked = false;
     float cacheScale = 1.0f;
@@ -563,6 +565,7 @@ private:
                 right = juce::jmin (right, (float) r.getX() + (float) sampleToX ((double) endSample) - 4.0f);
             right = juce::jmax ((float) r.getX() + tw + 2.0f, right);
             const auto tag = juce::Rectangle<float> (right - tw, y - 8.0f, tw, 16.0f);
+            pitchTagArea = tag; // (también se agarra de acá para mover el pitch)
             g.setColour (juce::Colour (0xff6fd6ff));
             g.fillRoundedRectangle (tag, 8.0f);
             g.setColour (juce::Colour (0xff0b0c0e));
