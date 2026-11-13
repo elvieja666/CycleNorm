@@ -75,6 +75,15 @@ public:
         if (t != pitchInfo || c != pitchInfoColour || t2 != pitchInfo2 || c2 != pitchInfoColour2)
         { pitchInfo = t; pitchInfoColour = c; pitchInfo2 = t2; pitchInfoColour2 = c2; repaint(); }
     }
+    // cuánto queda entre donde se pide dibujar y donde empieza la tinta de la primera letra
+    static float leftBearing (const juce::Font& f, const juce::String& t)
+    {
+        if (t.isEmpty()) return 0.0f;
+        juce::GlyphArrangement ga;
+        ga.addLineOfText (f, t.substring (0, 1), 0.0f, 0.0f);
+        juce::Path p; ga.createPath (p);
+        return p.getBounds().getX();
+    }
     juce::String pitchInfo, pitchInfo2; juce::Colour pitchInfoColour { 0xff8b9096 }, pitchInfoColour2;
     void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; repaint(); } }
     // dónde empieza el fade out: n semiciclos antes de End (en los cortes), sin pasar 'lower'
@@ -1342,7 +1351,8 @@ private:
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
         g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
         // el título ocupa la mitad de arriba de los 40 libres (la de abajo es de las pestañas)
-        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) r.getY() + 1.0f, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
+        // a 5 del borde izquierdo (lo mismo que hay arriba hasta las mayúsculas), medido a la letra
+        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + 5.0f - leftBearing (g.getCurrentFont(), title), (float) r.getY() + 1.0f, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
                     juce::Justification::centredLeft);
         if (! showSkipLine && pitchInfo.isNotEmpty()) // el Original: el pitch medido, debajo de la onda (mismo tamaño que el título)
         {
@@ -1350,7 +1360,7 @@ private:
             g.setFont (uiFont (13.0f));
             const auto f = g.getCurrentFont();
             auto prefixOf = [] (const juce::String& t) { const int i = t.indexOf (":"); return i < 0 ? juce::String() : t.substring (0, i + 1); };
-            const float x0 = (float) r.getX() + 8.0f;
+            const float x0 = (float) r.getX() + 5.0f - leftBearing (f, "P"); // a 5 del borde, como los títulos
             const float colonX = x0 + juce::jmax (juce::GlyphArrangement::getStringWidth (f, prefixOf (pitchInfo)),
                                                   juce::GlyphArrangement::getStringWidth (f, prefixOf (pitchInfo2)));
             auto drawRow = [&] (const juce::String& t, juce::Colour c, float y) {
