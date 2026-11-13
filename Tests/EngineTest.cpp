@@ -3,6 +3,7 @@
 #include <functional>
 #include "LoopFinder.h"
 #include "Resample.h"
+#include "ClickDetect.h"
 #include <cstdio>
 #include <random>
 
@@ -496,6 +497,19 @@ int main()
         bool ok = o[0][500] == 0.0f && o2[0][1] == 0.5f;
         std::printf ("silencio / archivo corto: %s\n", ok ? "OK" : "FALLA");
         fails += !ok;
+    }
+    // detector de clicks: una onda limpia (con fade al principio y al final) no tiene; un salto de 3 % sí
+    {
+        const double fs = 44100; const size_t n = 44100;
+        std::vector<float> o (n), p (n);
+        for (size_t i = 0; i < n; ++i) o[i] = (float) (0.8 * std::sin (2 * M_PI * 55.0 * (double) i / fs));
+        p = o;
+        const auto c0 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0, true, true);
+        for (size_t i = n / 2; i < n; ++i) p[i] += 0.024f;
+        const auto c1 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0, true, true);
+        const bool ok = c0.empty() && c1.size() == 1 && (c1[0] + 2 >= n / 2 && c1[0] <= n / 2 + 2);
+        std::printf ("clicks: limpio %zu, con salto %zu  %s\n", c0.size(), c1.size(), ok ? "OK" : "FALLA");
+        fails += ! ok;
     }
     std::printf (fails ? "\n%d FALLAS\n" : "\nTODO OK\n", fails);
     return fails;

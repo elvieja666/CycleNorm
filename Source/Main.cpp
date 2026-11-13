@@ -4,6 +4,7 @@
 #include "LoopFinder.h"
 #include "Resample.h"
 #include "ABSource.h"
+#include "ClickDetect.h"
 #include "WaveformView.h"
 #include "Theme.h"
 
@@ -824,6 +825,20 @@ public:
                 if (k < 2) { g.drawText (dot, juce::Rectangle<float> (x, b.getY(), 40.0f, b.getHeight()), juce::Justification::centredLeft); x += wOf (dot); }
             }
         }
+        // los clicks que metió el proceso: arriba de Ramp, como la info del loop
+        if (clickCount >= 0 && info.isVisible())
+        {
+            const auto f = info.getFont();
+            g.setFont (f);
+            const auto b = info.getBounds().toFloat();
+            const float x = (float) rampLabel.getX();
+            g.setColour (Theme::inkDim);
+            g.drawText ("Clicks:", juce::Rectangle<float> (x, b.getY(), 80.0f, b.getHeight()), juce::Justification::centredLeft);
+            const float x2 = x + juce::GlyphArrangement::getStringWidth (f, "Clicks:") + 5.0f;
+            if (clickCount > 0) g.setColour (juce::Colour (0xffe0782f)); // naranja (el del loop)
+            g.drawText (clickCount == 0 ? juce::String ("none") : juce::String (clickCount) + " detected",
+                        juce::Rectangle<float> (x2, b.getY(), 120.0f, b.getHeight()), juce::Justification::centredLeft);
+        }
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
@@ -1067,6 +1082,30 @@ private:
     int pitchInfoX = 0, loopInfoX = 0;
     int userSkipHalves = -1; // el Skip que puso el usuario (-1: el que se cargó)
     juce::StringArray loopInfoVals; // los números de la info del loop (se dibujan con lugar fijo)
+    int clickCount = -1;              // los clicks que metió el proceso en lo que suena (-1 = nada abierto)
+    std::vector<size_t> clickPos;     // dónde (muestra)
+    // busca los clicks del procesado (contra el original) en lo que suena: de Start a End, o hasta el
+    // fin del loop (y el salto del loop)
+    void updateClicks (const Item& it)
+    {
+        clickPos.clear();
+        if (it.processed != nullptr && it.original != nullptr
+            && it.processed->getNumSamples() == it.original->getNumSamples()
+            && it.processed->getNumChannels() == it.original->getNumChannels())
+        {
+            std::vector<const float*> P, O;
+            for (int ch = 0; ch < it.processed->getNumChannels(); ++ch)
+            {
+                P.push_back (it.processed->getReadPointer (ch));
+                O.push_back (it.original->getReadPointer (ch));
+            }
+            const bool lp = loopActive (it);
+            clickPos = cyclenorm::detectClicks (P, O, (size_t) it.processed->getNumSamples(), it.startSample, (size_t) it.lengthToWrite(),
+                                                it.sampleRate, lp ? it.loopStart : 0, lp ? it.loopEnd : 0,
+                                                it.fadeHalves > 0, it.fadeOutHalves > 0 && ! lp);
+        }
+        clickCount = (int) clickPos.size();
+    }
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
@@ -1794,7 +1833,7 @@ private:
         auto t = titleRest;
         if (t.isEmpty()) return;
         const int px = juce::jlimit (t.getX(), t.getRight(), pitchInfoX);
-        fileName = t.withRight (juce::jlimit (t.getX(), t.getRight(), loopInfoX - 16)); // hasta donde empieza la info del loop
+        fileName = t.withRight (juce::jlimit (t.getX(), t.getRight(), juce::jmin (loopInfoX, rampLabel.getX()) - 16)); // hasta donde empieza la info de los clicks
         // el nombre arranca justo en el borde izquierdo (visible) del botón Processed / Original
         fileName.setLeft (juce::jlimit (t.getX(), fileName.getRight(), abButton.getX() + 4));
         auto rest = t.withLeft (juce::jlimit (px, t.getRight(), loopInfoX));
@@ -1808,11 +1847,13 @@ private:
         repaint (titleArea); // el nombre del 808 abierto
         if (! juce::isPositiveAndBelow (current, (int) items.size()))
         {
+            clickCount = -1;
             info.setText ({}, juce::dontSendNotification);
             return;
         }
         auto& it = *items[(size_t) current];
         updatePitch (it);
+        updateClicks (it);
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::ignoreUnused (peakDb);
         // corto (va en la fila del título): el loop y los avisos
