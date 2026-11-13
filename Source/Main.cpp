@@ -2324,10 +2324,14 @@ private:
     {
         static constexpr float kScale = 1.05f * 497.0f / 650.0f; // la escala de UNISON (≈ 0,803)
         ScaledHolder() { addAndMakeVisible (content); }
+        int designW = 948, designH = 650;
+        // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
+        // la proporción; el tamaño por defecto (80,3 %) es el mínimo
         void resized() override
         {
-            content.setTransform (juce::AffineTransform::scale (kScale));
-            content.setBounds (0, 0, juce::roundToInt ((float) getWidth() / kScale), juce::roundToInt ((float) getHeight() / kScale));
+            const float s = juce::jmax (kScale, (float) getWidth() / (float) designW);
+            content.setTransform (juce::AffineTransform::scale (s));
+            content.setBounds (0, 0, designW, designH);
         }
         MainComponent content;
     };
@@ -2341,10 +2345,14 @@ private:
             holder = new ScaledHolder();
             content = &holder->content;
             const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "948").getIntValue(); // (948: entre secciones 20 visibles, también de Option N a Drag to DAW)
-            holder->setSize (juce::roundToInt (designW * ScaledHolder::kScale), juce::roundToInt (650 * ScaledHolder::kScale)); // como UNISON
+            holder->designW = designW;
+            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (650 * ScaledHolder::kScale);
+            holder->setSize (w0, h0); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);
-            setResizeLimits (juce::roundToInt (juce::jmin (1300, designW) * ScaledHolder::kScale), juce::roundToInt (520 * ScaledHolder::kScale), 4000, 3000);
+            // se agranda en proporción (todo escala junto); no se achica más que el tamaño por defecto
+            setResizeLimits (getWidth(), getHeight(), getWidth() * 4, getHeight() * 4);
+            getConstrainer()->setFixedAspectRatio ((double) w0 / (double) h0);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
