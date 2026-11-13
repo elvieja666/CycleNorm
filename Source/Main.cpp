@@ -833,7 +833,7 @@ public:
         }
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
         g.setColour (Theme::darkBg);
-        g.fillRect (waveArea); // esquinas rectas
+        g.fillRoundedRectangle (waveArea.toFloat(), 12.0f); // esquinas redondeadas (como al principio)
         // divisores finos entre los grupos de botones
         g.setColour (juce::Colours::black.withAlpha (0.10f));
         for (int x : groupDividers) g.fillRect ((float) x, (float) buttonRowY, 1.0f, (float) buttonRowH);
