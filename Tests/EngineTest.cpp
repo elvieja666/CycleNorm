@@ -3,7 +3,7 @@
 #include <functional>
 #include "LoopFinder.h"
 #include "Resample.h"
-#include "ClickDetect.h"
+#include "NoiseDetect.h"
 #include <cstdio>
 #include <random>
 
@@ -498,17 +498,20 @@ int main()
         std::printf ("silencio / archivo corto: %s\n", ok ? "OK" : "FALLA");
         fails += !ok;
     }
-    // detector de clicks: una onda limpia (con fade al principio y al final) no tiene; un salto de 3 % sí
+    // detector de ruido: el original con más volumen no tiene ruido; recortado (distorsión), sí
     {
         const double fs = 44100; const size_t n = 44100;
-        std::vector<float> o (n), p (n);
-        for (size_t i = 0; i < n; ++i) o[i] = (float) (0.8 * std::sin (2 * M_PI * 55.0 * (double) i / fs));
-        p = o;
-        const auto c0 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0);
-        for (size_t i = n / 2; i < n; ++i) p[i] += 0.024f;
-        const auto c1 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0);
-        const bool ok = c0.empty() && c1.size() == 1 && (c1[0] + 2 >= n / 2 && c1[0] <= n / 2 + 2);
-        std::printf ("clicks: limpio %zu, con salto %zu  %s\n", c0.size(), c1.size(), ok ? "OK" : "FALLA");
+        std::vector<float> o (n), p (n), c (n);
+        for (size_t i = 0; i < n; ++i)
+        {
+            o[i] = (float) (0.5 * std::sin (2 * M_PI * 45.0 * (double) i / fs));
+            p[i] = 1.6f * o[i];
+            c[i] = std::clamp (1.6f * o[i], -0.7f, 0.7f);
+        }
+        const double n0 = measureNoise ({ p.data() }, { o.data() }, n, 0, n, fs);
+        const double n1 = measureNoise ({ c.data() }, { o.data() }, n, 0, n, fs);
+        const bool ok = n0 < 0.01 && n1 > 1.0;
+        std::printf ("ruido: limpio %.3f %%, recortado %.2f %%  %s\n", n0, n1, ok ? "OK" : "FALLA");
         fails += ! ok;
     }
     std::printf (fails ? "\n%d FALLAS\n" : "\nTODO OK\n", fails);

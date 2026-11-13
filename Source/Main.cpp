@@ -4,7 +4,7 @@
 #include "LoopFinder.h"
 #include "Resample.h"
 #include "ABSource.h"
-#include "ClickDetect.h"
+#include "NoiseDetect.h"
 #include "WaveformView.h"
 #include "Theme.h"
 
@@ -823,25 +823,16 @@ public:
                 if (k < 2) { g.drawSingleLineText (dot, juce::roundToInt (x), (int) kTitleBaseline); x += wOf (dot); }
             }
         }
-        // los clicks que metió el proceso: arriba de Ramp, como la info del loop
-        if (clickCount >= 0 && info.isVisible())
+        // el ruido que agregó el proceso: arriba de Ramp, como la info del loop
+        if (noisePct >= 0.0 && info.isVisible())
         {
             const auto f = info.getFont();
             g.setFont (f);
             const float x = (float) rampLabel.getX();
             g.setColour (Theme::inkDim);
-            g.drawSingleLineText ("Clicks:", juce::roundToInt (x), (int) kTitleBaseline);
-            auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (f, t); };
-            const float x2 = x + wOf ("Clicks:") + 5.0f;
-            if (clickCount > 0) g.setColour (juce::Colour (0xffe0782f)); // naranja (el del loop)
-            g.drawSingleLineText (juce::String (clickCount), juce::roundToInt (x2), (int) kTitleBaseline);
-            // el ruido agregado (% de la energía, ponderado como el oído): con lugar fijo para el número
-            const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
-            const float x3 = x2 + wOf ("99");
-            g.setColour (Theme::inkDim);
-            g.drawSingleLineText (dot + "Noise:", juce::roundToInt (x3), (int) kTitleBaseline);
-            const float x4 = x3 + wOf (dot + "Noise:") + 5.0f;
-            g.drawSingleLineText (juce::String (noisePct, 2) + " %", juce::roundToInt (x4), (int) kTitleBaseline);
+            g.drawSingleLineText ("Noise:", juce::roundToInt (x), (int) kTitleBaseline);
+            const float x2 = x + juce::GlyphArrangement::getStringWidth (f, "Noise:") + 5.0f;
+            g.drawSingleLineText (juce::String (noisePct, 2) + " %", juce::roundToInt (x2), (int) kTitleBaseline);
         }
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
@@ -1106,28 +1097,9 @@ private:
         return { 0.0f, kTitleBaseline - f.getAscent(), 0.0f, f.getHeight() };
     }
     juce::StringArray loopInfoVals; // los números de la info del loop (se dibujan con lugar fijo)
-    int clickCount = -1;              // los clicks que metió el proceso en lo que suena (-1 = nada abierto)
-    std::vector<size_t> clickPos;     // dónde (muestra)
-    // busca los clicks del procesado (contra el original) en lo que suena: de Start a End, o hasta el
-    // fin del loop (y el salto del loop)
-    void updateClicks (const Item& it)
+    // el ruido que agregó el proceso en lo que suena (de Start a End, o hasta el fin del loop)
+    void updateNoise (const Item& it)
     {
-        clickPos.clear();
-        if (it.processed != nullptr && it.original != nullptr
-            && it.processed->getNumSamples() == it.original->getNumSamples()
-            && it.processed->getNumChannels() == it.original->getNumChannels())
-        {
-            std::vector<const float*> P, O;
-            for (int ch = 0; ch < it.processed->getNumChannels(); ++ch)
-            {
-                P.push_back (it.processed->getReadPointer (ch));
-                O.push_back (it.original->getReadPointer (ch));
-            }
-            const bool lp = loopActive (it);
-            clickPos = cyclenorm::detectClicks (P, O, (size_t) it.processed->getNumSamples(), it.startSample, (size_t) it.lengthToWrite(),
-                                                it.sampleRate, lp ? it.loopStart : 0, lp ? it.loopEnd : 0);
-        }
-        clickCount = (int) clickPos.size();
         noisePct = 0.0;
         if (it.processed != nullptr && it.original != nullptr
             && it.processed->getNumSamples() == it.original->getNumSamples()
@@ -1144,7 +1116,7 @@ private:
                                                 lp ? it.loopEnd : (size_t) it.lengthToWrite(), it.sampleRate);
         }
     }
-    double noisePct = 0.0; // el ruido que agregó el proceso (% de la energía, ponderada como el oído)
+    double noisePct = -1.0; // el ruido que agregó el proceso (% de la energía, ponderada como el oído; -1 = nada abierto)
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
@@ -1895,13 +1867,13 @@ private:
         repaint (titleArea); // el nombre del 808 abierto
         if (! juce::isPositiveAndBelow (current, (int) items.size()))
         {
-            clickCount = -1;
+            noisePct = -1.0;
             info.setText ({}, juce::dontSendNotification);
             return;
         }
         auto& it = *items[(size_t) current];
         updatePitch (it);
-        updateClicks (it);
+        updateNoise (it);
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::ignoreUnused (peakDb);
         // corto (va en la fila del título): el loop y los avisos
