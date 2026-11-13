@@ -34,7 +34,7 @@ public:
         proc = std::move (processed);
         bounds = std::move (cycleBounds);
         sr = sampleRate;
-        if (resetView || viewLen <= 0 || oldTotal <= 0) { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; }
+        if (resetView || viewLen <= 0 || oldTotal <= 0) { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; pitchPan = 0.0; }
         else
         {   // el audio cambió de largo (re-pitch): se ve la misma parte del sonido, del mismo ancho
             // (el gráfico no cambia: con la vista completa, sigue completa)
@@ -380,7 +380,7 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
         viewStart = 0; viewLen = (double) totalLen();
-        zoomSpan = 0.0; // también el zoom vertical del pitch
+        zoomSpan = 0.0; pitchPan = 0.0; // también el zoom vertical del pitch (y vuelve a centrar la nota)
         dirty = true; repaint();
     }
     void mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w) override
@@ -398,6 +398,10 @@ public:
         {
             // trackpad: dos dedos = moverse por dentro (horizontal = en el tiempo, vertical = en el pitch)
             viewStart -= w.deltaX * viewLen * 0.5;
+            if (zoomSpan <= 0.0 && overPitch && std::abs (w.deltaY) > 0.0f)
+            {   // sin zoom: dos dedos arriba / abajo corren el piano hasta 3 semitonos más para cada lado
+                pitchPan = juce::jlimit (-3.0, 3.0, pitchPan + w.deltaY * 7.0 * 0.8);
+            }
             if (zoomSpan > 0.0 && std::abs (w.deltaY) > 0.0f)
             {
                 pitchCenter = clampPitchCenter (pitchCenter + w.deltaY * zoomSpan * 0.8, zoomSpan);
@@ -450,6 +454,7 @@ private:
     double pitchDragStartCents = 0.0, pitchDragAnchor = 0.0, pitchDragRef = 0.0, pitchDragAccum = 0.0, pitchSemisPerPx = 0.0;
     bool frozenValid = false; double frozenLo = 0.0, frozenHi = 1.0; // rango fijo mientras se mueve Pitch
     double zoomSpan = 0.0, pitchCenter = 0.0, autoSpan = 1.0, pitchLo = 0.0, pitchHi = 1.0;
+    double pitchPan = 0.0; // dos dedos arriba / abajo sin zoom: cuánto se corrió el piano (± 3 semitonos)
     float pitchAreaBottom = 0.0f, pitchAreaH = 0.0f;
 
     // Curva de pitch sobre un carril: eje vertical en notas (escala logarítmica), con una línea por
@@ -487,7 +492,7 @@ private:
                 std::nth_element (ms.begin(), ms.begin() + (long) ms.size() / 2, ms.end());
                 centre = (double) std::lround (ms[ms.size() / 2]);
             }
-            lo = centre - 3.5; hi = centre + 3.5;
+            lo = centre - 3.5 + pitchPan; hi = centre + 3.5 + pitchPan;
         }
         frozenLo = lo; frozenHi = hi; frozenValid = true;
         autoSpan = hi - lo;
