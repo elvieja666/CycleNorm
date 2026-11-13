@@ -486,12 +486,14 @@ private:
         {
             lo = pitchCenter - zoomSpan * 0.5; hi = pitchCenter + zoomSpan * 0.5;
         }
-        const auto area = r.toFloat().reduced (0.0f, 22.0f);
+        // el piano roll (franjas, teclado y curva) sólo en la parte del medio (los 185 de la onda): los 40
+        // de arriba y de abajo quedan del fondo, como en el visor de abajo
+        const auto area = r.toFloat().reduced (0.0f, 40.0f);
         pitchLo = lo; pitchHi = hi; pitchAreaBottom = area.getBottom(); pitchAreaH = area.getHeight();
         auto yOf = [&] (double m) { return area.getBottom() - (float) ((m - lo) / (hi - lo)) * area.getHeight(); };
 
         juce::Graphics::ScopedSaveState ss (g);
-        g.reduceClipRegion (r);
+        g.reduceClipRegion (layer == 2 ? r : area.getSmallestIntegerContainer()); // (la pildorita de los cents puede salir)
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
         auto noteStr = [&] (int m) { return juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1); };
         auto isBlack = [] (int m) { const int pc = ((m % 12) + 12) % 12; return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10; };
@@ -511,6 +513,14 @@ private:
         // a la línea de End (o al teclado), encima de la zona oscurecida: se dibuja aparte (layer 2)
         if (layer == 2)
         {
+            {   // arriba a la derecha, en la franja del título: cómo hacer zoom
+            g.setColour (juce::Colour (0xff8b9096));
+            g.setFont (uiFont (12.0f));
+            const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
+            g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
+                                        : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
+                        juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY() + 1.0f, 320.0f, 18.0f), juce::Justification::centredRight);
+            }
             if (! hasRef) return;
             const double dev = (ref - (double) refNote) * 100.0;
             const float y = juce::jlimit (area.getY() - 14.0f, area.getBottom() + 14.0f, yOf (ref));
@@ -579,7 +589,7 @@ private:
         // el teclado (como el de un piano roll, a la derecha): teclas blancas y negras,
         // nombre en las C (y en la nota medida, resaltada en celeste)
         {
-            const auto kb = juce::Rectangle<float> (kbX, area.getY() - 22.0f, kbW, area.getHeight() + 44.0f);
+            const auto kb = juce::Rectangle<float> (kbX, area.getY(), kbW, area.getHeight());
             juce::Graphics::ScopedSaveState ks (g);
             g.reduceClipRegion (kb.toNearestInt());
             g.setColour (juce::Colour (0xffd9dce1));
@@ -603,7 +613,7 @@ private:
                     g.fillRect (juce::Rectangle<float> (kbX, std::round (y1) - 0.5f, kbW, 1.0f));
                 }
                 const float keyH = y1 - y0;
-                if ((pc == 0 || m == refNote) && keyH >= 8.0f)
+                if ((pc == 0 || m == refNote) && keyH >= 5.0f)
                 {
                     g.setColour (m == refNote ? (isBlack (m) ? juce::Colours::white : juce::Colour (0xff0b0c0e)) : juce::Colour (0xff2b2e33));
                     g.setFont (uiFont (juce::jlimit (8.5f, 11.0f, keyH * 0.8f), juce::Font::bold));
@@ -637,12 +647,6 @@ private:
                 g.fillEllipse (x - 1.5f, yOf (midiOf (p.second)) - 1.5f, 3.0f, 3.0f);
             }
         }
-        g.setColour (juce::Colour (0xff8b9096));
-        g.setFont (uiFont (12.0f));
-        const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
-        g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
-                                    : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
-                    juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY() + 1.0f, 320.0f, 18.0f), juce::Justification::centredRight);
     }
     std::vector<size_t> loopBounds;
     bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
