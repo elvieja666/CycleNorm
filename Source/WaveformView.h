@@ -1411,9 +1411,7 @@ private:
         {
             const auto pad = lane.withWidth (plotLeft());
             g.setColour (juce::Colour (0xff0b0c0e));
-            g.fillRect (pad);
-            g.setColour (juce::Colour (0x66000000));
-            g.fillRect (pad.withX (pad.getRight() - 1).withWidth (1));
+            g.fillRect (pad); // (todo negro: sin rayita de borde)
         }
         auto r = procLaneRect();
         if (plotWidth() < getWidth()) // debajo del teclado: vacío, así las dos ondas terminan en la misma línea
@@ -1421,8 +1419,6 @@ private:
             const auto strip = r.withTrimmedLeft (plotWidth());
             g.setColour (juce::Colour (0xff0b0c0e));
             g.fillRect (strip);
-            g.setColour (juce::Colour (0x66000000));
-            g.fillRect (strip.withWidth (1));
         }
     }
 };
