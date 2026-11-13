@@ -1904,17 +1904,20 @@ private:
         if (st == it.tuneSt && std::abs (cents - it.tuneCents) < 1e-9) return;
         if (loopJob != nullptr) cancelLoopSearch();
 
-        // posiciones actuales, como índices de onda (para llevarlas al audio afinado)
-        const auto& B = it.analysis.bounds;
+        // las posiciones actuales (en muestras): se llevan al audio afinado por tiempo (estirado) y se
+        // pegan al cruce más cercano. (No por número de onda: el ruido antes del 808 tiene cruces que
+        // cambian al re-afinar, y Skip, Start o el loop saltaban de lugar.)
         const auto& HB = it.analysis.halfBounds;
         const bool hadLoop = it.hasLoop();
-        const size_t li = hadLoop ? nearestBound (B, it.loopStart) : 0, lj = hadLoop ? nearestBound (B, it.loopEnd) : 0;
+        const size_t oldLs = it.loopStart, oldLe = it.loopEnd;
         const bool hadEnd = it.endSample > 0;
-        const size_t ei = hadEnd ? nearestBound (HB, it.endSample) : 0;
         const bool hadStart = it.startSample > 0;
-        const size_t si = hadStart ? nearestBound (HB, it.startSample) : 0;
+        const size_t oldEnd = it.endSample, oldStart = it.startSample;
+        auto skipEndOf = [&] (int n) { return n >= 1 ? ((size_t) n - 1 < HB.size() ? HB[(size_t) n - 1] : it.analysis.numSamples) : (size_t) 0; };
+        const size_t oldSkipEnd = skipEndOf (skipHalves), oldUserSkipEnd = skipEndOf (userSkipHalves);
         const double semis = (double) st + cents / 100.0;
         const double oldSpeed = std::pow (2.0, it.tuneSemis / 12.0), newSpeed = std::pow (2.0, semis / 12.0);
+        auto scaled = [&] (size_t v) { return (size_t) std::llround ((double) v * oldSpeed / newSpeed); };
 
         if (std::abs (semis) < 1e-9)
         {
@@ -1937,12 +1940,24 @@ private:
 
         const auto& B2 = it.analysis.bounds;
         const auto& HB2 = it.analysis.halfBounds;
-        if (hadLoop && lj < B2.size() && li < lj) { it.loopStart = B2[li]; it.loopEnd = B2[lj]; }
+        auto snapTo = [&] (const std::vector<size_t>& Bn, size_t v) { return Bn.empty() ? (size_t) 0 : Bn[nearestBound (Bn, scaled (v))]; };
+        if (hadLoop && ! B2.empty())
+        {
+            const size_t ls = snapTo (B2, oldLs), le = snapTo (B2, oldLe);
+            if (le > ls) { it.loopStart = ls; it.loopEnd = le; } else it.loopStart = it.loopEnd = 0;
+        }
         else { it.loopStart = it.loopEnd = 0; }
         it.loopCands.clear();
         it.loopCandIdx = -1;
-        it.endSample = (hadEnd && ei < HB2.size()) ? HB2[ei] : 0;
-        it.startSample = (hadStart && si < HB2.size()) ? HB2[si] : 0;
+        it.endSample = hadEnd ? snapTo (HB2, oldEnd) : 0;
+        it.startSample = hadStart ? snapTo (HB2, oldStart) : 0;
+        // Skip: el mismo lugar (por tiempo), contado de nuevo en semiciclos del audio afinado
+        auto skipFor = [&] (int n, size_t oldE) {
+            if (n < 1 || HB2.empty()) return n;
+            return juce::jlimit (1, kMaxSkip, (int) nearestBound (HB2, scaled (oldE)) + 1);
+        };
+        skipHalves = skipFor (skipHalves, oldSkipEnd);
+        if (userSkipHalves >= 1) userSkipHalves = skipFor (userSkipHalves, oldUserSkipEnd);
 
         // refrescar sin cortar: sigue sonando desde el mismo punto del sonido y mantiene el zoom
         const double factor = oldSpeed / newSpeed; // cuánto se estiró el audio
