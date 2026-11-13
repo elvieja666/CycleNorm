@@ -68,6 +68,9 @@ public:
     void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; dirty = true; repaint(); } }
     // fade in desde Start: cuántos semiciclos dura (0 = sin fade)
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; dirtyProc = true; repaint(); } }
+    // el renglón del pitch medido: va en el visor Original, en la mitad de arriba de los 40 de abajo
+    void setPitchInfo (const juce::String& t, juce::Colour c) { if (t != pitchInfo || c != pitchInfoColour) { pitchInfo = t; pitchInfoColour = c; repaint(); } }
+    juce::String pitchInfo; juce::Colour pitchInfoColour { 0xff8b9096 };
     void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; dirtyProc = true; repaint(); } }
     // dónde empieza el fade out: n semiciclos antes de End (en los cortes), sin pasar 'lower'
     static size_t fadeOutStartOf (const std::vector<size_t>& B, size_t end, int halves, size_t lower)
@@ -1316,6 +1319,13 @@ private:
         // el título ocupa la mitad de arriba de los 40 libres (la de abajo es de las pestañas)
         g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) r.getY() + 1.0f, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
                     juce::Justification::centredLeft);
+        if (! showSkipLine && pitchInfo.isNotEmpty()) // el Original: el pitch medido, debajo de la onda (mismo tamaño que el título)
+        {
+            g.setColour (pitchInfoColour);
+            g.setFont (uiFont (13.0f));
+            g.drawText (pitchInfo, juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) (int) (mid + half) + 1.0f, (float) plotWidth() - 16.0f, 18.0f),
+                        juce::Justification::centredLeft);
+        }
     }
 
     void renderCache()

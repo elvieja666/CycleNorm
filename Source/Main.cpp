@@ -744,8 +744,8 @@ public:
         pitchLabel.setColour (juce::Label::textColourId, kAccent);
         pitchLabel.setFont (Theme::font (12.5f, 400));
         pitchLabel.setJustificationType (juce::Justification::centredLeft);
-        pitchLabel.setBorderSize ({});      // el texto arranca justo en la línea que separa Processed de Normalize
-        addAndMakeVisible (pitchLabel);
+        pitchLabel.setBorderSize ({});
+        addChildComponent (pitchLabel); // (oculto: el renglón del pitch ahora va dentro del visor Original)
 
         dragOut.makeFile = [this] { return writeForDrag(); };
         addAndMakeVisible (dragOut);
@@ -1915,7 +1915,7 @@ private:
         auto p = pitchOf (it, readSettings(), inLoop);
         p.midi += previewSemis;                                  // vista previa de la barra Pitch
         p.hz *= std::pow (2.0, previewSemis / 12.0);
-        if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); layoutTitleRow(); return; }
+        if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); wave.setPitchInfo ("Pitch: --", juce::Colour (0xff8b9096)); layoutTitleRow(); return; }
         const double cents = (p.midi - std::round (p.midi)) * 100.0;
         juce::String t;
         t << "Pitch (" << (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding, approx." : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
@@ -1928,6 +1928,7 @@ private:
         // midiendo el loop: azul; la parte estable (sustain) u otra: gris, como la info del loop
         pitchLabel.setColour (juce::Label::textColourId, inLoop ? kAccent : Theme::inkDim);
         pitchLabel.setText (t, juce::dontSendNotification);
+        wave.setPitchInfo (t, inLoop ? kAccent : juce::Colour (0xff8b9096)); // (se muestra en el visor Original)
         layoutTitleRow();
     }
 
