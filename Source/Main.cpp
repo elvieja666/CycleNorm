@@ -807,18 +807,21 @@ public:
             g.setFont (f);
             g.setColour (Theme::inkDim);
             auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (f, t); };
-            const juce::String pieces[] = { "Loop ", loopInfoVals[0], u8 (" % · "), loopInfoVals[1], u8 (" cycles · crossfade "), loopInfoVals[2] };
-            const juce::String slots[] = { {}, "100.0", {}, "999", {}, "Off" };
-            float x = (float) info.getX();
+            // como los renglones del pitch: "Loop:" y después columnas de ancho fijo (cada valor con su
+            // unidad, alineado a la izquierda), separadas con " · "
+            const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
+            const juce::String cols[] = { loopInfoVals[0] + " %", loopInfoVals[1] + " cycles", "crossfade " + loopInfoVals[2] };
+            const juce::String tmpl[] = { "100.0 %", "999 cycles", "crossfade Off" };
             const auto b = info.getBounds().toFloat();
-            for (int k = 0; k < 6; ++k)
+            float x = (float) info.getX();
+            g.drawText ("Loop:", juce::Rectangle<float> (x, b.getY(), 60.0f, b.getHeight()), juce::Justification::centredLeft);
+            x += wOf ("Loop:") + 5.0f;
+            for (int k = 0; k < 3; ++k)
             {
-                const float w = slots[k].isNotEmpty() ? juce::jmax (wOf (slots[k]), wOf ("88")) : wOf (pieces[k]);
-                // los números, pegados a su unidad (a la derecha de su lugar); el crossfade, a la izquierda
-                const bool right = k == 1 || k == 3;
-                g.drawText (pieces[k], juce::Rectangle<float> (right ? x - 2.0f : x, b.getY(), w + 2.0f, b.getHeight()),
-                            right ? juce::Justification::centredRight : juce::Justification::centredLeft);
+                const float w = juce::jmax (wOf (tmpl[k]), wOf (cols[k]));
+                g.drawText (cols[k], juce::Rectangle<float> (x, b.getY(), w + 2.0f, b.getHeight()), juce::Justification::centredLeft);
                 x += w;
+                if (k < 2) { g.drawText (dot, juce::Rectangle<float> (x, b.getY(), 40.0f, b.getHeight()), juce::Justification::centredLeft); x += wOf (dot); }
             }
         }
         // el 808 abierto, al lado del título
