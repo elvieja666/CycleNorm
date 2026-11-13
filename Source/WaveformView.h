@@ -1342,7 +1342,9 @@ private:
                 if (t.isEmpty()) return;
                 g.setColour (c);
                 const auto pre = prefixOf (t), rest = t.substring (pre.length()).trimStart();
-                g.drawText (pre, juce::Rectangle<float> (x0, y, colonX - x0, 18.0f), juce::Justification::centredRight);
+                // el nombre arranca a la izquierda (los dos parejos) y los ":" quedan en la misma vertical
+                g.drawText (pre.dropLastCharacters (1), juce::Rectangle<float> (x0, y, colonX - x0, 18.0f), juce::Justification::centredLeft);
+                g.drawText (":", juce::Rectangle<float> (x0, y, colonX - x0, 18.0f), juce::Justification::centredRight);
                 g.drawText (rest, juce::Rectangle<float> (colonX + 5.0f, y, (float) plotWidth() - (colonX + 5.0f) - 8.0f, 18.0f), juce::Justification::centredLeft);
             };
             drawRow (pitchInfo,  pitchInfoColour,  (float) (int) (mid + half) + 1.0f);
