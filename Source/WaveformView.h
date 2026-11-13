@@ -63,12 +63,12 @@ public:
     // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirtyProc = true; repaint(); } }
     // dónde se corta el final (la línea de Fin); el largo total = sin cortar
-    void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; repaint(); } } // (las líneas y zonas se dibujan encima de la imagen: no hace falta rehacerla)
+    void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; dirty = true; repaint(); } } // (las líneas y zonas se dibujan encima de la imagen: no hace falta rehacerla)
     // dónde empieza (la línea de Start); 0 = desde el principio del archivo
-    void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; repaint(); } }
+    void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; dirty = true; repaint(); } }
     // fade in desde Start: cuántos semiciclos dura (0 = sin fade)
-    void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
-    void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; repaint(); } }
+    void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; dirtyProc = true; repaint(); } }
+    void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; dirtyProc = true; repaint(); } }
     // dónde empieza el fade out: n semiciclos antes de End (en los cortes), sin pasar 'lower'
     static size_t fadeOutStartOf (const std::vector<size_t>& B, size_t end, int halves, size_t lower)
     {
@@ -101,7 +101,7 @@ public:
         return e;
     }
     // zona de loop (0/0 = sin loop) y los cruces ascendentes (ondas enteras) donde pueden caer sus puntas
-    void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; repaint(); } }
+    void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; dirtyProc = true; repaint(); } }
     void setLoopBounds (std::vector<size_t> b) { loopBounds = std::move (b); }
     // largo del crossfade del loop en muestras (0 = Off)
     void setLoopXfade (size_t len) { if (len != xfadeLen) { xfadeLen = len; repaint(); } }
@@ -1056,11 +1056,26 @@ private:
 
         // zona salteada con Skip: fondo apenas distinto y una línea donde empieza a normalizar
         const float skipX = greyUntil > 0 ? (float) r.getX() + (float) sampleToX ((double) greyUntil) : (float) r.getX();
-        if (pass == 0 && greyUntil > 0 && skipX > (float) r.getX())
+        // el fondo siempre igual: lo único que cambia es el color de la onda. Gris oscuro lo que no
+        // suena entero (antes de Start / después de End y lo que toman los fades), gris claro lo que
+        // saltea Skip, y el color del carril el resto
+        auto xOf = [&] (size_t smp) { return (float) r.getX() + (float) sampleToX ((double) smp); };
+        float darkBefore = -1.0e9f, darkAfter = 1.0e9f;
+        if (totalLen() > 0)
         {
-            g.setColour (juce::Colour (0xff1d2025));
-            g.fillRect (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), skipX - (float) r.getX(), (float) r.getHeight()));
+            if (showSkipLine) // el procesado: con los fades
+            {
+                darkBefore = xOf (fadeEndSample());
+                darkAfter = hasFadeOutHandle() ? xOf (fadeOutStartSample()) : xOf (endOrLen());
+            }
+            else
+            {
+                darkBefore = xOf (startSample);
+                darkAfter = xOf (endOrLen());
+            }
+            if (endOrLen() >= (size_t) totalLen() && ! (showSkipLine && hasFadeOutHandle() && fadeOutHalves > 0)) darkAfter = 1.0e9f;
         }
+        const juce::Colour kDark (0xff3c4048), kLight (0xff8f98a6);
 
         // greyBefore: hasta esta x (el Skip) las columnas van en gris; así se arma la onda una sola vez
         auto drawWave = [&] (juce::Colour waveColour, float greyBefore = -1.0e9f)
@@ -1084,7 +1099,21 @@ private:
                     const float px = (float) sampleToX (s / k) + (float) r.getX(), py = mid - juce::jlimit (-1.2f, 1.2f, v) * half;
                     if (s == s0) p.startNewSubPath (px, py); else p.lineTo (px, py);
                 }
-                g.strokePath (p, juce::PathStrokeType (1.3f));
+                // de cerca: la misma línea, recortada por zonas de color
+                const float L = (float) r.getX(), R = (float) r.getRight(), T = (float) r.getY(), H = (float) r.getHeight();
+                auto strokeIn = [&] (float x0, float x1, juce::Colour c) {
+                    x0 = juce::jmax (x0, L); x1 = juce::jmin (x1, R);
+                    if (x1 <= x0) return;
+                    juce::Graphics::ScopedSaveState ss (g);
+                    g.reduceClipRegion (juce::Rectangle<float> (x0, T, x1 - x0, H).getSmallestIntegerContainer());
+                    g.setColour (c);
+                    g.strokePath (p, juce::PathStrokeType (1.3f));
+                };
+                const float g0 = juce::jmax (darkBefore, juce::jmin (greyBefore, darkAfter));
+                strokeIn (L, darkBefore, kDark);
+                strokeIn (darkBefore, g0, kLight);
+                strokeIn (g0, darkAfter, waveColour);
+                strokeIn (darkAfter, R, kDark);
             }
             else
             {
@@ -1101,7 +1130,7 @@ private:
                 const float colW = 1.0f / juce::jmax (1.0f, cacheScale);
                 const int cols = juce::jmax (1, juce::roundToInt ((float) w / colW));
                 const double spc = vl / juce::jmax (1, cols);
-                juce::RectangleList<float> peaks, greyPeaks;
+                juce::RectangleList<float> peaks, greyPeaks, darkPeaks;
                 peaks.ensureStorageAllocated (cols);
                 for (int x = 0; x < cols; ++x)
                 {
@@ -1112,10 +1141,12 @@ private:
                     if (hi < lo) continue;
                     const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
                     const juce::Rectangle<float> cr { (float) r.getX() + (float) x * colW, y0, colW, juce::jmax (0.6f, y1 - y0) };
-                    (cr.getX() < greyBefore ? greyPeaks : peaks).addWithoutMerging (cr);
+                    const float cx = cr.getX() + colW * 0.5f;
+                    (cx < darkBefore || cx >= darkAfter ? darkPeaks : (cx < greyBefore ? greyPeaks : peaks)).addWithoutMerging (cr);
                 }
                 g.fillRectList (peaks);
-                if (! greyPeaks.isEmpty()) { g.setColour (juce::Colour (0xff8f98a6)); g.fillRectList (greyPeaks); }
+                if (! greyPeaks.isEmpty()) { g.setColour (kLight); g.fillRectList (greyPeaks); }
+                if (! darkPeaks.isEmpty()) { g.setColour (kDark); g.fillRectList (darkPeaks); }
             }
         };
 
@@ -1123,9 +1154,9 @@ private:
         {
             const bool columns = viewLen / juce::jmax (1, juce::jmin (r.getWidth(), plotWidth())) >= 1.0;
             if (pass == 1) {}
-            else if (greyUntil > 0 && skipX > (float) r.getX() && columns)
-                drawWave (col, skipX); // las ondas salteadas, en el gris del original (en la misma pasada)
-            else if (greyUntil > 0 && skipX > (float) r.getX())
+            else if (true)
+                drawWave (col, greyUntil > 0 ? skipX : -1.0e9f); // todo en una pasada (los colores por zona)
+            else if (columns)
             {
                 {   // las ondas salteadas, en el gris del original
                     juce::Graphics::ScopedSaveState ss (g);
@@ -1156,15 +1187,6 @@ private:
                 }
             }
             // lo que queda antes de la línea de Start: oscurecido (no se exporta ni suena)
-            if (startSample > 0)
-            {
-                const float sx = juce::jmin ((float) r.getRight(), (float) r.getX() + (float) sampleToX ((double) startSample));
-                if (sx > (float) r.getX())
-                {
-                    g.setColour (juce::Colour (0xcc0e1013));
-                    g.fillRect (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), sx - (float) r.getX(), (float) r.getHeight()));
-                }
-            }
             if (showSkipLine && hasStartLine() && startLineVisible())
             {
                 const float sx = (float) r.getX() + startLineX();
@@ -1181,10 +1203,6 @@ private:
                 const float top = (float) (int) (mid - half), bot = (float) (int) (mid + half); // de la línea de 0 dB de abajo a la de arriba
                 if (fe > startSample && x1 > (float) r.getX() && x0 < (float) r.getRight())
                 {
-                    juce::Path shade; // lo que el fade le saca (arriba de la rampa), apenas oscurecido
-                    shade.addTriangle (x0, top, x1, top, x0, bot);
-                    g.setColour (juce::Colour (0x66000000));
-                    g.fillPath (shade);
                     g.setColour (juce::Colours::white.withAlpha (0.55f));
                     g.drawLine (x0, bot, x1, top, 1.0f);
                     // hasta dónde llega el fade: una línea vertical
@@ -1201,10 +1219,6 @@ private:
                 const float top = (float) (int) (mid - half), bot = (float) (int) (mid + half); // de la línea de 0 dB de arriba a la de abajo
                 if (fe > fs && x1 > (float) r.getX() && x0 < (float) r.getRight())
                 {
-                    juce::Path shade; // lo que el fade le saca (arriba de la rampa)
-                    shade.addTriangle (x0, top, x1, top, x1, bot);
-                    g.setColour (juce::Colour (0x66000000));
-                    g.fillPath (shade);
                     g.setColour (juce::Colours::white.withAlpha (0.55f));
                     g.drawLine (x0, top, x1, bot, 1.0f);
                     // desde dónde arranca el fade: una línea vertical
@@ -1213,16 +1227,6 @@ private:
                 }
             }
             // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
-            if (endSample > 0 && endSample < (size_t) totalLen())
-            {
-                const float ex = (float) r.getX() + (float) sampleToX ((double) endSample);
-                if (ex < (float) r.getRight())
-                {
-                    g.setColour (juce::Colour (0xcc0e1013));
-                    g.fillRect (juce::Rectangle<float> (juce::jmax ((float) r.getX(), ex), (float) r.getY(),
-                                                        (float) r.getRight() - juce::jmax ((float) r.getX(), ex), (float) r.getHeight()));
-                }
-            }
             // zona de loop (verde) con sus dos puntas arrastrables (manijas abajo)
             if (showSkipLine && hasLoop())
             {
