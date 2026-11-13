@@ -352,6 +352,7 @@ struct Item
     int xfadeCycles = 0; // crossfade del loop, en ondas enteras (0 = Off; como máximo, las ondas del loop)
     std::vector<cyclenorm::LoopResult> loopCands; // los mejores loops que encontró la búsqueda
     int loopCandIdx = -1;                        // cuál de ellos está puesto (-1 = uno movido a mano)
+    int skipOverride = -1;                       // (para el dibujo sin re-afinar: el Skip contado en su audio)
     bool hasLoop() const { return loopEnd > loopStart; }
 
     int lengthToWrite() const
@@ -1350,7 +1351,8 @@ private:
     //== proceso ===============================================================
     void processItem (Item& it) const
     {
-        const auto s = readSettings();
+        auto s = readSettings();
+        if (it.skipOverride >= 0) s.skipHalves = it.skipOverride;
         auto curve = cyclenorm::gainCurve (it.analysis, s, &it.targetUsedDb);
         const auto& src = *it.original;
         cyclenorm::limitCurve (curve, cyclenorm::skipEndSample (it.analysis, s), it.targetUsedDb, [&] (size_t i) {
@@ -1435,20 +1437,25 @@ private:
         Item d;
         d.original = it.loaded; d.analysis = it.loadedAnalysis; d.sampleRate = it.sampleRate;
         d.fadeHalves = it.fadeHalves; d.fadeOutHalves = it.fadeOutHalves; d.xfadeCycles = it.xfadeCycles;
-        // las posiciones, llevadas por número de semiciclo / onda (como al re-afinar)
-        auto mapHalf = [&] (size_t v) {
-            const auto& A = it.analysis.halfBounds; const auto& L = it.loadedAnalysis.halfBounds;
-            if (v == 0 || A.empty() || L.empty()) return (size_t) 0;
-            return L[juce::jmin (nearestBound (A, v), L.size() - 1)];
-        };
-        auto mapCycle = [&] (size_t v) {
-            const auto& A = it.analysis.bounds; const auto& L = it.loadedAnalysis.bounds;
-            if (A.empty() || L.empty()) return (size_t) 0;
-            return L[juce::jmin (nearestBound (A, v), L.size() - 1)];
-        };
+        // las posiciones, llevadas por tiempo (el afinado es el cargado estirado) y pegadas al cruce
+        // más cercano. (No por número de semiciclo: el ruido antes del 808 tiene cruces que cambian
+        // al re-afinar, y el fade o el Skip quedaban corridos en el dibujo.)
+        const double speed = std::pow (2.0, it.tuneSemis / 12.0);
+        auto toLoaded = [&] (size_t v) { return (size_t) std::llround ((double) v * speed); };
+        const auto& LH = it.loadedAnalysis.halfBounds;
+        const auto& LB = it.loadedAnalysis.bounds;
+        auto mapHalf = [&] (size_t v) { return (v == 0 || LH.empty()) ? (size_t) 0 : LH[nearestBound (LH, toLoaded (v))]; };
+        auto mapCycle = [&] (size_t v) { return LB.empty() ? (size_t) 0 : LB[nearestBound (LB, toLoaded (v))]; };
         d.startSample = mapHalf (it.startSample);
         d.endSample = mapHalf (it.endSample);
         if (it.hasLoop()) { d.loopStart = mapCycle (it.loopStart); d.loopEnd = mapCycle (it.loopEnd); }
+        // Skip: el mismo lugar, contado en semiciclos del audio sin re-afinar
+        if (skipHalves >= 1 && ! LH.empty())
+        {
+            const auto& HB = it.analysis.halfBounds;
+            const size_t e = (size_t) skipHalves - 1 < HB.size() ? HB[(size_t) skipHalves - 1] : it.analysis.numSamples;
+            d.skipOverride = juce::jlimit (1, kMaxSkip, (int) nearestBound (LH, toLoaded (e)) + 1);
+        }
         processItem (d); // (d no está re-afinado: no vuelve a entrar acá)
         it.shownProcessed = d.processed;
     }
