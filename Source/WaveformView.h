@@ -199,12 +199,18 @@ public:
                                          .withWidth (juce::jmax (4.0f, (float) (viewLen / total) * track.getWidth())), 1.5f);
         }
         // arriba a la derecha del visor Original (en la franja del título): siempre "Zoom X n · Y n"
-        // (sin zoom: 0.0); con zoom, además "Show all", que se clickea y vuelve a mostrar todo
-        auto fmt = [] (double f) { return f <= 1.001 ? juce::String ("0.0") : (f < 10.0 ? juce::String (f, 1) : juce::String (juce::roundToInt (f))); };
+        // (sin zoom: 0); con zoom, además "Show all", que se clickea y vuelve a mostrar todo
+        // el número va de 0 (sin zoom) a 100 (el máximo), en escala logarítmica
+        auto pct = [] (double f, double fmax) {
+            if (f <= 1.001 || fmax <= 1.001) return juce::String ("0");
+            return juce::String (juce::jlimit (1, 100, juce::roundToInt (100.0 * std::log (f) / std::log (fmax))));
+        };
         const double hf = total / juce::jmax (1.0, viewLen);
+        const double hmax = total / juce::jmin (total, juce::jmax (32.0, (double) plotWidth() / 8.0)); // (el mismo tope que zoomAround)
         const double vf = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
+        const double vmax = autoSpan / 0.005;                                                         // (el mismo tope que zoomPitch)
         const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
-        const juce::String text = "Zoom  X " + fmt (hf) + dot + "Y " + fmt (vf) + dot;
+        const juce::String text = "Zoom  X " + pct (hf, hmax) + dot + "Y " + pct (vf, vmax) + dot;
         g.setFont (uiFont (13.0f));
         const juce::String showAll ("Show all");
         const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text);
