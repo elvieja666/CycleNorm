@@ -796,6 +796,27 @@ public:
             const float capTop = (40.0f - tb.getHeight()) * 0.5f; // = 13 (como UNISON)
             g.fillPath (text, juce::AffineTransform::translation ((float) kMargin - tb.getX(), capTop - tb.getY()));
         }
+        // la info del loop: "Loop 99.1 % · 60 cycles · crossfade Off", cada número en un lugar fijo
+        if (loopInfoVals.size() == 3 && info.isVisible())
+        {
+            const auto f = info.getFont();
+            g.setFont (f);
+            g.setColour (Theme::inkDim);
+            auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (f, t); };
+            const juce::String pieces[] = { "Loop ", loopInfoVals[0], u8 (" % · "), loopInfoVals[1], u8 (" cycles · crossfade "), loopInfoVals[2] };
+            const juce::String slots[] = { {}, "100.0", {}, "999", {}, "Off" };
+            float x = (float) info.getX();
+            const auto b = info.getBounds().toFloat();
+            for (int k = 0; k < 6; ++k)
+            {
+                const float w = slots[k].isNotEmpty() ? juce::jmax (wOf (slots[k]), wOf ("88")) : wOf (pieces[k]);
+                // los números, pegados a su unidad (a la derecha de su lugar); el crossfade, a la izquierda
+                const bool right = k == 1 || k == 3;
+                g.drawText (pieces[k], juce::Rectangle<float> (right ? x - 2.0f : x, b.getY(), w + 2.0f, b.getHeight()),
+                            right ? juce::Justification::centredRight : juce::Justification::centredLeft);
+                x += w;
+            }
+        }
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
@@ -1047,6 +1068,7 @@ private:
     int separatorY = 0;
     juce::Rectangle<int> waveArea, fileName, titleRest;
     int pitchInfoX = 0, loopInfoX = 0;
+    juce::StringArray loopInfoVals; // los números de la info del loop (se dibujan con lugar fijo)
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
@@ -1797,15 +1819,19 @@ private:
         juce::ignoreUnused (peakDb);
         // corto (va en la fila del título): el loop y los avisos
         juce::String t;
+        loopInfoVals.clear();
         if (loopActive (it))
         {
+            // se dibuja aparte (en paint), con un lugar fijo para cada número: el texto no se mueve
             const auto& B = it.analysis.bounds;
             const auto nCyc = std::distance (std::lower_bound (B.begin(), B.end(), it.loopStart), std::lower_bound (B.begin(), B.end(), it.loopEnd));
-            t << "Loop " << juce::String (it.loopQuality * 100.0, 1) << u8 (" % · ") << (int) nCyc << " cycles"
-              << u8 (" · crossfade ") << (it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) : juce::String ("Off"));
+            loopInfoVals = { juce::String (it.loopQuality * 100.0, 1), juce::String ((int) nCyc),
+                             it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) : juce::String ("Off") };
         }
+        repaint (info.getBounds());
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
         {
+            loopInfoVals.clear();
             t = u8 ("CLIPPING! The attack goes over 0 dBFS: export as 32-bit float");
             info.setColour (juce::Label::textColourId, Theme::bad);
         }
