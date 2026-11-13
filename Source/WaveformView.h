@@ -1234,7 +1234,7 @@ private:
                 if (a1 > a0)
                 {
                     g.setColour (juce::Colour (movingLoop ? 0x48e0782f : 0x2ae0782f));
-                    g.fillRect (juce::Rectangle<float> (a0, (float) r.getY(), a1 - a0, (float) r.getHeight()));
+                    g.fillRect (juce::Rectangle<float> (a0, vTop, a1 - a0, vBot - vTop)); // (sólo entre las líneas de 0 dB)
                 }
                 const float dashes[] = { 4.0f, 3.0f };
                 for (int k = 0; k < 2; ++k)
