@@ -186,7 +186,7 @@ public:
     void drawZoomBar (juce::Graphics& g)
     {
         showAllArea = {};
-        if (! isZoomed()) return;
+        if (totalLen() == 0) return;
         const auto b = getLocalBounds().toFloat();
         const double total = (double) totalLen();
         if (viewStart > 0.5 || viewLen < total - 0.5)
@@ -198,33 +198,30 @@ public:
             g.fillRoundedRectangle (track.withX (track.getX() + (float) (viewStart / total) * track.getWidth())
                                          .withWidth (juce::jmax (4.0f, (float) (viewLen / total) * track.getWidth())), 1.5f);
         }
-        juce::String text;
+        // arriba a la derecha del visor Original (en la franja del título): siempre "Zoom X n · Y n"
+        // (sin zoom: 0.0); con zoom, además "Show all", que se clickea y vuelve a mostrar todo
+        auto fmt = [] (double f) { return f <= 1.001 ? juce::String ("0.0") : (f < 10.0 ? juce::String (f, 1) : juce::String (juce::roundToInt (f))); };
         const double hf = total / juce::jmax (1.0, viewLen);
-        if (hf > 1.001) text << "Zoom x" << (hf < 10.0 ? juce::String (hf, 1) : juce::String (juce::roundToInt (hf)));
-        if (zoomSpan > 0.0)
-        {
-            const double vf = autoSpan / zoomSpan;
-            if (text.isNotEmpty()) text << juce::String::fromUTF8 ("  \xc2\xb7  ");
-            text << "Pitch x" << (vf < 10.0 ? juce::String (vf, 1) : juce::String (juce::roundToInt (vf)));
-        }
-        text << juce::String::fromUTF8 ("  \xc2\xb7  ");
-        g.setFont (uiFont (12.5f));
+        const double vf = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
+        const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
+        const juce::String text = "Zoom  X " + fmt (hf) + dot + "Y " + fmt (vf) + (isZoomed() ? dot : juce::String());
+        g.setFont (uiFont (13.0f));
         const juce::String showAll ("Show all");
         const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text);
-        const float sw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), showAll);
-        // abajo al centro (a los costados están Skip y End)
-        const auto area = juce::Rectangle<float> (b.getCentreX() - (w + sw) * 0.5f - 8.0f, b.getBottom() - 26.0f, w + sw + 16.0f, 18.0f);
-        g.setColour (juce::Colour (0xcc0b0c0e));
-        g.fillRoundedRectangle (area, 4.0f);
-        g.setColour (juce::Colour (0xffe8e6e3).withAlpha (0.75f));
-        g.drawText (text, area.withTrimmedLeft (8.0f).toNearestInt(), juce::Justification::centredLeft);
-        const auto textArea = juce::Rectangle<float> (area.getX() + 8.0f + w, area.getY(), sw + 4.0f, area.getHeight());
-        showAllArea = textArea.expanded (4.0f, 3.0f);
-        const bool hot = showAllArea.contains (hoverPoint);
-        const juce::Colour accentBright (0xff5aa9ff);
-        g.setColour (hot ? accentBright.brighter (0.4f) : accentBright);
-        g.drawText (showAll, textArea.toNearestInt(), juce::Justification::centredLeft);
-        if (hot) g.fillRect (textArea.getX(), textArea.getCentreY() + 7.0f, sw, 1.0f);
+        const float sw = isZoomed() ? juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), showAll) : 0.0f;
+        const float right = (float) plotWidth() - 5.0f, top = 1.0f;
+        g.setColour (juce::Colour (0xff8b9096));
+        g.drawText (text, juce::Rectangle<float> (right - sw - w, top, w + 2.0f, 18.0f), juce::Justification::centredLeft);
+        if (isZoomed())
+        {
+            const auto textArea = juce::Rectangle<float> (right - sw, top, sw + 2.0f, 18.0f);
+            showAllArea = textArea.expanded (4.0f, 3.0f);
+            const bool hot = showAllArea.contains (hoverPoint);
+            const juce::Colour accentBright (0xff5aa9ff);
+            g.setColour (hot ? accentBright.brighter (0.4f) : accentBright);
+            g.drawText (showAll, textArea, juce::Justification::centredLeft);
+            if (hot) g.fillRect (textArea.getX(), textArea.getCentreY() + 7.0f, sw, 1.0f);
+        }
     }
 
     void resized() override { dirty = true; }
@@ -556,14 +553,6 @@ private:
         // a la línea de End (o al teclado), encima de la zona oscurecida: se dibuja aparte (layer 2)
         if (layer == 2)
         {
-            {   // arriba a la derecha, en la franja del título: cómo hacer zoom
-            g.setColour (juce::Colour (0xff8b9096));
-            g.setFont (uiFont (12.0f));
-            const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
-            g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
-                                        : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
-                        juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY() + 1.0f, 320.0f, 18.0f), juce::Justification::centredRight);
-            }
             if (! hasRef) return;
             const double dev = (ref - (double) refNote) * 100.0;
             const float y = juce::jlimit (area.getY() - 14.0f, area.getBottom() + 14.0f, yOf (ref));
