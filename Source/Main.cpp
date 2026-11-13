@@ -1934,24 +1934,27 @@ private:
     }
     void updatePitch (const Item& it, double previewSemis = 0.0)
     {
-        bool inLoop = false;
-        auto p = pitchOf (it, readSettings(), inLoop);
-        p.midi += previewSemis;                                  // vista previa de la barra Pitch
-        p.hz *= std::pow (2.0, previewSemis / 12.0);
-        if (! p.valid) { pitchLabel.setText ("Pitch: --", juce::dontSendNotification); wave.setPitchInfo ("Pitch: --", juce::Colour (0xff8b9096)); layoutTitleRow(); return; }
-        const double cents = (p.midi - std::round (p.midi)) * 100.0;
-        juce::String t;
-        t << "Pitch (" << (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding, approx." : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
-          << " " << (cents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (cents), 1) << " cents  ·  "
-          << juce::String (p.hz, 3) << " Hz";
-        const double tuned = it.tuneSemis + previewSemis;
-        t << u8 ("  ·  tuned ") << (tuned >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (tuned * 100.0), 1) << " cents";
-        if (p.cycles >= 8)
-            t << u8 ("  ·  drift ") << (p.driftCents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (p.driftCents), 1) << " cents";
-        // midiendo el loop: azul; la parte estable (sustain) u otra: gris, como la info del loop
-        pitchLabel.setColour (juce::Label::textColourId, inLoop ? kAccent : Theme::inkDim);
-        pitchLabel.setText (t, juce::dontSendNotification);
-        wave.setPitchInfo (t, inLoop ? kAccent : juce::Colour (0xff8b9096)); // (se muestra en el visor Original)
+        // dos renglones en el visor Original: el del sustain (gris) y, con loop, el del loop (azul)
+        auto line = [&] (cyclenorm::PitchInfo p, bool inLoop) -> juce::String {
+            p.midi += previewSemis;                                  // vista previa de la barra Pitch
+            p.hz *= std::pow (2.0, previewSemis / 12.0);
+            if (! p.valid) return inLoop ? juce::String ("Pitch (loop): --") : juce::String ("Pitch: --");
+            const double cents = (p.midi - std::round (p.midi)) * 100.0;
+            juce::String t;
+            t << "Pitch (" << (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding, approx." : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
+              << " " << (cents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (cents), 1) << " cents  ·  "
+              << juce::String (p.hz, 3) << " Hz";
+            const double tuned = it.tuneSemis + previewSemis;
+            t << u8 ("  ·  tuned ") << (tuned >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (tuned * 100.0), 1) << " cents";
+            if (p.cycles >= 8)
+                t << u8 ("  ·  drift ") << (p.driftCents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (p.driftCents), 1) << " cents";
+            return t;
+        };
+        const auto sus = line (cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite()), false);
+        const bool inLoop = loopActive (it);
+        const auto lp = inLoop ? line (cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8), true) : juce::String();
+        pitchLabel.setText (inLoop ? lp : sus, juce::dontSendNotification);
+        wave.setPitchInfo (sus, juce::Colour (0xff8b9096), lp, kAccent); // (se muestran en el visor Original)
         layoutTitleRow();
     }
 

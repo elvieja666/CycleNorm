@@ -69,8 +69,13 @@ public:
     // fade in desde Start: cuántos semiciclos dura (0 = sin fade)
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
     // el renglón del pitch medido: va en el visor Original, en la mitad de arriba de los 40 de abajo
-    void setPitchInfo (const juce::String& t, juce::Colour c) { if (t != pitchInfo || c != pitchInfoColour) { pitchInfo = t; pitchInfoColour = c; repaint(); } }
-    juce::String pitchInfo; juce::Colour pitchInfoColour { 0xff8b9096 };
+    // y, con loop, el del loop en la mitad de abajo
+    void setPitchInfo (const juce::String& t, juce::Colour c, const juce::String& t2 = {}, juce::Colour c2 = {})
+    {
+        if (t != pitchInfo || c != pitchInfoColour || t2 != pitchInfo2 || c2 != pitchInfoColour2)
+        { pitchInfo = t; pitchInfoColour = c; pitchInfo2 = t2; pitchInfoColour2 = c2; repaint(); }
+    }
+    juce::String pitchInfo, pitchInfo2; juce::Colour pitchInfoColour { 0xff8b9096 }, pitchInfoColour2;
     void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; repaint(); } }
     // dónde empieza el fade out: n semiciclos antes de End (en los cortes), sin pasar 'lower'
     static size_t fadeOutStartOf (const std::vector<size_t>& B, size_t end, int halves, size_t lower)
@@ -1330,6 +1335,12 @@ private:
             g.setFont (uiFont (13.0f));
             g.drawText (pitchInfo, juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) (int) (mid + half) + 1.0f, (float) plotWidth() - 16.0f, 18.0f),
                         juce::Justification::centredLeft);
+            if (pitchInfo2.isNotEmpty())
+            {
+                g.setColour (pitchInfoColour2);
+                g.drawText (pitchInfo2, juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) (int) (mid + half) + 21.0f, (float) plotWidth() - 16.0f, 18.0f),
+                            juce::Justification::centredLeft);
+            }
         }
     }
 
