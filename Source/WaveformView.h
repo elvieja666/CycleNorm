@@ -1300,7 +1300,7 @@ private:
         g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
         // el título ocupa la mitad de arriba de los 40 libres (la de abajo es de las pestañas)
         // a 5 del borde izquierdo (lo mismo que hay arriba hasta las mayúsculas), medido a la letra
-        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + 5.0f - leftBearing (g.getCurrentFont(), title), (float) r.getY() + 1.0f, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
+        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + (float) plotLeft() + 5.0f - leftBearing (g.getCurrentFont(), title), (float) r.getY() + 1.0f, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
                     juce::Justification::centredLeft);
         if (! showSkipLine && pitchInfo.isNotEmpty()) // el Original: el pitch medido, debajo de la onda (mismo tamaño que el título)
         {
@@ -1317,7 +1317,7 @@ private:
             for (int k = 0; k < 6; ++k)
                 colW[k] = juce::jmax (wOf (tmpl[k]), wOf (a1[k]), wOf (a2[k]));
             const juce::String colon (":"), dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
-            const float x0 = (float) r.getX() + 5.0f - leftBearing (f, "P"); // a 5 del borde, como los títulos
+            const float x0 = (float) r.getX() + (float) plotLeft() + 5.0f - leftBearing (f, "P"); // a 5 de donde empieza la onda, como los títulos
             auto drawRow = [&] (const juce::StringArray& t, juce::Colour c, float y) {
                 if (t.isEmpty()) return;
                 g.setColour (c);
