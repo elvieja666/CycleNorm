@@ -261,9 +261,7 @@ public:
             g.reduceClipRegion (clip);
             g.setGradientFill (juce::ColourGradient (Theme::accent.withAlpha (0.30f), 0.0f, r.getY(),
                                                      Theme::accent.withAlpha (0.20f), 0.0f, r.getBottom(), false));
-            g.fillRect (juce::Rectangle<float> (a, r.getY(), b - a, r.getHeight()));
-            g.setColour (Theme::accent);
-            g.fillRect (juce::Rectangle<float> (pos - 1.0f, r.getY(), 2.0f, r.getHeight()));
+            g.fillRect (juce::Rectangle<float> (a, r.getY(), b - a, r.getHeight())); // (sin línea en el borde)
         }
     }
     juce::Label* createSliderTextBox (juce::Slider& s) override
