@@ -210,14 +210,25 @@ public:
         const double vf = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         const double vmax = autoSpan / 0.005;                                                         // (el mismo tope que zoomPitch)
         const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
-        const juce::String text = "Zoom  X " + pct (hf, hmax) + dot + "Y " + pct (vf, vmax) + dot;
         g.setFont (uiFont (13.0f));
+        const auto font = g.getCurrentFont();
+        auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (font, t); };
         const juce::String showAll ("Show all");
-        const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text);
-        const float sw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), showAll);
+        const float sw = wOf (showAll);
         const float right = (float) plotWidth() - 5.0f, top = 1.0f;
+        // cada número en un lugar del ancho de "100": al pasar de 0 a 100 no se mueve ningún texto
+        const float numW = wOf ("100");
+        const juce::String pieces[] = { "Zoom  X ", pct (hf, hmax), dot + "Y ", pct (vf, vmax), dot };
+        float rowW = 0.0f;
+        for (int k = 0; k < 5; ++k) rowW += (k == 1 || k == 3) ? numW : wOf (pieces[k]);
+        float x = right - sw - rowW;
         g.setColour (juce::Colour (0xff8b9096));
-        g.drawText (text, juce::Rectangle<float> (right - sw - w, top, w + 2.0f, 18.0f), juce::Justification::centredLeft);
+        for (int k = 0; k < 5; ++k)
+        {
+            const float pw = (k == 1 || k == 3) ? numW : wOf (pieces[k]);
+            g.drawText (pieces[k], juce::Rectangle<float> (x, top, pw + 2.0f, 18.0f), juce::Justification::centredLeft);
+            x += pw;
+        }
         {   // "Show all" siempre: azul (y se clickea) con zoom; gris sin zoom
             const auto textArea = juce::Rectangle<float> (right - sw, top, sw + 2.0f, 18.0f);
             if (! isZoomed())
