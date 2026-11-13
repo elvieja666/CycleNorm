@@ -962,8 +962,8 @@ private:
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
     // ancho del gráfico (el tiempo): sin la columna del teclado, así las dos ondas terminan justo donde empieza
     static constexpr int kKeyboardW = 40;
-    // la onda va de plotLeft() (40 libres a la izquierda, como el teclado a la derecha) a plotWidth()
-    static constexpr int kLeftPad = 40;
+    // la onda va de plotLeft() (20 libres a la izquierda: lo mismo que arriba y abajo del visor) a plotWidth()
+    static constexpr int kLeftPad = 20;
     int plotWidth() const { return juce::jmax (kLeftPad + 1, getWidth() - (pitchPts.size() >= 2 ? kKeyboardW : 0)); }
     int plotLeft() const { return kLeftPad; }
     int plotSpan() const { return juce::jmax (1, plotWidth() - kLeftPad); }
