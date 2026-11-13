@@ -860,6 +860,13 @@ public:
     static constexpr int kMargin = 20, kButtonH = 33, kPillH = 24;
     static constexpr float kTitleCap = 14.0f;
 
+    // ⌥ + clic en el margen derecho (donde se agarra para escalar): la ventana vuelve al tamaño por defecto
+    std::function<void()> onResetWindowSize;
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isAltDown() && e.x >= getWidth() - kMargin && onResetWindowSize) onResetWindowSize();
+    }
+
     void resized() override
     {
         // altos (diseño de 650): barra de arriba 100 · recuadro del visor 530 (dos visores de 265: 40 + 185 + 40) · renglón 20
@@ -2366,6 +2373,7 @@ private:
                 return juce::BorderSize<int>();
             };
             setConstrainer (&contentConstrainer);
+            content->onResetWindowSize = [this, w0, h0] { setContentComponentSize (w0, h0); };
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
