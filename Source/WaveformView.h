@@ -124,6 +124,11 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        {   // el visor llega hasta el borde derecho del recuadro (redondeado): se recorta con sus esquinas
+            juce::Path clip;
+            clip.addRoundedRectangle (0.0f, 0.0f, (float) getWidth(), (float) getHeight(), 12.0f, 12.0f, false, true, false, true);
+            g.reduceClipRegion (clip);
+        }
         // la imagen se arma a la resolución real de la pantalla (Retina = el doble de píxeles), así no se ve borrosa
         const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
         const int pw = juce::roundToInt ((float) getWidth() * scale), ph = juce::roundToInt ((float) getHeight() * scale);
@@ -925,7 +930,7 @@ private:
 
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
     // ancho del gráfico (el tiempo): sin la columna del teclado, así las dos ondas terminan justo donde empieza
-    static constexpr int kKeyboardW = 34;
+    static constexpr int kKeyboardW = 40;
     int plotWidth() const { return juce::jmax (1, getWidth() - (pitchPts.size() >= 2 ? kKeyboardW : 0)); }
     double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * plotWidth() : 0; }
     double xToSample (double x) const { return viewStart + x / plotWidth() * viewLen; }

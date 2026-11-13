@@ -906,7 +906,7 @@ public:
         // el visor: el recuadro negro de 75 a 625 (550), con el margen del osciloscopio de UNISON (7) a los
         // costados; adentro, los dos visores de 250 (+ 1 de borde cada uno), centrados
         waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, 530); // a 20 de los dos costados
-        wave.setBounds (waveArea.reduced (8, 0)); // dos visores de 265: 40 + 185 (la onda) + 40 cada uno
+        wave.setBounds (waveArea.withTrimmedLeft (8)); // dos visores de 265: 40 + 185 (la onda) + 40 cada uno; a la derecha, hasta el borde (el teclado de 40)
     }
 
     bool keyPressed (const juce::KeyPress& k) override
