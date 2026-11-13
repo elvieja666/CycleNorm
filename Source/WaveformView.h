@@ -543,8 +543,11 @@ private:
         pitchLo = lo; pitchHi = hi; pitchAreaBottom = area.getBottom(); pitchAreaH = area.getHeight();
         auto yOf = [&] (double m) { return area.getBottom() - (float) ((m - lo) / (hi - lo)) * area.getHeight(); };
 
+        // de la línea de 0 dB de arriba a la de abajo (incluidas), como las dibuja drawLane: el teclado llega justo a las dos
+        const float lm = (float) r.getCentreY(), lh = (r.getHeight() - 80.0f) * 0.5f;
+        const float kTop = (float) (int) (lm - lh), kBot = (float) (int) (lm + lh) + 1.0f;
         juce::Graphics::ScopedSaveState ss (g);
-        g.reduceClipRegion (layer == 2 ? r : area.getSmallestIntegerContainer()); // (la pildorita de los cents puede salir)
+        g.reduceClipRegion (layer == 2 ? r : juce::Rectangle<float> ((float) r.getX(), kTop, (float) r.getWidth(), kBot - kTop).toNearestInt()); // (la pildorita de los cents puede salir)
         static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
         auto noteStr = [&] (int m) { return juce::String (names[((m % 12) + 12) % 12]) + juce::String (m / 12 - 1); };
         auto isBlack = [] (int m) { const int pc = ((m % 12) + 12) % 12; return pc == 1 || pc == 3 || pc == 6 || pc == 8 || pc == 10; };
@@ -633,7 +636,7 @@ private:
         // el teclado (como el de un piano roll, a la derecha): teclas blancas y negras,
         // nombre en las C (y en la nota medida, resaltada en celeste)
         {
-            const auto kb = juce::Rectangle<float> (kbX, area.getY(), kbW, area.getHeight());
+            const auto kb = juce::Rectangle<float> (kbX, kTop, kbW, kBot - kTop);
             juce::Graphics::ScopedSaveState ks (g);
             g.reduceClipRegion (kb.toNearestInt());
             g.setColour (juce::Colour (0xffd9dce1));
@@ -1306,7 +1309,7 @@ private:
             }
             // la línea de 0 dBFS (arriba y abajo), en blanco
             g.setColour (juce::Colour (0x59ffffff));
-            const float x1 = underlay ? (float) r.getRight() - 34.0f : (float) r.getRight(); // arriba: sin pisar el teclado
+            const float x1 = (float) (r.getX() + plotWidth()); // hasta donde termina la onda (no pisa el teclado)
             const float x0 = (float) (r.getX() + plotLeft()); // no entra en los 40 de la izquierda
             g.drawHorizontalLine ((int) (mid - half), x0, x1);
             g.drawHorizontalLine ((int) (mid + half), x0, x1);
