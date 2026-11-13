@@ -1060,7 +1060,7 @@ private:
         // suena entero (antes de Start / después de End y lo que toman los fades), gris claro lo que
         // saltea Skip, y el color del carril el resto
         auto xOf = [&] (size_t smp) { return (float) r.getX() + (float) sampleToX ((double) smp); };
-        float darkBefore = -1.0e9f, darkAfter = 1.0e9f;
+        float darkBefore = -1.0e9f, darkAfter = 1.0e9f, darkUntil = 1.0e9f; // (después de End: su color, oscurecido encima)
         if (totalLen() > 0)
         {
             if (showSkipLine) // el procesado: con los fades
@@ -1073,7 +1073,8 @@ private:
                 darkBefore = xOf (startSample);
                 darkAfter = xOf (endOrLen());
             }
-            if (endOrLen() >= (size_t) totalLen() && ! (showSkipLine && hasFadeOutHandle() && fadeOutHalves > 0)) darkAfter = 1.0e9f;
+            darkUntil = xOf (endOrLen());
+            if (darkAfter >= darkUntil) darkAfter = 1.0e9f;
         }
         const juce::Colour kDark (0xff3c4048), kLight (0xff8f98a6);
 
@@ -1113,7 +1114,8 @@ private:
                 strokeIn (L, darkBefore, kDark);
                 strokeIn (darkBefore, g0, kLight);
                 strokeIn (g0, darkAfter, waveColour);
-                strokeIn (darkAfter, R, kDark);
+                strokeIn (darkAfter, darkUntil, kDark);
+                strokeIn (juce::jmax (darkUntil, g0), R, waveColour);
             }
             else
             {
@@ -1142,7 +1144,7 @@ private:
                     const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
                     const juce::Rectangle<float> cr { (float) r.getX() + (float) x * colW, y0, colW, juce::jmax (0.6f, y1 - y0) };
                     const float cx = cr.getX() + colW * 0.5f;
-                    (cx < darkBefore || cx >= darkAfter ? darkPeaks : (cx < greyBefore ? greyPeaks : peaks)).addWithoutMerging (cr);
+                    (cx < darkBefore || (cx >= darkAfter && cx < darkUntil) ? darkPeaks : (cx < greyBefore ? greyPeaks : peaks)).addWithoutMerging (cr);
                 }
                 g.fillRectList (peaks);
                 if (! greyPeaks.isEmpty()) { g.setColour (kLight); g.fillRectList (greyPeaks); }
@@ -1227,6 +1229,17 @@ private:
                 }
             }
             // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
+            // lo que queda después de la línea de End: oscurecido encima (no se exporta ni suena)
+            if (endSample > 0 && endSample < (size_t) totalLen())
+            {
+                const float ex = (float) r.getX() + (float) sampleToX ((double) endSample);
+                if (ex < (float) r.getRight())
+                {
+                    g.setColour (juce::Colour (0xcc0e1013));
+                    g.fillRect (juce::Rectangle<float> (juce::jmax ((float) r.getX(), ex), (float) r.getY(),
+                                                        (float) r.getRight() - juce::jmax ((float) r.getX(), ex), (float) r.getHeight()));
+                }
+            }
             // zona de loop (verde) con sus dos puntas arrastrables (manijas abajo)
             if (showSkipLine && hasLoop())
             {
