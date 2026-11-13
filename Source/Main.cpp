@@ -587,6 +587,7 @@ public:
         // se cambia arrastrando la línea en el visor; se cuenta en semiciclos (antes en ondas: 1 onda = 2)
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
+        userSkipHalves = skipHalves;
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
         ramp.getProperties().set ("resetValue", 0.0);      // ⌥ + clic: 0 %
         // Amount ya no está en la ventana: lo maneja el botón Normalize (100 % o 0 %)
@@ -669,18 +670,24 @@ public:
             auto& it = *items[(size_t) current];
             if (loopActive (it) && s >= it.loopStart) return;
             if (s >= (size_t) it.lengthToWrite()) return;
+            const size_t oldStart = it.startSample;
             it.startSample = s;
             source.setStartSample ((juce::int64) s);
             wave.setStartSample (s);
             if (it.fadeHalves > 0) settingsChanged(); // el fade in arranca en Start: se corre con ella
-            const int minSkip = minSkipFor (it);
-            if (skipHalves < minSkip)
+            // Skip: Start lo empuja si lo pasa, y si Start vuelve, vuelve con ella (hasta donde lo
+            // habías puesto vos)
+            const int wantSkip = juce::jmax (userSkipHalves, minSkipFor (it));
+            if (skipHalves != wantSkip)
             {
-                skipHalves = minSkip;
+                skipHalves = wantSkip;
                 settingsChanged();
                 updateSkipView();
             }
-            if (transport.getCurrentPosition() * it.sampleRate < (double) s) transport.setPosition ((double) s / it.sampleRate);
+            // el cursor: si estaba antes de Start, o pegado a Start, sigue a Start (para los dos lados)
+            const double posS = transport.getCurrentPosition() * it.sampleRate;
+            if (posS < (double) s || (! transport.isPlaying() && std::abs (posS - (double) oldStart) < 2.0))
+                transport.setPosition ((double) s / it.sampleRate);
             updateInfo();
         };
         // la manija del fade in: cuántos semiciclos dura (desde Start)
@@ -721,6 +728,7 @@ public:
         };
         wave.onSkipDragged = [this] (int n)
         {
+            userSkipHalves = n; // lo que puso el usuario (Start lo empuja, pero al volver vuelve acá)
             if (juce::isPositiveAndBelow (current, (int) items.size()))
                 n = juce::jmax (n, minSkipFor (*items[(size_t) current])); // Skip no puede quedar antes de Start
             if (skipHalves == n) { wave.refresh(); return; }
@@ -1053,6 +1061,7 @@ private:
     juce::Rectangle<int> titleArea, controlsArea;
     juce::Rectangle<int> waveArea, fileName, titleRest;
     int pitchInfoX = 0, loopInfoX = 0;
+    int userSkipHalves = -1; // el Skip que puso el usuario (-1: el que se cargó)
     juce::StringArray loopInfoVals; // los números de la info del loop (se dibujan con lugar fijo)
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
@@ -1615,6 +1624,7 @@ private:
         normButton.setToggleState (st.amount >= 50.0, juce::dontSendNotification);
         ramp.setValue (st.ramp, juce::dontSendNotification);
         skipHalves = st.skip;
+        userSkipHalves = st.skip;
         saveSettings();
         pendingReprocess = false;
         if (row >= 0)
