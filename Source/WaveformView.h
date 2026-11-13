@@ -1331,16 +1331,22 @@ private:
                     juce::Justification::centredLeft);
         if (! showSkipLine && pitchInfo.isNotEmpty()) // el Original: el pitch medido, debajo de la onda (mismo tamaño que el título)
         {
-            g.setColour (pitchInfoColour);
+            // los dos renglones alineados en los ":" ("Pitch (sustain):" / "Pitch (loop):")
             g.setFont (uiFont (13.0f));
-            g.drawText (pitchInfo, juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) (int) (mid + half) + 1.0f, (float) plotWidth() - 16.0f, 18.0f),
-                        juce::Justification::centredLeft);
-            if (pitchInfo2.isNotEmpty())
-            {
-                g.setColour (pitchInfoColour2);
-                g.drawText (pitchInfo2, juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) (int) (mid + half) + 21.0f, (float) plotWidth() - 16.0f, 18.0f),
-                            juce::Justification::centredLeft);
-            }
+            const auto f = g.getCurrentFont();
+            auto prefixOf = [] (const juce::String& t) { const int i = t.indexOf (":"); return i < 0 ? juce::String() : t.substring (0, i + 1); };
+            const float x0 = (float) r.getX() + 8.0f;
+            const float colonX = x0 + juce::jmax (juce::GlyphArrangement::getStringWidth (f, prefixOf (pitchInfo)),
+                                                  juce::GlyphArrangement::getStringWidth (f, prefixOf (pitchInfo2)));
+            auto drawRow = [&] (const juce::String& t, juce::Colour c, float y) {
+                if (t.isEmpty()) return;
+                g.setColour (c);
+                const auto pre = prefixOf (t), rest = t.substring (pre.length()).trimStart();
+                g.drawText (pre, juce::Rectangle<float> (x0, y, colonX - x0, 18.0f), juce::Justification::centredRight);
+                g.drawText (rest, juce::Rectangle<float> (colonX + 5.0f, y, (float) plotWidth() - (colonX + 5.0f) - 8.0f, 18.0f), juce::Justification::centredLeft);
+            };
+            drawRow (pitchInfo,  pitchInfoColour,  (float) (int) (mid + half) + 1.0f);
+            drawRow (pitchInfo2, pitchInfoColour2, (float) (int) (mid + half) + 21.0f);
         }
     }
 
