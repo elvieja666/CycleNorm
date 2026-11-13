@@ -642,7 +642,7 @@ private:
         const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
                                     : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
-                    juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY(), 320.0f, 20.0f), juce::Justification::centredRight);
+                    juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY() + 1.0f, 320.0f, 18.0f), juce::Justification::centredRight);
     }
     std::vector<size_t> loopBounds;
     bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
@@ -1297,7 +1297,7 @@ private:
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
         g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
         // el título ocupa la mitad de arriba de los 40 libres (la de abajo es de las pestañas)
-        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) r.getY(), (float) r.getWidth() - 16.0f, 20.0f),
+        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) r.getY() + 1.0f, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
                     juce::Justification::centredLeft);
     }
 
