@@ -1094,14 +1094,25 @@ private:
 
     // Re-procesar es rápido (0,5 a 2 ms), así que se hace al toque mientras arrastrás Skip o movés Ramp:
     // como mucho una vez cada ~16 ms (lo que dura un cuadro de pantalla); si llega antes, lo hace el timer.
+    // Reprocesar mientras se arrastra: como mucho a 60 por segundo, pero con un 808 largo (que tarda
+    // más) se deja el doble de lo que tardó, así entre una y otra hay tiempo de dibujar y el mouse
+    // no se traba
+    double lastProcessCost = 0.0;
+    juce::uint32 reprocessGap() const { return (juce::uint32) juce::jmax (16.0, lastProcessCost * 2.0 + 4.0); }
+    void runProcessTimed()
+    {
+        const double t0 = juce::Time::getMillisecondCounterHiRes();
+        processCurrent();
+        lastProcessCost = juce::Time::getMillisecondCounterHiRes() - t0;
+    }
     void settingsChanged()
     {
         lastChange = juce::Time::getMillisecondCounter();
-        if (loopJob == nullptr && lastChange - lastProcessMs >= 16)
+        if (loopJob == nullptr && lastChange - lastProcessMs >= reprocessGap())
         {
             pendingReprocess = false;
             lastProcessMs = lastChange;
-            processCurrent();
+            runProcessTimed();
             list.repaint();
         }
         else pendingReprocess = true;
@@ -1123,11 +1134,11 @@ private:
             pendingRetune = false;
             retuneCurrent (0, pitchShift.getValue());
         }
-        if (pendingReprocess && juce::Time::getMillisecondCounter() - lastProcessMs >= 16)
+        if (pendingReprocess && juce::Time::getMillisecondCounter() - lastProcessMs >= reprocessGap())
         {
             pendingReprocess = false;
             lastProcessMs = juce::Time::getMillisecondCounter();
-            processCurrent();
+            runProcessTimed();
             list.repaint();
         }
         if ((bool) playButton.getProperties()["lit"] != transport.isPlaying()) // Play prendido (azul) mientras suena
@@ -1267,16 +1278,20 @@ private:
             for (int ch = 0; ch < src.getNumChannels(); ++ch) m = juce::jmax (m, std::abs (src.getSample (ch, (int) i)));
             return m;
         });
-        auto out = std::make_shared<juce::AudioBuffer<float>> (*it.original);
+        auto out = std::make_shared<juce::AudioBuffer<float>> (it.original->getNumChannels(), it.original->getNumSamples()); // (se llena abajo: original × curva)
         float peak = 0.0f;
         for (int ch = 0; ch < out->getNumChannels(); ++ch)
         {
             auto* d = out->getWritePointer (ch);
-            for (int i = 0; i < out->getNumSamples(); ++i)
+            const auto* src = it.original->getReadPointer (ch);
+            const int n = out->getNumSamples();
+            float pk = 0.0f;
+            for (int i = 0; i < n; ++i)
             {
-                d[i] *= curve[(size_t) i];
-                peak = juce::jmax (peak, std::abs (d[i]));
+                d[i] = src[i] * curve[(size_t) i];
+                pk = juce::jmax (pk, std::abs (d[i]));
             }
+            peak = juce::jmax (peak, pk);
         }
         // fade in: desde Start, lineal, hasta n semiciclos después (siempre termina en un cruce)
         if (it.fadeHalves > 0)

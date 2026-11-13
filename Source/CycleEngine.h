@@ -780,11 +780,14 @@ inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, doubl
         const size_t half = (size_t) std::max (1.0, std::round (halfMin + (halfMax - halfMin) * r));
         const size_t from = b[k] > half ? b[k] - half : 0;
         const size_t to   = std::min (n, b[k] + half);
+        // interpolación en dB: lin = 10^(before/20) · 10^((after-before)/20 · sm) (con exp en float: rápido)
+        const float base = (float) toLin (before), kExp = (float) ((after - before) * std::log (10.0) / 20.0);
+        const float inv = 1.0f / (float) (to - from), pi = (float) M_PI;
         for (size_t i = from; i < to; ++i)
         {
-            const double t = (double) (i - from + 0.5) / (double) (to - from);
-            const double sm = 0.5 - 0.5 * std::cos (M_PI * t);
-            curve[i] = (float) toLin (before + (after - before) * sm); // interpolación en dB
+            const float t = ((float) (i - from) + 0.5f) * inv;
+            const float sm = 0.5f - 0.5f * std::cos (pi * t);
+            curve[i] = base * std::exp (kExp * sm);
         }
     }
     return curve;

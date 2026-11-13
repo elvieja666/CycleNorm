@@ -63,15 +63,15 @@ public:
     // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirtyProc = true; repaint(); } }
     // dónde se corta el final (la línea de Fin); el largo total = sin cortar
-    void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; dirty = true; repaint(); } } // (las líneas y zonas se dibujan encima de la imagen: no hace falta rehacerla)
+    void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; repaint(); } } // (lo de después de End se oscurece encima: no rehace la onda) // (las líneas y zonas se dibujan encima de la imagen: no hace falta rehacerla)
     // dónde empieza (la línea de Start); 0 = desde el principio del archivo
     void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; dirty = true; repaint(); } }
     // fade in desde Start: cuántos semiciclos dura (0 = sin fade)
-    void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; dirtyProc = true; repaint(); } }
+    void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
     // el renglón del pitch medido: va en el visor Original, en la mitad de arriba de los 40 de abajo
     void setPitchInfo (const juce::String& t, juce::Colour c) { if (t != pitchInfo || c != pitchInfoColour) { pitchInfo = t; pitchInfoColour = c; repaint(); } }
     juce::String pitchInfo; juce::Colour pitchInfoColour { 0xff8b9096 };
-    void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; dirtyProc = true; repaint(); } }
+    void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; repaint(); } }
     // dónde empieza el fade out: n semiciclos antes de End (en los cortes), sin pasar 'lower'
     static size_t fadeOutStartOf (const std::vector<size_t>& B, size_t end, int halves, size_t lower)
     {
@@ -104,7 +104,7 @@ public:
         return e;
     }
     // zona de loop (0/0 = sin loop) y los cruces ascendentes (ondas enteras) donde pueden caer sus puntas
-    void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; dirtyProc = true; repaint(); } }
+    void setLoop (size_t start, size_t end) { if (start != loopStart || end != loopEnd) { loopStart = start; loopEnd = end; repaint(); } }
     void setLoopBounds (std::vector<size_t> b) { loopBounds = std::move (b); }
     // largo del crossfade del loop en muestras (0 = Off)
     void setLoopXfade (size_t len) { if (len != xfadeLen) { xfadeLen = len; repaint(); } }
@@ -1130,10 +1130,10 @@ private:
                 // como el osciloscopio de UNISON: la onda como línea (sin rellenar hasta el centro).
                 // Columnas de medio píxel con el mínimo y el máximo reales de sus muestras; cada una
                 // arranca en la última muestra de la anterior, así la línea no se corta en las subidas.
+                const float* chp[2] = { buf->getReadPointer (0), buf->getReadPointer (juce::jmin (1, nCh - 1)) };
                 auto valueAt = [&] (int s) { // el canal con mayor valor absoluto (igual que la línea de cerca)
-                    float v = 0;
-                    for (int c = 0; c < nCh; ++c) { const float x = buf->getSample (c, s); if (std::abs (x) > std::abs (v)) v = x; }
-                    return v;
+                    const float a = chp[0][s], b = chp[1][s];
+                    return std::abs (b) > std::abs (a) ? b : a;
                 };
                 // una columna por píxel real de la pantalla (Retina incluida), alineada a la grilla: la
                 // máxima resolución posible, sin columnas superpuestas (la mitad de trabajo que antes)
