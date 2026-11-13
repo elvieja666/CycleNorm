@@ -124,11 +124,6 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        {   // el visor llega hasta el borde derecho del recuadro (redondeado): se recorta con sus esquinas
-            juce::Path clip;
-            clip.addRoundedRectangle (0.0f, 0.0f, (float) getWidth(), (float) getHeight(), 12.0f, 12.0f, false, true, false, true);
-            g.reduceClipRegion (clip);
-        }
         // la imagen se arma a la resolución real de la pantalla (Retina = el doble de píxeles), así no se ve borrosa
         const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
         const int pw = juce::roundToInt ((float) getWidth() * scale), ph = juce::roundToInt ((float) getHeight() * scale);
