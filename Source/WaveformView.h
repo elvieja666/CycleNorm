@@ -1305,24 +1305,35 @@ private:
                     juce::Justification::centredLeft);
         if (! showSkipLine && pitchInfo.isNotEmpty()) // el Original: el pitch medido, debajo de la onda (mismo tamaño que el título)
         {
-            // los dos renglones alineados en los ":" ("Pitch (sustain):" / "Pitch (loop):")
+            // los dos renglones por columnas, con lugar fijo para cada valor: quedan alineados entre sí
+            // y no se mueven cuando cambian los números
             g.setFont (uiFont (13.0f));
             const auto f = g.getCurrentFont();
-            auto prefixOf = [] (const juce::String& t) { const int i = t.indexOf (":"); return i < 0 ? juce::String() : t.substring (0, i + 1); };
+            auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (f, t); };
+            const juce::StringArray a1 = juce::StringArray::fromTokens (pitchInfo, "\t", {}),
+                                    a2 = juce::StringArray::fromTokens (pitchInfo2, "\t", {});
+            // el ancho de cada columna: el más ancho de los dos renglones, y nunca menos que un valor "grande"
+            const juce::String tmpl[] = { "Pitch (sustain)", "G#8", juce::String::fromUTF8 ("−99.9 cents"), "9999.999 Hz", juce::String::fromUTF8 ("tuned −1200.0 cents"), juce::String::fromUTF8 ("drift −99.9 cents") };
+            float colW[6];
+            for (int k = 0; k < 6; ++k)
+                colW[k] = juce::jmax (wOf (tmpl[k]), wOf (a1[k]), wOf (a2[k]));
+            const juce::String colon (":"), dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
             const float x0 = (float) r.getX() + 5.0f - leftBearing (f, "P"); // a 5 del borde, como los títulos
-            const float colonX = x0 + juce::jmax (juce::GlyphArrangement::getStringWidth (f, prefixOf (pitchInfo)),
-                                                  juce::GlyphArrangement::getStringWidth (f, prefixOf (pitchInfo2)));
-            auto drawRow = [&] (const juce::String& t, juce::Colour c, float y) {
+            auto drawRow = [&] (const juce::StringArray& t, juce::Colour c, float y) {
                 if (t.isEmpty()) return;
                 g.setColour (c);
-                const auto pre = prefixOf (t), rest = t.substring (pre.length()).trimStart();
-                // el nombre arranca a la izquierda (los dos parejos) y los ":" quedan en la misma vertical
-                g.drawText (pre.dropLastCharacters (1), juce::Rectangle<float> (x0, y, colonX - x0, 18.0f), juce::Justification::centredLeft);
-                g.drawText (":", juce::Rectangle<float> (x0, y, colonX - x0, 18.0f), juce::Justification::centredRight);
-                g.drawText (rest, juce::Rectangle<float> (colonX + 5.0f, y, (float) plotWidth() - (colonX + 5.0f) - 8.0f, 18.0f), juce::Justification::centredLeft);
+                float x = x0;
+                for (int k = 0; k < t.size() && k < 6; ++k)
+                {
+                    g.drawText (t[k], juce::Rectangle<float> (x, y, colW[k] + 2.0f, 18.0f), juce::Justification::centredLeft);
+                    x += colW[k];
+                    if (k == 0) { g.drawText (colon, juce::Rectangle<float> (x, y, 20.0f, 18.0f), juce::Justification::centredLeft); x += wOf (colon) + 5.0f; }
+                    else if (k + 1 < t.size()) { g.drawText (k == 1 ? juce::String (" ") : dot, juce::Rectangle<float> (x, y, 40.0f, 18.0f), juce::Justification::centredLeft);
+                                                 x += k == 1 ? wOf (" ") : wOf (dot); }
+                }
             };
-            drawRow (pitchInfo,  pitchInfoColour,  (float) (int) (mid + half) + 1.0f);
-            drawRow (pitchInfo2, pitchInfoColour2, (float) (int) (mid + half) + 21.0f);
+            drawRow (a1, pitchInfoColour,  (float) (int) (mid + half) + 1.0f);
+            drawRow (a2, pitchInfoColour2, (float) (int) (mid + half) + 21.0f);
         }
     }
 

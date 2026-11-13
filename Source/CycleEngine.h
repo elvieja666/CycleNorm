@@ -831,7 +831,7 @@ inline PitchInfo measurePitch (const Analysis& a, size_t from, size_t to)
     p.midi = 69.0 + 12.0 * std::log2 (p.hz / 440.0);
     p.cycles = (int) ok.size();
     p.valid = true;
-    if (ok.size() >= 8)
+    if (ok.size() >= 4) // (con 4 ondas ya se puede comparar el principio con el final: un loop corto también)
     {
         const size_t q = ok.size() / 4;
         double s1 = 0, s2 = 0;

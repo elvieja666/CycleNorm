@@ -1955,20 +1955,19 @@ private:
     void updatePitch (const Item& it, double previewSemis = 0.0)
     {
         // dos renglones en el visor Original: el del sustain (gris) y, con loop, el del loop (azul)
+        // cada renglón va por columnas (separadas con tabs) y se dibujan con lugar fijo: los dos quedan
+        // alineados aunque cambien los valores
         auto line = [&] (cyclenorm::PitchInfo p, bool inLoop) -> juce::String {
             p.midi += previewSemis;                                  // vista previa de la barra Pitch
             p.hz *= std::pow (2.0, previewSemis / 12.0);
-            if (! p.valid) return inLoop ? juce::String ("Pitch (loop): --") : juce::String ("Pitch: --");
+            const juce::String label = juce::String ("Pitch (") + (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding" : "Skip to End") + ")";
+            if (! p.valid) return label + "\t--";
+            auto sgn = [] (double v, int dec) { return (v >= 0 ? juce::String ("+") : juce::String (u8 ("−"))) + juce::String (std::abs (v), dec); };
             const double cents = (p.midi - std::round (p.midi)) * 100.0;
-            juce::String t;
-            t << "Pitch (" << (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding, approx." : "Skip to End") << "): " << juce::String (cyclenorm::noteName (p.midi))
-              << " " << (cents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (cents), 1) << " cents  ·  "
-              << juce::String (p.hz, 3) << " Hz";
             const double tuned = it.tuneSemis + previewSemis;
-            t << u8 ("  ·  tuned ") << (tuned >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (tuned * 100.0), 1) << " cents";
-            if (p.cycles >= 8)
-                t << u8 ("  ·  drift ") << (p.driftCents >= 0 ? "+" : u8 ("−")) << juce::String (std::abs (p.driftCents), 1) << " cents";
-            return t;
+            return label + "\t" + juce::String (cyclenorm::noteName (p.midi)) + "\t" + sgn (cents, 1) + " cents"
+                 + "\t" + juce::String (p.hz, 3) + " Hz" + "\ttuned " + sgn (tuned * 100.0, 1) + " cents"
+                 + "\tdrift " + (p.cycles >= 4 ? sgn (p.driftCents, 1) + " cents" : juce::String ("--"));
         };
         const auto sus = line (cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite()), false);
         const bool inLoop = loopActive (it);
