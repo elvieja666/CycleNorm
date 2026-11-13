@@ -755,7 +755,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (1400, 650); // (diseño base de UNISON; la ventana lo muestra al 80,3 %)
+        setSize (969, 650); // (diseño base: 969 x 650; la ventana lo muestra al 80,3 %, como UNISON)
         updateButtons();
         startTimerHz (60);
     }
@@ -2239,10 +2239,11 @@ private:
             setUsingNativeTitleBar (true);
             holder = new ScaledHolder();
             content = &holder->content;
-            holder->setSize (juce::roundToInt (1400 * ScaledHolder::kScale), juce::roundToInt (650 * ScaledHolder::kScale)); // como UNISON
+            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "969").getIntValue(); // (969: Drag to DAW queda a la misma distancia de Option N que las demás secciones)
+            holder->setSize (juce::roundToInt (designW * ScaledHolder::kScale), juce::roundToInt (650 * ScaledHolder::kScale)); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);
-            setResizeLimits (juce::roundToInt (1300 * ScaledHolder::kScale), juce::roundToInt (520 * ScaledHolder::kScale), 4000, 3000);
+            setResizeLimits (juce::roundToInt (juce::jmin (1300, designW) * ScaledHolder::kScale), juce::roundToInt (520 * ScaledHolder::kScale), 4000, 3000);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
