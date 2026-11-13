@@ -1203,8 +1203,7 @@ private:
             {
                 const float sx = (float) r.getX() + startLineX();
                 g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
-                const float dashes[] = { 4.0f, 3.0f };
-                g.drawDashedLine (juce::Line<float> (std::round (sx) + 0.5f, vTop, std::round (sx) + 0.5f, vBot), dashes, 2, draggingStart ? 1.5f : 1.0f);
+                g.drawLine (juce::Line<float> (std::round (sx) + 0.5f, vTop, std::round (sx) + 0.5f, vBot), draggingStart ? 1.5f : 1.0f); // entera
             }
             // fade in: la rampa (de Start, abajo, hasta donde termina, arriba) y su manija
             if (showSkipLine && hasFadeHandle())
@@ -1309,8 +1308,7 @@ private:
                 const float ex = (float) r.getX() + endLineX();
                 {
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingEnd ? 1.0f : 0.9f));
-                    const float dashes[] = { 4.0f, 3.0f };
-                    g.drawDashedLine (juce::Line<float> (std::round (ex) + 0.5f, vTop, std::round (ex) + 0.5f, vBot), dashes, 2, draggingEnd ? 1.5f : 1.0f);
+                    g.drawLine (juce::Line<float> (std::round (ex) + 0.5f, vTop, std::round (ex) + 0.5f, vBot), draggingEnd ? 1.5f : 1.0f); // entera
                 }
             }
             // la línea de 0 dBFS (arriba y abajo), en blanco
