@@ -1060,12 +1060,17 @@ private:
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
         if (pass == 0)
         {
-            g.setColour (juce::Colour (0xff0f1114));
+            g.setColour (juce::Colour (0xff0b0c0e)); // alrededor de las ondas: negro (como la barra de la izquierda)
             g.fillRect (r);
         }
         const float mid = (float) r.getCentreY(), half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f); // la onda en el medio (185) y 40 libres arriba y abajo
         // las líneas verticales (Start, Skip, End, fades, loop) van sólo entre las dos de 0 dB (los 185)
         const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
+        if (pass == 0) // la franja de la onda (185, entre los 40 de la izquierda y el teclado), apenas más clara
+        {
+            g.setColour (juce::Colour (0xff0f1114));
+            g.fillRect (juce::Rectangle<float> ((float) (r.getX() + plotLeft()), vTop, (float) plotSpan(), vBot - vTop));
+        }
 
         if (pass == 1) {}
         else if (underlay) underlay(); // el carril de arriba: el fondo del piano roll (debajo de la onda)
@@ -1302,8 +1307,9 @@ private:
             // la línea de 0 dBFS (arriba y abajo), en blanco
             g.setColour (juce::Colour (0x59ffffff));
             const float x1 = underlay ? (float) r.getRight() - 34.0f : (float) r.getRight(); // arriba: sin pisar el teclado
-            g.drawHorizontalLine ((int) (mid - half), (float) r.getX(), x1);
-            g.drawHorizontalLine ((int) (mid + half), (float) r.getX(), x1);
+            const float x0 = (float) (r.getX() + plotLeft()); // no entra en los 40 de la izquierda
+            g.drawHorizontalLine ((int) (mid - half), x0, x1);
+            g.drawHorizontalLine ((int) (mid + half), x0, x1);
         }
 
         if (pass == 0) return;
