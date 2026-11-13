@@ -815,6 +815,11 @@ private:
         // que no se salga del gráfico (pegada al borde, se da vuelta)
         if (rr.getRight() > (float) plotWidth()) rr.setX (xl);
         if (rr.getX() < 0.0f) rr.setX (xr);
+        if (id == 3) // Loop comparte fila con Fade in: si se pisan, se corre a la derecha de esa
+        {
+            const auto fi = tabRect (7);
+            if (! fi.isEmpty() && fi.intersects (rr)) rr.setX (fi.getRight() + 2.0f);
+        }
         return rr;
     }
     int tabAt (juce::Point<float> p) const
@@ -1056,6 +1061,8 @@ private:
             g.fillRect (r);
         }
         const float mid = (float) r.getCentreY(), half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f); // la onda en el medio (185) y 40 libres arriba y abajo
+        // las líneas verticales (Start, Skip, End, fades, loop) van sólo entre las dos de 0 dB (los 185)
+        const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
 
         if (pass == 1) {}
         else if (underlay) underlay(); // el carril de arriba: el fondo del piano roll (debajo de la onda)
@@ -1171,7 +1178,7 @@ private:
                 {
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingSkip ? 1.0f : 0.85f));
                     const float dashes[] = { 4.0f, 3.0f };
-                    g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, (float) r.getY(), std::round (lx) + 0.5f, (float) r.getBottom()), dashes, 2, draggingSkip ? 1.5f : 1.0f);
+                    g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, vTop, std::round (lx) + 0.5f, vBot), dashes, 2, draggingSkip ? 1.5f : 1.0f);
                 }
             }
             // lo que queda antes de la línea de Start: oscurecido (no se exporta ni suena)
@@ -1180,7 +1187,7 @@ private:
                 const float sx = (float) r.getX() + startLineX();
                 g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
                 const float dashes[] = { 4.0f, 3.0f };
-                g.drawDashedLine (juce::Line<float> (std::round (sx) + 0.5f, (float) r.getY(), std::round (sx) + 0.5f, (float) r.getBottom()), dashes, 2, draggingStart ? 1.5f : 1.0f);
+                g.drawDashedLine (juce::Line<float> (std::round (sx) + 0.5f, vTop, std::round (sx) + 0.5f, vBot), dashes, 2, draggingStart ? 1.5f : 1.0f);
             }
             // fade in: la rampa (de Start, abajo, hasta donde termina, arriba) y su manija
             if (showSkipLine && hasFadeHandle())
@@ -1195,7 +1202,7 @@ private:
                     g.drawLine (x0, bot, x1, top, 1.0f);
                     // hasta dónde llega el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
-                    g.drawLine (std::round (x1) + 0.5f, (float) r.getY(), std::round (x1) + 0.5f, (float) r.getBottom(), 1.0f);
+                    g.drawLine (std::round (x1) + 0.5f, vTop, std::round (x1) + 0.5f, vBot, 1.0f);
                 }
             }
             // fade out: la rampa (de donde empieza, arriba, hasta End, abajo) y su manija
@@ -1211,7 +1218,7 @@ private:
                     g.drawLine (x0, top, x1, bot, 1.0f);
                     // desde dónde arranca el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
-                    g.drawLine (std::round (x0) + 0.5f, (float) r.getY(), std::round (x0) + 0.5f, (float) r.getBottom(), 1.0f);
+                    g.drawLine (std::round (x0) + 0.5f, vTop, std::round (x0) + 0.5f, vBot, 1.0f);
                 }
             }
             // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
@@ -1244,12 +1251,12 @@ private:
                     if (lx < (float) r.getX() - 1.0f || lx > (float) r.getRight() + 1.0f) continue;
                     const bool grabbed = draggingLoop == 3 + k;
                     g.setColour (juce::Colour (0xffe0782f).withAlpha (grabbed ? 1.0f : 0.9f));
-                    g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, (float) r.getY(), std::round (lx) + 0.5f, (float) r.getBottom()), dashes, 2, grabbed ? 1.5f : 1.0f);
+                    g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, vTop, std::round (lx) + 0.5f, vBot), dashes, 2, grabbed ? 1.5f : 1.0f);
                 }
                 // crossfade (como en el Quick Sampler): lo que entra, antes del inicio, sube; lo que sale,
                 // antes del fin, baja. La manija ✕ (abajo) marca dónde empieza el fundido.
                 {
-                    const float top = (float) r.getY() + 2.0f, bot = (float) r.getBottom() - 2.0f;
+                    const float top = vTop, bot = vBot - 1.0f; // (el crossfade también, entre las líneas de 0 dB)
                     const size_t xl = std::min (xfadeLen, loopStart);
                     if (xl > 0)
                     {
@@ -1286,7 +1293,7 @@ private:
                 {
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingEnd ? 1.0f : 0.9f));
                     const float dashes[] = { 4.0f, 3.0f };
-                    g.drawDashedLine (juce::Line<float> (std::round (ex) + 0.5f, (float) r.getY(), std::round (ex) + 0.5f, (float) r.getBottom()), dashes, 2, draggingEnd ? 1.5f : 1.0f);
+                    g.drawDashedLine (juce::Line<float> (std::round (ex) + 0.5f, vTop, std::round (ex) + 0.5f, vBot), dashes, 2, draggingEnd ? 1.5f : 1.0f);
                 }
             }
             // la línea de 0 dBFS (arriba y abajo), en blanco
