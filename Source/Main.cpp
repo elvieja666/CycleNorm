@@ -2327,9 +2327,17 @@ private:
         // la proporción; el tamaño por defecto (80,3 %) es el mínimo
         void resized() override
         {
-            const float s = juce::jmax (kScale, (float) getWidth() / (float) designW);
-            content.setTransform (juce::AffineTransform::scale (s));
+            // lo que entre entero (si la ventana no tiene justo la proporción, sobra un poco a los costados
+            // o abajo, pero nunca se corta nada)
+            const float s = juce::jmax (0.1f, juce::jmin ((float) getWidth() / (float) designW, (float) getHeight() / (float) designH));
+            const float ox = juce::jmax (0.0f, ((float) getWidth() - (float) designW * s) * 0.5f);
+            content.setTransform (juce::AffineTransform::scale (s).translated (ox, 0.0f));
             content.setBounds (0, 0, designW, designH);
+        }
+        void paint (juce::Graphics& g) override
+        {
+            g.setGradientFill (juce::ColourGradient (Theme::topLight, 0.0f, 0.0f, Theme::topDark, 0.0f, (float) getHeight(), false));
+            g.fillAll();
         }
         MainComponent content;
     };
@@ -2348,15 +2356,42 @@ private:
             holder->setSize (w0, h0); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);
-            // se agranda en proporción (todo escala junto); no se achica más que el tamaño por defecto
-            setResizeLimits (getWidth(), getHeight(), getWidth() * 4, getHeight() * 4);
-            getConstrainer()->setFixedAspectRatio ((double) w0 / (double) h0);
+            // se agranda en proporción (todo escala junto); no se achica más que el tamaño por defecto.
+            // (en la Mac el sistema pasa el marco entero, con la barra del título: se descuenta)
+            contentConstrainer.ratio = (double) w0 / (double) h0;
+            contentConstrainer.minW = w0;
+            contentConstrainer.frame = [this] {
+                if (auto* peer = getPeer())
+                    if (auto f = peer->getFrameSizeIfPresent()) return *f;
+                return juce::BorderSize<int>();
+            };
+            setConstrainer (&contentConstrainer);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
         ScaledHolder* holder = nullptr;
         MainComponent* content = nullptr;
+        // la proporción y el mínimo, sobre el contenido (no sobre el marco con la barra del título)
+        struct ContentConstrainer : juce::ComponentBoundsConstrainer
+        {
+            double ratio = 1.0;
+            int minW = 100;
+            std::function<juce::BorderSize<int>()> frame;
+            void checkBounds (juce::Rectangle<int>& b, const juce::Rectangle<int>&, const juce::Rectangle<int>&,
+                              bool top, bool left, bool bottom, bool right) override
+            {
+                const auto f = frame ? frame() : juce::BorderSize<int>();
+                auto c = f.subtractedFrom (b);
+                int w = c.getWidth(), h = c.getHeight();
+                if ((top || bottom) && ! (left || right)) w = juce::roundToInt (h * ratio); // tirando de arriba/abajo: manda el alto
+                w = juce::jlimit (minW, minW * 4, w);
+                h = juce::roundToInt (w / ratio);
+                if (left) c.setLeft (c.getRight() - w); else c.setWidth (w);
+                if (top)  c.setTop (c.getBottom() - h); else c.setHeight (h);
+                b = f.addedTo (c);
+            }
+        } contentConstrainer;
     };
 
     CycleNormLookAndFeel laf;
