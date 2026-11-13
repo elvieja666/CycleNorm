@@ -452,7 +452,7 @@ public:
             {   // sin zoom: dos dedos arriba / abajo corren el piano hasta 3 semitonos más para cada lado
                 pitchPan = juce::jlimit (-3.0, 3.0, pitchPan + w.deltaY * 7.0 * 0.8);
             }
-            if (zoomSpan > 0.0 && std::abs (w.deltaY) > 0.0f)
+            if (zoomSpan > 0.0 && overPitch && std::abs (w.deltaY) > 0.0f) // (sólo sobre el Original: en el Processed el vertical no mueve nada)
             {
                 pitchCenter = clampPitchCenter (pitchCenter + w.deltaY * zoomSpan * 0.8, zoomSpan);
                 pitchLo = pitchCenter - zoomSpan * 0.5; pitchHi = pitchCenter + zoomSpan * 0.5;
