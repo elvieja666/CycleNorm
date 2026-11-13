@@ -839,7 +839,7 @@ private:
         }
         float x = (float) sampleToX (sample);
         if (x < -1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
-        x = juce::jlimit (1.0f, (float) plotWidth() - 1.0f, x);
+        x = juce::jlimit (1.0f, (float) plotWidth() - 2.0f, x); // (igual que las líneas: así queda el mismo aire a cada lado)
         const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
         // 1 px de aire con la línea vertical (que ocupa el píxel de x)
         const float lx = std::round (x), xr = lx + 2.0f, xl = lx - 1.0f - w;
@@ -1246,7 +1246,7 @@ private:
                     g.drawLine (x0, bot, x1, top, 1.0f);
                     // hasta dónde llega el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
-                    g.drawLine (x1, (float) r.getY(), x1, (float) r.getBottom(), 1.0f);
+                    g.drawLine (std::round (x1) + 0.5f, (float) r.getY(), std::round (x1) + 0.5f, (float) r.getBottom(), 1.0f);
                 }
             }
             // fade out: la rampa (de donde empieza, arriba, hasta End, abajo) y su manija
@@ -1262,7 +1262,7 @@ private:
                     g.drawLine (x0, top, x1, bot, 1.0f);
                     // desde dónde arranca el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
-                    g.drawLine (x0, (float) r.getY(), x0, (float) r.getBottom(), 1.0f);
+                    g.drawLine (std::round (x0) + 0.5f, (float) r.getY(), std::round (x0) + 0.5f, (float) r.getBottom(), 1.0f);
                 }
             }
             // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
