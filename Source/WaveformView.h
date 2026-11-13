@@ -175,7 +175,12 @@ public:
             if (x >= plotLeft() && x <= plotWidth())
             {
                 g.setColour (juce::Colours::white.withAlpha (0.85f));
-                g.fillRect ((float) std::round (x), 0.0f, 1.0f, (float) getHeight()); // finita, como en UNISON
+                for (auto lr : { topLaneRect(), procLaneRect() }) // sólo sobre las franjas de 185 de las ondas
+                {
+                    const float mid = (float) lr.getCentreY(), half = (float) (lr.getHeight() - 80) / 2.0f;
+                    const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
+                    g.fillRect ((float) std::round (x), vTop, 1.0f, vBot - vTop); // finita, como en UNISON
+                }
             }
         }
         drawZoomBar (g);
