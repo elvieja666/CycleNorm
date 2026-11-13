@@ -813,16 +813,15 @@ public:
             const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
             const juce::String cols[] = { loopInfoVals[0] + " %", loopInfoVals[1] + " cycles", "crossfade " + loopInfoVals[2] };
             const juce::String tmpl[] = { "100.0 %", "999 cycles", "crossfade Off" };
-            const auto b = info.getBounds().toFloat();
             float x = (float) info.getX();
-            g.drawText ("Loop:", juce::Rectangle<float> (x, b.getY(), 60.0f, b.getHeight()), juce::Justification::centredLeft);
+            g.drawSingleLineText ("Loop:", juce::roundToInt (x), (int) kTitleBaseline);
             x += wOf ("Loop:") + 5.0f;
             for (int k = 0; k < 3; ++k)
             {
                 const float w = juce::jmax (wOf (tmpl[k]), wOf (cols[k]));
-                g.drawText (cols[k], juce::Rectangle<float> (x, b.getY(), w + 2.0f, b.getHeight()), juce::Justification::centredLeft);
+                g.drawSingleLineText (cols[k], juce::roundToInt (x), (int) kTitleBaseline);
                 x += w;
-                if (k < 2) { g.drawText (dot, juce::Rectangle<float> (x, b.getY(), 40.0f, b.getHeight()), juce::Justification::centredLeft); x += wOf (dot); }
+                if (k < 2) { g.drawSingleLineText (dot, juce::roundToInt (x), (int) kTitleBaseline); x += wOf (dot); }
             }
         }
         // los clicks que metió el proceso: arriba de Ramp, como la info del loop
@@ -830,21 +829,23 @@ public:
         {
             const auto f = info.getFont();
             g.setFont (f);
-            const auto b = info.getBounds().toFloat();
             const float x = (float) rampLabel.getX();
             g.setColour (Theme::inkDim);
-            g.drawText ("Clicks:", juce::Rectangle<float> (x, b.getY(), 80.0f, b.getHeight()), juce::Justification::centredLeft);
+            g.drawSingleLineText ("Clicks:", juce::roundToInt (x), (int) kTitleBaseline);
             const float x2 = x + juce::GlyphArrangement::getStringWidth (f, "Clicks:") + 5.0f;
             if (clickCount > 0) g.setColour (juce::Colour (0xffe0782f)); // naranja (el del loop)
-            g.drawText (clickCount == 0 ? juce::String ("none") : juce::String (clickCount) + " detected",
-                        juce::Rectangle<float> (x2, b.getY(), 120.0f, b.getHeight()), juce::Justification::centredLeft);
+            g.drawSingleLineText (clickCount == 0 ? juce::String ("none") : juce::String (clickCount) + " detected",
+                                  juce::roundToInt (x2), (int) kTitleBaseline);
         }
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
             g.setColour (Theme::ink);
-            g.setFont (Theme::font (14.0f, 400));
-            g.drawText (items[(size_t) current]->file.getFileName(), fileName, juce::Justification::centredLeft, true);
+            const auto f = Theme::font (14.0f, 400);
+            g.setFont (f);
+            const auto b = baselineRow (f);
+            g.drawText (items[(size_t) current]->file.getFileName(), fileName.toFloat().withY (b.getY()).withHeight (b.getHeight()),
+                        juce::Justification::centredLeft, true);
         }
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
         g.setColour (Theme::darkBg);
@@ -1081,6 +1082,13 @@ private:
     juce::Rectangle<int> waveArea, fileName, titleRest;
     int pitchInfoX = 0, loopInfoX = 0;
     int userSkipHalves = -1; // el Skip que puso el usuario (-1: el que se cargó)
+    // los textos de la fila del título, apoyados en el mismo renglón que TOOLKIT: la base de las
+    // letras en y = 27, a 20 del borde de arriba (visible) de los botones
+    static constexpr float kTitleBaseline = 27.0f;
+    static juce::Rectangle<float> baselineRow (const juce::Font& f)
+    {
+        return { 0.0f, kTitleBaseline - f.getAscent(), 0.0f, f.getHeight() };
+    }
     juce::StringArray loopInfoVals; // los números de la info del loop (se dibujan con lugar fijo)
     int clickCount = -1;              // los clicks que metió el proceso en lo que suena (-1 = nada abierto)
     std::vector<size_t> clickPos;     // dónde (muestra)
@@ -1837,7 +1845,10 @@ private:
         // el nombre arranca justo en el borde izquierdo (visible) del botón Processed / Original
         fileName.setLeft (juce::jlimit (t.getX(), fileName.getRight(), abButton.getX() + 4));
         auto rest = t.withLeft (juce::jlimit (px, t.getRight(), loopInfoX));
-        info.setBounds (rest);
+        {   // (los avisos: con la base de las letras en el mismo renglón)
+            const auto f = info.getFont();
+            info.setBounds (rest.withY ((int) std::round (kTitleBaseline - f.getAscent())).withHeight ((int) std::ceil (f.getHeight())));
+        }
         progressBar.setBounds (rest.withSizeKeepingCentre (rest.getWidth() - 12, 18).withX (rest.getX()));
         progressLabel.setBounds (progressBar.getBounds());
         repaint (titleArea);
