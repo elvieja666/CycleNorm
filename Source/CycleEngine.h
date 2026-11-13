@@ -946,16 +946,71 @@ inline size_t skipEndSample (const Analysis& a, const Settings& s)
 }
 
 // Seguro: con rampas largas, la ganancia de un tramo vecino (más alta) puede meterse en el borde
-// de un tramo y pasarlo del objetivo. Acá se baja la ganancia justo en esas muestras para que
-// ninguna pase del objetivo. absPeakAt(i) = el mayor valor absoluto de la muestra i entre canales.
+// de un tramo y pasarlo del objetivo. Acá se baja la ganancia para que ninguna muestra pase del
+// objetivo. absPeakAt(i) = el mayor valor absoluto de la muestra i entre canales.
+// Con halfBounds (los cruces), la bajada no se hace muestra por muestra (eso recorta los picos:
+// suena como una distorsión) sino en una curva suave alrededor de cada pico, de un cuarto de
+// semiciclo para cada lado (mínimo en ±¼·2 y promedio en ±¼: nunca queda por encima de lo
+// necesario, y no llega al pico del semiciclo vecino).
 template <typename AbsPeakAt>
-inline void limitCurve (std::vector<float>& curve, size_t from, double targetDb, AbsPeakAt absPeakAt)
+inline void limitCurve (std::vector<float>& curve, size_t from, double targetDb, AbsPeakAt absPeakAt,
+                        const std::vector<size_t>* halfBounds = nullptr)
 {
     const float lim = (float) detail::toLin (targetDb);
-    for (size_t i = from; i < curve.size(); ++i)
+    const size_t n = curve.size();
+    if (halfBounds == nullptr || halfBounds->size() < 2)
+    {
+        for (size_t i = from; i < n; ++i)
+        {
+            const float m = absPeakAt (i);
+            if (m * curve[i] > lim) curve[i] = lim / m;
+        }
+        return;
+    }
+    const auto& HB = *halfBounds;
+    std::vector<float> red (n, 1.0f);   // cuánto hay que bajar cada muestra (1 = nada)
+    std::vector<unsigned> hw (n, 1);    // el cuarto de semiciclo de cada muestra
+    bool any = false;
+    size_t k = 0;
+    for (size_t i = from; i < n; ++i)
     {
         const float m = absPeakAt (i);
-        if (m * curve[i] > lim) curve[i] = lim / m;
+        if (m * curve[i] <= lim) continue;
+        red[i] = lim / (m * curve[i]);
+        any = true;
+        while (k + 1 < HB.size() && HB[k + 1] <= i) ++k;
+        const size_t a = k < HB.size() && HB[k] <= i ? HB[k] : 0;
+        const size_t b = k + 1 < HB.size() ? HB[k + 1] : n;
+        hw[i] = (unsigned) std::max<size_t> (1, (b - a) / 4);
+    }
+    if (! any) return;
+    std::vector<float> mn (n, 1.0f);
+    std::vector<unsigned> hAt (n, 0);   // el ancho del promedio en cada muestra (el del pico que la tocó)
+    for (size_t i = from; i < n; ++i)
+    {
+        if (red[i] >= 1.0f) continue;
+        const size_t h = hw[i];
+        const size_t s0 = i > 2 * h ? i - 2 * h : 0, e0 = std::min (n, i + 2 * h + 1);
+        for (size_t j = s0; j < e0; ++j) mn[j] = std::min (mn[j], red[i]);
+        hAt[i] = (unsigned) h;
+    }
+    std::vector<double> cum (n + 1, 0.0);
+    for (size_t i = 0; i < n; ++i) cum[i + 1] = cum[i] + mn[i];
+    // cada muestra: el promedio en ±h, con h el de la muestra a bajar más cercana (el de su semiciclo)
+    for (size_t i = from; i < n; ++i)
+    {
+        if (mn[i] >= 1.0f) continue;
+        size_t h = hAt[i];
+        if (h == 0)
+        {   // (no hay que bajarla a ella: el ancho de su semiciclo)
+            while (k > 0 && HB[k] > i) --k;
+            while (k + 1 < HB.size() && HB[k + 1] <= i) ++k;
+            const size_t a = HB[k] <= i ? HB[k] : 0, b = k + 1 < HB.size() ? HB[k + 1] : n;
+            h = std::max<size_t> (1, (b - a) / 4);
+        }
+        const size_t s0 = i > h ? i - h : 0, e0 = std::min (n, i + h + 1);
+        const float av = (float) ((cum[e0] - cum[s0]) / (double) (e0 - s0));
+        curve[i] *= std::min (av, red[i]);
     }
 }
 
@@ -965,7 +1020,7 @@ inline Channels render (const Channels& in, const Analysis& a, const Settings& s
     auto curve = gainCurve (a, s, &target);
     if (targetUsedDb) *targetUsedDb = target;
     limitCurve (curve, skipEndSample (a, s), target, [&] (size_t i) {
-        float m = 0; for (auto& ch : in) m = std::max (m, std::abs (ch[i])); return m; });
+        float m = 0; for (auto& ch : in) m = std::max (m, std::abs (ch[i])); return m; }, &a.halfBounds);
     Channels out = in;
     for (auto& ch : out)
         for (size_t i = 0; i < ch.size() && i < curve.size(); ++i) ch[i] *= curve[i];

@@ -831,10 +831,17 @@ public:
             const float x = (float) rampLabel.getX();
             g.setColour (Theme::inkDim);
             g.drawSingleLineText ("Clicks:", juce::roundToInt (x), (int) kTitleBaseline);
-            const float x2 = x + juce::GlyphArrangement::getStringWidth (f, "Clicks:") + 5.0f;
+            auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (f, t); };
+            const float x2 = x + wOf ("Clicks:") + 5.0f;
             if (clickCount > 0) g.setColour (juce::Colour (0xffe0782f)); // naranja (el del loop)
-            g.drawSingleLineText (clickCount == 0 ? juce::String ("none") : juce::String (clickCount) + " detected",
-                                  juce::roundToInt (x2), (int) kTitleBaseline);
+            g.drawSingleLineText (juce::String (clickCount), juce::roundToInt (x2), (int) kTitleBaseline);
+            // el ruido agregado (% de la energía, ponderado como el oído): con lugar fijo para el número
+            const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
+            const float x3 = x2 + wOf ("99");
+            g.setColour (Theme::inkDim);
+            g.drawSingleLineText (dot + "Noise:", juce::roundToInt (x3), (int) kTitleBaseline);
+            const float x4 = x3 + wOf (dot + "Noise:") + 5.0f;
+            g.drawSingleLineText (juce::String (noisePct, 2) + " %", juce::roundToInt (x4), (int) kTitleBaseline);
         }
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
@@ -1118,11 +1125,26 @@ private:
             }
             const bool lp = loopActive (it);
             clickPos = cyclenorm::detectClicks (P, O, (size_t) it.processed->getNumSamples(), it.startSample, (size_t) it.lengthToWrite(),
-                                                it.sampleRate, lp ? it.loopStart : 0, lp ? it.loopEnd : 0,
-                                                it.fadeHalves > 0, it.fadeOutHalves > 0 && ! lp);
+                                                it.sampleRate, lp ? it.loopStart : 0, lp ? it.loopEnd : 0);
         }
         clickCount = (int) clickPos.size();
+        noisePct = 0.0;
+        if (it.processed != nullptr && it.original != nullptr
+            && it.processed->getNumSamples() == it.original->getNumSamples()
+            && it.processed->getNumChannels() == it.original->getNumChannels())
+        {
+            std::vector<const float*> P, O;
+            for (int ch = 0; ch < it.processed->getNumChannels(); ++ch)
+            {
+                P.push_back (it.processed->getReadPointer (ch));
+                O.push_back (it.original->getReadPointer (ch));
+            }
+            const bool lp = loopActive (it);
+            noisePct = cyclenorm::measureNoise (P, O, (size_t) it.processed->getNumSamples(), it.startSample,
+                                                lp ? it.loopEnd : (size_t) it.lengthToWrite(), it.sampleRate);
+        }
     }
+    double noisePct = 0.0; // el ruido que agregó el proceso (% de la energía, ponderada como el oído)
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
     juce::uint32 lastRetuneChange = 0;
@@ -1362,7 +1384,7 @@ private:
             float m = 0;
             for (int ch = 0; ch < src.getNumChannels(); ++ch) m = juce::jmax (m, std::abs (src.getSample (ch, (int) i)));
             return m;
-        });
+        }, &it.analysis.halfBounds);
         auto out = std::make_shared<juce::AudioBuffer<float>> (it.original->getNumChannels(), it.original->getNumSamples()); // (se llena abajo: original × curva)
         float peak = 0.0f;
         for (int ch = 0; ch < out->getNumChannels(); ++ch)

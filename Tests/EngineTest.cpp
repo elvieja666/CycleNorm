@@ -504,9 +504,9 @@ int main()
         std::vector<float> o (n), p (n);
         for (size_t i = 0; i < n; ++i) o[i] = (float) (0.8 * std::sin (2 * M_PI * 55.0 * (double) i / fs));
         p = o;
-        const auto c0 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0, true, true);
+        const auto c0 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0);
         for (size_t i = n / 2; i < n; ++i) p[i] += 0.024f;
-        const auto c1 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0, true, true);
+        const auto c1 = detectClicks ({ p.data() }, { o.data() }, n, 0, n, fs, 0, 0);
         const bool ok = c0.empty() && c1.size() == 1 && (c1[0] + 2 >= n / 2 && c1[0] <= n / 2 + 2);
         std::printf ("clicks: limpio %zu, con salto %zu  %s\n", c0.size(), c1.size(), ok ? "OK" : "FALLA");
         fails += ! ok;
