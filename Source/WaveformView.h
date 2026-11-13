@@ -1178,7 +1178,7 @@ private:
                 const size_t fe = fadeEndSample();
                 const float x0 = (float) r.getX() + (float) sampleToX ((double) startSample);
                 const float x1 = (float) r.getX() + (float) sampleToX ((double) fe);
-                const float top = (float) r.getY() + 2.0f, bot = (float) r.getBottom() - 2.0f;
+                const float top = (float) (int) (mid - half), bot = (float) (int) (mid + half); // de la línea de 0 dB de abajo a la de arriba
                 if (fe > startSample && x1 > (float) r.getX() && x0 < (float) r.getRight())
                 {
                     juce::Path shade; // lo que el fade le saca (arriba de la rampa), apenas oscurecido
@@ -1198,7 +1198,7 @@ private:
                 const size_t fs = fadeOutStartSample(), fe = endOrLen();
                 const float x0 = (float) r.getX() + (float) sampleToX ((double) fs);
                 const float x1 = (float) r.getX() + (float) sampleToX ((double) fe);
-                const float top = (float) r.getY() + 2.0f, bot = (float) r.getBottom() - 2.0f;
+                const float top = (float) (int) (mid - half), bot = (float) (int) (mid + half); // de la línea de 0 dB de arriba a la de abajo
                 if (fe > fs && x1 > (float) r.getX() && x0 < (float) r.getRight())
                 {
                     juce::Path shade; // lo que el fade le saca (arriba de la rampa)
