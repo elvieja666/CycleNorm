@@ -243,6 +243,21 @@ public:
         pitchDragArmed = pitchDragging = false;
         if (showAllArea.contains (e.position)) { showAll(); showAllClicked = true; return; } // "Show all"
         showAllClicked = false;
+        // clic en una tecla del piano: el pitch se acomoda justo en esa nota (0 cents)
+        if (pitchPts.size() >= 2 && pitchAreaH > 1.0f && e.position.x >= (float) plotWidth()
+            && e.position.y <= pitchAreaBottom && e.position.y >= pitchAreaBottom - pitchAreaH
+            && getPitchReference && getPitchCents && onPitchDragged)
+        {
+            const double m = pitchLo + (double) (pitchAreaBottom - e.position.y) / (double) pitchAreaH * (pitchHi - pitchLo);
+            const double note = std::round (m), ref = getPitchReference();
+            if (ref > 1.0)
+            {
+                double cents = getPitchCents() + (note - ref) * 100.0;
+                cents = juce::jlimit (-600.0, 600.0, std::round (cents * 10.0) / 10.0);
+                onPitchDragged (cents);
+            }
+            return;
+        }
         const int line = whichLine (e.position);
         if (line == 8) // la manija del fade out (⌥ + clic: sin fade)
         {
