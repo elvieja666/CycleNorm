@@ -80,13 +80,20 @@ public:
                 p = ls + (p - ls) % (le - ls);
             // el cursor saltó (otro loop, o se movió): mini crossfade de lo que venía sonando a lo nuevo
             if (p != before) { jumpOld = before; jumpFade = 0.0f; }
+            loopMovedRecently = 13230; // (unos 0,3 s: mientras se arrastra el loop, cada vuelta lleva fundido)
         }
         const juce::int64 st = juce::jlimit ((juce::int64) 0, (juce::int64) juce::jmax (0, len - 1), startSample.load());
         if (p < st) p = st; // antes de Start no suena nada: arranca desde Start
         int done = 0;
         while (done < info.numSamples)
         {
-            if (region && p >= le && p < le + 1) p = ls; // fin del loop: vuelve al inicio del loop
+            if (region && p >= le && p < le + 1) // fin del loop: vuelve al inicio del loop
+            {
+                // si el loop se está moviendo, el crossfade del audio todavía puede ser el del loop
+                // anterior: la vuelta lleva un mini fundido (lo que seguía después del fin -> el inicio)
+                if (loopMovedRecently > 0) { jumpOld = p; jumpFade = 0.0f; }
+                p = ls;
+            }
             if (p >= len)
             {
                 if (! region && ! looping) break; // al final: el loop de sección, el de escucha (desde el principio) o parar
@@ -136,6 +143,7 @@ public:
             jumpOld += n;
             p += n;
             done += n;
+            if (loopMovedRecently > 0) loopMovedRecently = juce::jmax (0, loopMovedRecently - n);
         }
         pos = p;
     }
@@ -164,4 +172,5 @@ private:
     std::atomic<juce::int64> prevLoopStart { 0 }, prevLoopEnd { 0 };
     std::atomic<bool> remapPending { false };
     std::atomic<bool> useB { true }, looping { false }, regionLoop { false };
+    int loopMovedRecently = 0; // (sólo el hilo de audio)
 };
