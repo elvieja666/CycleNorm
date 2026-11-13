@@ -759,7 +759,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (969, 650); // (diseño base: 969 x 650; la ventana lo muestra al 80,3 %, como UNISON)
+        setSize (958, 650); // (diseño base: 958 x 650; la ventana lo muestra al 80,3 %, como UNISON)
         updateButtons();
         startTimerHz (60);
     }
@@ -837,13 +837,13 @@ public:
         // divisores finos entre los grupos de botones
         g.setColour (juce::Colours::black.withAlpha (0.10f));
         for (int x : groupDividers) g.fillRect ((float) x, (float) buttonRowY, 1.0f, (float) buttonRowH);
-        if (groupDividersRight > 0) g.fillRect ((float) groupDividersRight, (float) buttonRowY, 1.0f, (float) buttonRowH);
+        if (groupDividersRight > 0 && groupDividersRight < dragOut.getX()) g.fillRect ((float) groupDividersRight, (float) buttonRowY, 1.0f, (float) buttonRowH);
     }
 
     // Medidas del diseño base de UNISON (después toda la ventana se achica al 80,3 %, como UNISON):
     // márgenes de 20, fila del título de 38 (título de 14 de alto de mayúsculas), botones de 33 de
     // alto visible con letra de 14, barras de 24 de alto (las pastillas de UNISON), visor con margen de 7.
-    static constexpr int kMargin = 20, kButtonH = 33, kPillH = 24, kGap = 8;
+    static constexpr int kMargin = 20, kButtonH = 33, kPillH = 24;
     static constexpr float kTitleCap = 14.0f;
 
     void resized() override
@@ -875,7 +875,8 @@ public:
             const auto seg = b.getProperties()["segment"].toString();
             b.setBounds (row.removeFromLeft (50 + (seg == "mid" ? 0 : 4)));
         };
-        auto divider = [&] { row.removeFromLeft (kGap); groupDividers.push_back (row.getX()); row.removeFromLeft (kGap + 1); };
+        // entre secciones: 20 visibles de botón a botón (cada botón lleva 4 de sombra), con la rayita a 9
+        auto divider = [&] { row.removeFromLeft (5); groupDividers.push_back (row.getX()); row.removeFromLeft (1 + 6); };
         groupDividers.clear();
         // 1) transporte: ▶ ■ ⟲ (el loop de escucha)
         placeIcon (playButton); placeIcon (stopButton); placeIcon (repeatButton);
@@ -892,24 +893,22 @@ public:
             const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
             dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (2).withHeight (kButtonH + 1).translated (1, 0)); // (el borde visible a 20 del de la ventana, como el título)
         }
-        row.removeFromRight (kGap); groupDividersRight = row.getRight(); row.removeFromRight (kGap + 1);
         // 3) el proceso: Normalize y Ramp
         place (normButton, 0);
         {
             const auto lf = Theme::font (12.5f, 300);
-            const int labelW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp")) + 10;
-            row.removeFromLeft (kGap);
-            const int each = labelW + 125; // la barra de Ramp: del mismo largo que antes
-            auto put = [&] (juce::Rectangle<int> p, juce::Label& l, juce::Slider& sl) {
-                const int cy = p.getY() + 2 + kButtonH / 2;
-                l.setBounds (p.removeFromLeft (labelW).withHeight (kPillH).withCentre ({ p.getX() - labelW / 2, cy }));
-                sl.setBounds (p.withHeight (kPillH).withY (cy - kPillH / 2));
-            };
-            put (row.removeFromLeft (each), rampLabel, ramp);
+            const int textW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp"));
+            row.removeFromLeft (16); // "Ramp" a 20 del borde visible de Normalize
+            const int cy = row.getY() + 2 + kButtonH / 2;
+            rampLabel.setBorderSize ({});
+            rampLabel.setBounds (juce::Rectangle<int> (row.getX(), cy - kPillH / 2, textW + 2, kPillH));
+            row.removeFromLeft (textW + 10);
+            ramp.setBounds (row.removeFromLeft (125).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
             // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
             // (el slider queda oculto, guarda el valor)
         }
-        divider();
+        // de la barra (sin sombra) a Loop: 20 visibles, la rayita a 9
+        row.removeFromLeft (9); groupDividers.push_back (row.getX()); row.removeFromLeft (1 + 6);
         // 4) al lado de Ramp, el loop de sección (el que se exporta): prenderlo, buscarlo, el siguiente, borrarlo
         {
             const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Option 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
@@ -919,6 +918,8 @@ public:
             findLoopButton.setVisible (false);  // (quedan para el menú y los atajos: Loop ya busca solo)
             clearLoopButton.setVisible (false);
         }
+        // de Option N a Drag to DAW: 20 visibles, la rayita a 9
+        groupDividersRight = otherLoopButton.getRight() - 4 + 9;
         loopInfoX = loopButton.getX() + 4; // la info del loop arranca en el borde izquierdo (visible) de Loop section
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
@@ -2287,7 +2288,7 @@ private:
             setUsingNativeTitleBar (true);
             holder = new ScaledHolder();
             content = &holder->content;
-            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "969").getIntValue(); // (969: Drag to DAW queda a la misma distancia de Option N que las demás secciones)
+            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "958").getIntValue(); // (958: entre secciones 20 visibles, también de Option N a Drag to DAW)
             holder->setSize (juce::roundToInt (designW * ScaledHolder::kScale), juce::roundToInt (650 * ScaledHolder::kScale)); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);
