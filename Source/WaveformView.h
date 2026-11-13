@@ -175,7 +175,9 @@ public:
             if (x >= plotLeft() && x <= plotWidth())
             {
                 g.setColour (juce::Colours::white.withAlpha (0.85f));
-                for (auto lr : { topLaneRect(), procLaneRect() }) // sólo sobre las franjas de 185 de las ondas
+                // sólo en el visor de lo que está sonando (Original o Processed), sobre su franja de 185
+                const bool procPlaying = isPlayingProcessed ? isPlayingProcessed() : true;
+                for (auto lr : { procPlaying ? procLaneRect() : topLaneRect() })
                 {
                     const float mid = (float) lr.getCentreY(), half = (float) (lr.getHeight() - 80) / 2.0f;
                     const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
