@@ -311,6 +311,14 @@ public:
             onPitchDragged (0.0);
             return;
         }
+        // ⌥ + clic en un lugar vacío de cualquiera de los dos visores: los dos zooms (X e Y) a 0
+        if (line == 0 && e.mods.isAltDown() && linesNear (e.position).empty())
+        {
+            viewStart = 0; viewLen = (double) totalLen();
+            zoomSpan = 0.0; pitchPan = 0.0;
+            dirty = true; repaint();
+            return;
+        }
         if (line == 0 && nearPitchCurve (e.position) && onPitchDragged && getPitchCents)
         {
             pitchDragArmed = true;
