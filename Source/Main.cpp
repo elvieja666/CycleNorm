@@ -1243,6 +1243,14 @@ private:
         it->isFloat = r->usesFloatingPointData;
         auto buf = std::make_shared<juce::AudioBuffer<float>> ((int) r->numChannels, (int) r->lengthInSamples);
         r->read (buf.get(), 0, (int) r->lengthInSamples, 0, true, true);
+        // un WAV en coma flotante puede venir pasado de 0 dB (no recortado): se baja entero hasta que el
+        // pico quede justo en 0 dBFS, así nunca cruza la línea (ni en el Original ni al exportar)
+        {
+            float pk = 0.0f;
+            for (int ch = 0; ch < buf->getNumChannels(); ++ch)
+                pk = juce::jmax (pk, buf->getMagnitude (ch, 0, buf->getNumSamples()));
+            if (pk > 1.0f) buf->applyGain (1.0f / pk);
+        }
         it->original = buf;
         it->analysis = cyclenorm::analyse (toChannels (*buf), r->sampleRate);
         it->loaded = buf;
