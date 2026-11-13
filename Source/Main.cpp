@@ -823,7 +823,7 @@ public:
 
     void resized() override
     {
-        // altos (diseño de 650): barra de arriba 100 · recuadro del visor 530 (dos visores de 250) · renglón 20
+        // altos (diseño de 650): barra de arriba 100 · recuadro del visor 530 (dos visores de 265: 40 + 185 + 40) · renglón 20
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
@@ -906,7 +906,7 @@ public:
         // el visor: el recuadro negro de 75 a 625 (550), con el margen del osciloscopio de UNISON (7) a los
         // costados; adentro, los dos visores de 250 (+ 1 de borde cada uno), centrados
         waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, 530); // a 20 de los dos costados
-        wave.setBounds (waveArea.withSizeKeepingCentre (waveArea.getWidth() - 16, 502));
+        wave.setBounds (waveArea.reduced (8, 0)); // dos visores de 265: 40 + 185 (la onda) + 40 cada uno
     }
 
     bool keyPressed (const juce::KeyPress& k) override
