@@ -833,7 +833,7 @@ private:
             case 8: if (! hasFadeOutHandle()) return {}; sample = (double) fadeOutStartSample(); side = -1; y = topLine + 2.0f; break;
             case 1: if (! hasSkipLine()) return {}; sample = skipLineSample(); side = 1; y = botLine + 2.0f; break;
             case 5: if (! hasLoop() || onXfadeDragged == nullptr) return {}; sample = (double) (loopEnd - std::min (xfadeLen, loopEnd)); side = -1; y = botLine + 2.0f; break;
-            case 3: if (! hasLoop()) return {}; sample = (double) loopStart; side = 1;  y = botLine - 1.0f - kTabH; break;
+            case 3: if (! hasLoop()) return {}; sample = (double) loopStart; side = 1;  y = topLine + 2.0f; break; // (en la fila de los fades)
             case 4: if (! hasLoop()) return {}; sample = (double) loopEnd;   side = -1; y = botLine - 1.0f - kTabH; break;
             default: return {};
         }
