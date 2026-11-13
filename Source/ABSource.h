@@ -73,8 +73,10 @@ public:
         if (remapPending.exchange (false) && region)
         {
             const juce::int64 before = p;
-            const juce::int64 os = prevLoopStart.load(), oe = prevLoopEnd.load();
-            if (oe > os && p >= os && p < oe)          // estaba sonando dentro del loop: mismo lugar en el loop nuevo
+            // el loop "viejo" es el último que usó el audio (no el anterior que llegó del mouse: moviendo
+            // rápido llegan varios entre bloque y bloque, y el cursor se escapaba del loop)
+            const juce::int64 os = appliedLs, oe = appliedLe;
+            if (oe > os && p >= os && p <= oe)         // estaba sonando dentro del loop (o justo en el fin): mismo lugar en el loop nuevo
                 p = ls + (p - os) % (le - ls);
             else if (p >= le && (oe <= os || p < oe)) // quedó después del loop nuevo: vuelve adentro
                 p = ls + (p - ls) % (le - ls);
@@ -82,6 +84,7 @@ public:
             if (p != before) { jumpOld = before; jumpFade = 0.0f; }
             loopMovedRecently = 13230; // (unos 0,3 s: mientras se arrastra el loop, cada vuelta lleva fundido)
         }
+        if (region) { appliedLs = ls; appliedLe = le; } else { appliedLs = appliedLe = 0; }
         const juce::int64 st = juce::jlimit ((juce::int64) 0, (juce::int64) juce::jmax (0, len - 1), startSample.load());
         if (p < st) p = st; // antes de Start no suena nada: arranca desde Start
         int done = 0;
@@ -173,4 +176,5 @@ private:
     std::atomic<bool> remapPending { false };
     std::atomic<bool> useB { true }, looping { false }, regionLoop { false };
     int loopMovedRecently = 0; // (sólo el hilo de audio)
+    juce::int64 appliedLs = 0, appliedLe = 0; // el loop con el que sonó el último bloque (sólo el hilo de audio)
 };
