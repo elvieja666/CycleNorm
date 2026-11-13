@@ -759,7 +759,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (958, 650); // (diseño base: 958 x 650; la ventana lo muestra al 80,3 %, como UNISON)
+        setSize (948, 650); // (diseño base: 948 x 650; la ventana lo muestra al 80,3 %, como UNISON)
         updateButtons();
         startTimerHz (60);
     }
@@ -898,7 +898,7 @@ public:
         {
             const auto lf = Theme::font (12.5f, 300);
             const int textW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp"));
-            row.removeFromLeft (16); // "Ramp" a 20 del borde visible de Normalize
+            row.removeFromLeft (6); // "Ramp" a 10 del borde visible de Normalize
             const int cy = row.getY() + 2 + kButtonH / 2;
             rampLabel.setBorderSize ({});
             rampLabel.setBounds (juce::Rectangle<int> (row.getX(), cy - kPillH / 2, textW + 2, kPillH));
@@ -2288,7 +2288,7 @@ private:
             setUsingNativeTitleBar (true);
             holder = new ScaledHolder();
             content = &holder->content;
-            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "958").getIntValue(); // (958: entre secciones 20 visibles, también de Option N a Drag to DAW)
+            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "948").getIntValue(); // (948: entre secciones 20 visibles, también de Option N a Drag to DAW)
             holder->setSize (juce::roundToInt (designW * ScaledHolder::kScale), juce::roundToInt (650 * ScaledHolder::kScale)); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);
