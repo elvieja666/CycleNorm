@@ -204,23 +204,30 @@ public:
         const double hf = total / juce::jmax (1.0, viewLen);
         const double vf = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
-        const juce::String text = "Zoom  X " + fmt (hf) + dot + "Y " + fmt (vf) + (isZoomed() ? dot : juce::String());
+        const juce::String text = "Zoom  X " + fmt (hf) + dot + "Y " + fmt (vf) + dot;
         g.setFont (uiFont (13.0f));
         const juce::String showAll ("Show all");
         const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text);
-        const float sw = isZoomed() ? juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), showAll) : 0.0f;
+        const float sw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), showAll);
         const float right = (float) plotWidth() - 5.0f, top = 1.0f;
         g.setColour (juce::Colour (0xff8b9096));
         g.drawText (text, juce::Rectangle<float> (right - sw - w, top, w + 2.0f, 18.0f), juce::Justification::centredLeft);
-        if (isZoomed())
-        {
+        {   // "Show all" siempre: azul (y se clickea) con zoom; gris sin zoom
             const auto textArea = juce::Rectangle<float> (right - sw, top, sw + 2.0f, 18.0f);
-            showAllArea = textArea.expanded (4.0f, 3.0f);
-            const bool hot = showAllArea.contains (hoverPoint);
-            const juce::Colour accentBright (0xff5aa9ff);
-            g.setColour (hot ? accentBright.brighter (0.4f) : accentBright);
-            g.drawText (showAll, textArea, juce::Justification::centredLeft);
-            if (hot) g.fillRect (textArea.getX(), textArea.getCentreY() + 7.0f, sw, 1.0f);
+            if (! isZoomed())
+            {
+                g.setColour (juce::Colour (0xff8b9096).withAlpha (0.6f));
+                g.drawText (showAll, textArea, juce::Justification::centredLeft);
+            }
+            else
+            {
+                showAllArea = textArea.expanded (4.0f, 3.0f);
+                const bool hot = showAllArea.contains (hoverPoint);
+                const juce::Colour accentBright (0xff5aa9ff);
+                g.setColour (hot ? accentBright.brighter (0.4f) : accentBright);
+                g.drawText (showAll, textArea, juce::Justification::centredLeft);
+                if (hot) g.fillRect (textArea.getX(), textArea.getCentreY() + 7.0f, sw, 1.0f);
+            }
         }
     }
 
