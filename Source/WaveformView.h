@@ -469,17 +469,23 @@ private:
     {
         if (pitchPts.size() < 2 || viewLen <= 0) return;
         auto midiOf = [this] (double hz) { return 69.0 + 12.0 * std::log2 (hz / 440.0) + pitchPreviewSemis; };
-        // rango fijo: la curva original (sin re-pitch) más los 6 semitonos para cada lado que puede
-        // moverse Pitch. Así al cambiar el pitch el gráfico no cambia nada: sólo se mueve la línea.
-        double lo = 1e9, hi = -1e9;
-        for (auto& p : pitchPts)
+        // rango fijo: centrado en la nota más cercana a la que viene afinado el 808 (sin re-pitch), con
+        // 3 semitonos para arriba y 3 para abajo. Así al cambiar el pitch el gráfico no cambia: sólo se
+        // mueve la línea.
+        double lo, hi;
         {
-            const double m0 = midiOf (p.second) - pitchPreviewSemis - pitchApplied;
-            lo = std::min (lo, m0); hi = std::max (hi, m0);
+            const double r0 = getPitchReference ? getPitchReference() : 0.0;
+            double centre;
+            if (r0 > 1.0 && std::isfinite (r0)) centre = (double) std::lround (r0 - pitchApplied - pitchPreviewSemis);
+            else
+            {
+                std::vector<double> ms;
+                for (auto& p : pitchPts) ms.push_back (midiOf (p.second) - pitchPreviewSemis - pitchApplied);
+                std::nth_element (ms.begin(), ms.begin() + (long) ms.size() / 2, ms.end());
+                centre = (double) std::lround (ms[ms.size() / 2]);
+            }
+            lo = centre - 3.5; hi = centre + 3.5;
         }
-        lo -= 6.0; hi += 6.0;
-        const double pad = (hi - lo) * 0.06;
-        lo -= pad; hi += pad;
         frozenLo = lo; frozenHi = hi; frozenValid = true;
         autoSpan = hi - lo;
         if (zoomSpan > 0.0) // zoom vertical: alto fijo en semitonos, centrado donde se hizo zoom
