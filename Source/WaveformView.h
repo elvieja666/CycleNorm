@@ -167,7 +167,7 @@ public:
         {
             if (! (isPlaying && isPlaying())) playheadPx = sampleToX (getPlayheadSeconds() * sr); // quieto: donde está
             const double x = playheadPx;
-            if (x >= 0 && x <= plotWidth())
+            if (x >= plotLeft() && x <= plotWidth())
             {
                 g.setColour (juce::Colours::white.withAlpha (0.85f));
                 g.fillRect ((float) std::round (x), 0.0f, 1.0f, (float) getHeight()); // finita, como en UNISON
@@ -205,7 +205,7 @@ public:
             return juce::String (juce::jlimit (1, 100, juce::roundToInt (100.0 * std::log (f) / std::log (fmax))));
         };
         const double hf = total / juce::jmax (1.0, viewLen);
-        const double hmax = total / juce::jmin (total, juce::jmax (32.0, (double) plotWidth() / 8.0)); // (el mismo tope que zoomAround)
+        const double hmax = total / juce::jmin (total, juce::jmax (32.0, (double) plotSpan() / 8.0)); // (el mismo tope que zoomAround)
         const double vf = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         const double vmax = autoSpan / 0.005;                                                         // (el mismo tope que zoomPitch)
         const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
@@ -677,7 +677,7 @@ private:
             {
                 const float x = (float) r.getX() + (float) sampleToX (p.first);
                 if (x < (float) r.getX() - 4 || x > (float) r.getRight() + 4) continue;
-                if (plotWidth() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
+                if (plotSpan() / std::max (1.0, (double) pitchPts.size() * (viewLen / (double) std::max<juce::int64> (1, totalLen()))) < 6.0) break; // puntos solo si hay lugar
                 g.fillEllipse (x - 1.5f, yOf (midiOf (p.second)) - 1.5f, 3.0f, 3.0f);
             }
         }
@@ -705,7 +705,7 @@ private:
     {
         if (moveCycles <= 0 || loopBounds.empty() || ! onLoopDragged) return;
         const double from = (double) loopBounds[std::min (moveStartIdx, loopBounds.size() - 1)];
-        const double target = from + (double) dx / plotWidth() * viewLen;
+        const double target = from + (double) dx / plotSpan() * viewLen;
         size_t best = moveStartIdx; double bestD = 1e300;
         for (size_t k = 0; k + (size_t) moveCycles < loopBounds.size(); ++k)
         {
@@ -720,7 +720,7 @@ private:
     }
 
     bool hasLoop() const { return loopEnd > loopStart && onLoopDragged != nullptr; }
-    bool xVisible (double sample) const { const double x = sampleToX (sample); return x >= -1.0 && x <= plotWidth() + 1.0; }
+    bool xVisible (double sample) const { const double x = sampleToX (sample); return x >= plotLeft() - 1.0 && x <= plotWidth() + 1.0; }
     // las puntas del loop saltan de onda entera en onda entera (cruces ascendentes de la fundamental)
     void dragLoopTo (float x)
     {
@@ -755,8 +755,8 @@ private:
     // x de la línea de Fin; si con el zoom quedó fuera de la vista, no se ve (como la de Skip).
     // Pegada al borde derecho (el final del archivo con la vista completa) se corre 2 píxeles para que se vea.
     float endLineRawX() const { return (float) sampleToX ((double) endOrLen()); }
-    bool endLineVisible() const { const float x = endLineRawX(); return x >= -1.0f && x <= (float) plotWidth() + 1.0f; }
-    float endLineX() const { return juce::jlimit (1.0f, (float) plotWidth() - 2.0f, endLineRawX()); }
+    bool endLineVisible() const { const float x = endLineRawX(); return x >= (float) plotLeft() - 1.0f && x <= (float) plotWidth() + 1.0f; }
+    float endLineX() const { return juce::jlimit ((float) plotLeft(), (float) plotWidth() - 2.0f, endLineRawX()); }
     // 0 = ninguna, 1 = Skip, 2 = Fin (si las dos están cerca, la más cercana)
     float xfadeHandleX() const { return (float) sampleToX ((double) (loopEnd - std::min (xfadeLen, loopEnd))); }
     // todas las líneas a menos de 6 px (sin la manija del crossfade), en orden lógico:
@@ -806,8 +806,8 @@ private:
             default: return {};
         }
         float x = (float) sampleToX (sample);
-        if (x < -1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
-        x = juce::jlimit (1.0f, (float) plotWidth() - 2.0f, x); // (igual que las líneas: así queda el mismo aire a cada lado)
+        if (x < (float) plotLeft() - 1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
+        x = juce::jlimit ((float) plotLeft(), (float) plotWidth() - 2.0f, x); // (igual que las líneas: así queda el mismo aire a cada lado)
         const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
         // 1 px de aire con la línea vertical (que ocupa el píxel de x)
         const float lx = std::round (x), xr = lx + 2.0f, xl = lx - 1.0f - w;
@@ -853,12 +853,6 @@ private:
     size_t fadeLimit() const { return hasLoop() ? loopStart : endOrLen(); }
     size_t fadeEndSample() const { return fadeEndOf (bounds, startSample, fadeHalves, fadeLimit()); }
     bool hasFadeHandle() const { return totalLen() > 0 && onFadeDragged != nullptr; }
-    juce::Rectangle<float> fadeHandleArea() const
-    {
-        const float x = juce::jlimit (7.0f, (float) plotWidth() - 7.0f, (float) sampleToX ((double) fadeEndSample()));
-        const float top = (float) procLaneRect().getY();
-        return { x - 7.0f, top + 46.0f, 14.0f, 14.0f };
-    }
     void dragFadeTo (float x)
     {
         const double target = xToSample (x);
@@ -879,12 +873,6 @@ private:
     size_t fadeOutLower() const { return std::max (fadeEndSample(), startSample); }
     size_t fadeOutStartSample() const { return fadeOutStartOf (bounds, endOrLen(), fadeOutHalves, fadeOutLower()); }
     bool hasFadeOutHandle() const { return totalLen() > 0 && onFadeOutDragged != nullptr && ! hasLoop(); }
-    juce::Rectangle<float> fadeOutHandleArea() const
-    {
-        const float x = juce::jlimit (7.0f, (float) plotWidth() - 9.0f, (float) sampleToX ((double) fadeOutStartSample()));
-        const float top = (float) procLaneRect().getY();
-        return { x - 7.0f, top + 46.0f, 14.0f, 14.0f };
-    }
     void dragFadeOutTo (float x)
     {
         const double target = xToSample (x);
@@ -905,8 +893,8 @@ private:
     // la línea de Start: como la de Fin, salta de semiciclo en semiciclo (corta en un cruce por cero)
     bool hasStartLine() const { return totalLen() > 0 && onStartDragged != nullptr; }
     float startLineRawX() const { return (float) sampleToX ((double) startSample); }
-    bool startLineVisible() const { const float x = startLineRawX(); return x >= -1.0f && x <= (float) plotWidth() + 1.0f; }
-    float startLineX() const { return juce::jlimit (1.0f, (float) plotWidth() - 2.0f, startLineRawX()); }
+    bool startLineVisible() const { const float x = startLineRawX(); return x >= (float) plotLeft() - 1.0f && x <= (float) plotWidth() + 1.0f; }
+    float startLineX() const { return juce::jlimit ((float) plotLeft(), (float) plotWidth() - 2.0f, startLineRawX()); }
     void dragStartTo (float x)
     {
         const double target = xToSample (x);
@@ -954,9 +942,13 @@ private:
     juce::int64 totalLen() const { return orig ? orig->getNumSamples() : 0; }
     // ancho del gráfico (el tiempo): sin la columna del teclado, así las dos ondas terminan justo donde empieza
     static constexpr int kKeyboardW = 40;
-    int plotWidth() const { return juce::jmax (1, getWidth() - (pitchPts.size() >= 2 ? kKeyboardW : 0)); }
-    double sampleToX (double s) const { return viewLen > 0 ? (s - viewStart) / viewLen * plotWidth() : 0; }
-    double xToSample (double x) const { return viewStart + x / plotWidth() * viewLen; }
+    // la onda va de plotLeft() (40 libres a la izquierda, como el teclado a la derecha) a plotWidth()
+    static constexpr int kLeftPad = 40;
+    int plotWidth() const { return juce::jmax (kLeftPad + 1, getWidth() - (pitchPts.size() >= 2 ? kKeyboardW : 0)); }
+    int plotLeft() const { return kLeftPad; }
+    int plotSpan() const { return juce::jmax (1, plotWidth() - kLeftPad); }
+    double sampleToX (double s) const { return viewLen > 0 ? plotLeft() + (s - viewStart) / viewLen * plotSpan() : plotLeft(); }
+    double xToSample (double x) const { return viewStart + (x - plotLeft()) / plotSpan() * viewLen; }
 
     // ¿el mouse está sobre la línea celeste? (carril de arriba, a pocos píxeles de la curva)
     bool nearPitchCurve (juce::Point<float> p) const
@@ -1013,9 +1005,9 @@ private:
     void zoomAround (float x, double factor)
     {
         const double anchor = xToSample (x);
-        const double minLen = juce::jmin ((double) totalLen(), juce::jmax (32.0, (double) plotWidth() / 8.0));
+        const double minLen = juce::jmin ((double) totalLen(), juce::jmax (32.0, (double) plotSpan() / 8.0));
         viewLen = juce::jlimit (minLen, (double) totalLen(), viewLen * factor);
-        viewStart = anchor - (x / plotWidth()) * viewLen;
+        viewStart = anchor - ((x - plotLeft()) / plotSpan()) * viewLen;
     }
     void clampView()
     {
@@ -1035,7 +1027,7 @@ private:
         if (totalLen() > 0 && getPlayheadSeconds)
         {
             px = sampleToX (getPlayheadSeconds() * sr);
-            if (px >= 0 && px <= plotWidth()) x = (int) std::floor (px);
+            if (px >= plotLeft() && px <= plotWidth()) x = (int) std::floor (px);
         }
         if (! playing && x == lastPlayheadX) return;
         if (x != lastPlayheadX)
@@ -1093,7 +1085,7 @@ private:
         // greyBefore: hasta esta x (el Skip) las columnas van en gris; así se arma la onda una sola vez
         auto drawWave = [&] (juce::Colour waveColour, float greyBefore = -1.0e9f)
         {
-            const int w = juce::jmin (r.getWidth(), plotWidth()); // (sin la columna del teclado)
+            const int w = plotSpan(); // (sin los 40 de la izquierda ni la columna del teclado)
             const double spp = viewLen / juce::jmax (1, w);
             const int nCh = buf->getNumChannels(), n = buf->getNumSamples();
             // el buffer que se dibuja puede ser el sin re-afinar (otro largo): se estira al largo actual,
@@ -1152,7 +1144,7 @@ private:
                     for (int s = juce::jmax (0, s0 - 1); s < s1; ++s) { const float v = valueAt (s); lo = juce::jmin (lo, v); hi = juce::jmax (hi, v); }
                     if (hi < lo) continue;
                     const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
-                    const juce::Rectangle<float> cr { (float) r.getX() + (float) x * colW, y0, colW, juce::jmax (0.6f, y1 - y0) };
+                    const juce::Rectangle<float> cr { (float) r.getX() + (float) plotLeft() + (float) x * colW, y0, colW, juce::jmax (0.6f, y1 - y0) };
                     const float cx = cr.getX() + colW * 0.5f;
                     (cx < darkBefore ? darkPeaks : (cx < greyBefore ? greyPeaks : peaks)).addWithoutMerging (cr);
                 }
@@ -1173,7 +1165,7 @@ private:
                 // línea de Skip (se arrastra): punteada, con una manija arriba
                 // (en 0 queda pegada al borde izquierdo; se corre 1 píxel para que se vea entera)
                 const float rawX = (float) r.getX() + (float) sampleToX (skipLineSample());
-                const float lx = juce::jmax ((float) r.getX() + 1.0f, rawX);
+                const float lx = juce::jmax ((float) r.getX() + (float) plotLeft(), rawX);
                 if (rawX >= (float) r.getX() - 1.0f && lx <= (float) r.getRight())
                 {
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingSkip ? 1.0f : 0.85f));
@@ -1388,6 +1380,15 @@ private:
     }
     void drawKeyboardStrip (juce::Graphics& g)
     {
+        // los 40 de la izquierda, en los dos visores: vacíos (como debajo del teclado)
+        for (auto lane : { topLaneRect(), procLaneRect() })
+        {
+            const auto pad = lane.withWidth (plotLeft());
+            g.setColour (juce::Colour (0xff0b0c0e));
+            g.fillRect (pad);
+            g.setColour (juce::Colour (0x66000000));
+            g.fillRect (pad.withX (pad.getRight() - 1).withWidth (1));
+        }
         auto r = procLaneRect();
         if (plotWidth() < getWidth()) // debajo del teclado: vacío, así las dos ondas terminan en la misma línea
         {
