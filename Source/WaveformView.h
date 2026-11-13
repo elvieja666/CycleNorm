@@ -647,7 +647,7 @@ private:
         const double pitchZoom = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         g.drawText (zoomSpan > 0.0 ? juce::String (juce::String::fromUTF8 ("Pitch  ×")) + (pitchZoom < 10 ? juce::String (pitchZoom, 1) : juce::String ((int) std::lround (pitchZoom))) + juce::String::fromUTF8 ("  (⌥ + scroll · double-click = reset)")
                                     : juce::String (juce::String::fromUTF8 ("Pitch  (⌥ + scroll = zoom)")),
-                    juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY() + 4.0f, 320.0f, 13.0f), juce::Justification::centredRight);
+                    juce::Rectangle<float> ((float) r.getRight() - 330.0f - kbW, (float) r.getY(), 320.0f, 20.0f), juce::Justification::centredRight);
     }
     std::vector<size_t> loopBounds;
     bool pendingLoopMove = false, movingLoop = false; // arrastrando la zona del loop entera
@@ -765,8 +765,8 @@ private:
     //      arriba Start / End (1ª fila) y los fades (2ª fila); abajo Skip / crossfade (1ª fila desde abajo)
     //      y las puntas del loop (2ª). Así, aunque dos líneas estén pegadas, sus pestañas no se pisan.
     // id: 1 Skip, 2 End, 3 inicio del loop, 4 fin del loop, 5 crossfade, 6 Start, 7 fade in, 8 fade out
-    static constexpr float kTabH = 9.0f;
-    static juce::Font tabFont() { return uiFont (6.8f); }
+    static constexpr float kTabH = 18.0f; // la mitad de abajo de los 40 libres (menos 1 de aire con la línea y 1 con el título)
+    static juce::Font tabFont() { return uiFont (11.0f); }
     static juce::String tabText (int id)
     {
         switch (id) { case 1: return "Skip"; case 2: return "End"; case 3: return "Loop"; case 4: return "Loop end";
@@ -798,7 +798,7 @@ private:
         float x = (float) sampleToX (sample);
         if (x < -1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
         x = juce::jlimit (1.0f, (float) plotWidth() - 1.0f, x);
-        const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 8.0f;
+        const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
         auto rr = side > 0 ? juce::Rectangle<float> (x, y, w, kTabH) : juce::Rectangle<float> (x - w, y, w, kTabH);
         // que no se salga del gráfico (pegada al borde, se da vuelta)
         if (rr.getRight() > (float) plotWidth()) rr.setX (x - w);
@@ -826,7 +826,7 @@ private:
             const bool hot = isDraggingTab (id) || rr.expanded (2.0f).contains (hoverPoint);
             const juce::Colour base = loopTab ? juce::Colour (0xffe0782f) : juce::Colour (0xffd9dee5);
             g.setColour (hot ? base.brighter (0.25f) : base.withAlpha (0.92f));
-            g.fillRoundedRectangle (rr, 2.0f);
+            g.fillRoundedRectangle (rr, 3.0f);
             g.setColour (juce::Colour (0xff15181c));
             g.setFont (tabFont());
             g.drawText (tabText (id), rr, juce::Justification::centred);
@@ -1299,7 +1299,9 @@ private:
         if (pass == 0) return;
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
         g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
-        g.drawText (title + (active ? "  (playing)" : ""), r.reduced (8, 4), juce::Justification::topLeft);
+        // el título ocupa la mitad de arriba de los 40 libres (la de abajo es de las pestañas)
+        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + 8.0f, (float) r.getY(), (float) r.getWidth() - 16.0f, 20.0f),
+                    juce::Justification::centredLeft);
     }
 
     void renderCache()
