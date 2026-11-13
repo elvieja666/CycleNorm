@@ -1056,25 +1056,15 @@ private:
 
         // zona salteada con Skip: fondo apenas distinto y una línea donde empieza a normalizar
         const float skipX = greyUntil > 0 ? (float) r.getX() + (float) sampleToX ((double) greyUntil) : (float) r.getX();
-        // el fondo siempre igual: lo único que cambia es el color de la onda. Gris oscuro lo que no
-        // suena entero (antes de Start / después de End y lo que toman los fades), gris claro lo que
-        // saltea Skip, y el color del carril el resto
+        // el fondo siempre igual: lo único que cambia es el color de la onda. Gris oscuro lo de antes
+        // de Start, gris claro lo que saltea Skip, y el color del carril el resto (después de End: su
+        // color, oscurecido encima)
         auto xOf = [&] (size_t smp) { return (float) r.getX() + (float) sampleToX ((double) smp); };
         float darkBefore = -1.0e9f, darkAfter = 1.0e9f, darkUntil = 1.0e9f; // (después de End: su color, oscurecido encima)
         if (totalLen() > 0)
         {
-            if (showSkipLine) // el procesado: con los fades
-            {
-                darkBefore = xOf (fadeEndSample());
-                darkAfter = hasFadeOutHandle() ? xOf (fadeOutStartSample()) : xOf (endOrLen());
-            }
-            else
-            {
-                darkBefore = xOf (startSample);
-                darkAfter = xOf (endOrLen());
-            }
-            darkUntil = xOf (endOrLen());
-            if (darkAfter >= darkUntil) darkAfter = 1.0e9f;
+            // (los fades van del color que les toca: azul, o gris claro si caen en lo salteado)
+            darkBefore = xOf (startSample);
         }
         const juce::Colour kDark (0xff3c4048), kLight (0xff8f98a6);
 
