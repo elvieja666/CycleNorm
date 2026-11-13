@@ -58,7 +58,6 @@ public:
     void clear() { setData (nullptr, nullptr, {}, 44100.0, true); }
     void refresh() { dirty = true; repaint(); }
     // el audio se estiró (re-pitch): la vista se estira igual, así se sigue viendo la misma parte del sonido
-    void scaleView (double factor) { viewStart *= factor; viewLen *= factor; clampView(); dirty = true; repaint(); }
     void setMarkers (std::vector<size_t> cycleBounds) { bounds = std::move (cycleBounds); dirty = true; repaint(); }
     // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirtyProc = true; repaint(); } }
@@ -354,16 +353,6 @@ public:
             onSkipDragged (0);
             return;
         }
-        // dos líneas pegadas (por ejemplo Skip al lado de End): se decide cuál agarrar según para
-        // dónde arrastrás (a la izquierda, la de la izquierda; a la derecha, la de la derecha)
-        ambiguousLines.clear();
-        if (line != 0 && line != 5 && nearLines.size() > 1)
-        {
-            ambiguousLines = nearLines;
-            ambiguousDownX = e.position.x;
-            ambiguousDownY = e.position.y;
-            return;
-        }
         draggingSkip = line == 1;
         draggingEnd = line == 2;
         draggingStart = line == 6;
@@ -391,25 +380,6 @@ public:
         }
         if (draggingFade) { dragFadeTo (e.position.x); return; }
         if (draggingFadeOut) { dragFadeOutTo (e.position.x); return; }
-        if (! ambiguousLines.empty())
-        {
-            const float dx = e.position.x - ambiguousDownX;
-            if (std::abs (dx) < 2.0f) return;
-            int line = dx < 0 ? ambiguousLines.front() : ambiguousLines.back();
-            // Start y Skip pegadas, arrastrando a la derecha: arriba agarra Start (y empuja a Skip), abajo Skip
-            const bool hasStart = ambiguousLines.front() == 6, hasSkip = std::find (ambiguousLines.begin(), ambiguousLines.end(), 1) != ambiguousLines.end();
-            if (dx > 0 && hasStart && hasSkip)
-            {
-                const float laneTop = getHeight() / 2.0f, laneMid = laneTop + (getHeight() - laneTop) / 2.0f;
-                line = ambiguousDownY < laneMid ? 6 : 1;
-                if (line == 1 && ambiguousLines.back() != 1) line = ambiguousLines.back();
-            }
-            ambiguousLines.clear();
-            draggingSkip = line == 1;
-            draggingEnd = line == 2;
-            draggingStart = line == 6;
-            draggingLoop = (line >= 3 && line <= 5) ? line : 0;
-        }
         if (draggingStart) { dragStartTo (e.position.x); return; }
         if (draggingSkip) { dragSkipTo (e.position.x); return; }
         if (draggingEnd) { dragEndTo (e.position.x); return; }
@@ -423,7 +393,6 @@ public:
             onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
         if (pitchDragArmed && ! pitchDragging && totalLen() > 0 && onSeek) // clic sobre la línea sin arrastrar: mover el cursor
             onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
-        ambiguousLines.clear();
         pitchDragArmed = pitchDragging = false;
         pendingLoopMove = movingLoop = false;
         draggingSkip = draggingEnd = draggingStart = draggingFade = draggingFadeOut = false;
@@ -494,8 +463,6 @@ private:
     juce::Rectangle<float> showAllArea;            // "Show all" (con zoom)
     juce::Point<float> hoverPoint { -1.0f, -1.0f };
     bool showAllClicked = false;
-    std::vector<int> ambiguousLines; // líneas pegadas: se elige al arrastrar
-    float ambiguousDownX = 0.0f, ambiguousDownY = 0.0f;
     float cacheScale = 1.0f;
     bool dirty = true;      // rehacer toda la imagen de las ondas
     bool dirtyProc = false; // rehacer sólo el carril de abajo (el procesado cambió)
@@ -795,34 +762,11 @@ private:
     {
         if (const int t = tabAt (p)) return { t }; // (con pestañas no hay líneas pegadas que elegir)
         return {};
-        std::vector<int> v;
-        if (p.y < getHeight() / 2.0f) return v;
-        auto near = [&] (float d) { return d <= 6.0f; };
-        if (hasStartLine() && startLineVisible() && near (std::abs (p.x - startLineX()))) v.push_back (6);
-        if (hasSkipLine() && near (std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))))) v.push_back (1);
-        if (hasLoop() && xVisible ((double) loopStart) && near (std::abs (p.x - (float) sampleToX ((double) loopStart)))) v.push_back (3);
-        if (hasLoop() && xVisible ((double) loopEnd) && near (std::abs (p.x - (float) sampleToX ((double) loopEnd)))) v.push_back (4);
-        if (hasEndLine() && endLineVisible() && near (std::abs (p.x - endLineX()))) v.push_back (2);
-        return v;
     }
     int whichLine (juce::Point<float> p) const
     {
         if (p.y < getHeight() / 2.0f) return 0; // solo en el carril de abajo (procesado)
         return tabAt (p); // cada línea se agarra sólo de su pestaña
-        // la manija del crossfade: el cuadradito de abajo de todo
-        if (hasLoop() && onXfadeDragged != nullptr && p.y >= (float) getHeight() - 26.0f
-            && std::abs (p.x - xfadeHandleX()) <= 9.0f && xVisible ((double) (loopEnd - std::min (xfadeLen, loopEnd))))
-            return 5;
-        const float dS = hasSkipLine() ? std::abs (p.x - std::max (1.0f, (float) sampleToX (skipLineSample()))) : 1e9f;
-        const float dE = (hasEndLine() && endLineVisible()) ? std::abs (p.x - endLineX()) : 1e9f;
-        const float dLs = (hasLoop() && xVisible ((double) loopStart)) ? std::abs (p.x - (float) sampleToX ((double) loopStart)) : 1e9f;
-        const float dLe = (hasLoop() && xVisible ((double) loopEnd)) ? std::abs (p.x - (float) sampleToX ((double) loopEnd)) : 1e9f;
-        const float dSt = (hasStartLine() && startLineVisible()) ? std::abs (p.x - startLineX()) : 1e9f;
-        const float d[5] = { dS, dE, dLs, dLe, dSt };
-        int best = 0;
-        for (int k = 1; k < 5; ++k) if (d[k] < d[best]) best = k;
-        if (d[best] > 6.0f) return 0;
-        return best == 4 ? 6 : best + 1;
     }
     // ---- Manijas: cada línea se agarra sólo de su pestaña (con su nombre), y cada una tiene su franja:
     //      arriba Start / End (1ª fila) y los fades (2ª fila); abajo Skip / crossfade (1ª fila desde abajo)
@@ -1128,7 +1072,7 @@ private:
         // de Start, gris claro lo que saltea Skip, y el color del carril el resto (después de End: su
         // color, oscurecido encima)
         auto xOf = [&] (size_t smp) { return (float) r.getX() + (float) sampleToX ((double) smp); };
-        float darkBefore = -1.0e9f, darkAfter = 1.0e9f, darkUntil = 1.0e9f; // (después de End: su color, oscurecido encima)
+        float darkBefore = -1.0e9f; // (después de End: su color, oscurecido encima)
         if (totalLen() > 0)
         {
             // (los fades van del color que les toca: azul, o gris claro si caen en lo salteado)
@@ -1168,12 +1112,10 @@ private:
                     g.setColour (c);
                     g.strokePath (p, juce::PathStrokeType (1.3f));
                 };
-                const float g0 = juce::jmax (darkBefore, juce::jmin (greyBefore, darkAfter));
+                const float g0 = juce::jmax (darkBefore, greyBefore);
                 strokeIn (L, darkBefore, kDark);
                 strokeIn (darkBefore, g0, kLight);
-                strokeIn (g0, darkAfter, waveColour);
-                strokeIn (darkAfter, darkUntil, kDark);
-                strokeIn (juce::jmax (darkUntil, g0), R, waveColour);
+                strokeIn (g0, R, waveColour);
             }
             else
             {
@@ -1202,7 +1144,7 @@ private:
                     const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
                     const juce::Rectangle<float> cr { (float) r.getX() + (float) x * colW, y0, colW, juce::jmax (0.6f, y1 - y0) };
                     const float cx = cr.getX() + colW * 0.5f;
-                    (cx < darkBefore || (cx >= darkAfter && cx < darkUntil) ? darkPeaks : (cx < greyBefore ? greyPeaks : peaks)).addWithoutMerging (cr);
+                    (cx < darkBefore ? darkPeaks : (cx < greyBefore ? greyPeaks : peaks)).addWithoutMerging (cr);
                 }
                 g.fillRectList (peaks);
                 if (! greyPeaks.isEmpty()) { g.setColour (kLight); g.fillRectList (greyPeaks); }
@@ -1212,25 +1154,8 @@ private:
 
         if (buf != nullptr && buf->getNumSamples() > 0 && viewLen > 0)
         {
-            const bool columns = viewLen / juce::jmax (1, juce::jmin (r.getWidth(), plotWidth())) >= 1.0;
-            if (pass == 1) {}
-            else if (true)
+            if (pass == 0)
                 drawWave (col, greyUntil > 0 ? skipX : -1.0e9f); // todo en una pasada (los colores por zona)
-            else if (columns)
-            {
-                {   // las ondas salteadas, en el gris del original
-                    juce::Graphics::ScopedSaveState ss (g);
-                    g.reduceClipRegion (juce::Rectangle<float> ((float) r.getX(), (float) r.getY(), skipX - (float) r.getX(), (float) r.getHeight()).getSmallestIntegerContainer());
-                    drawWave (juce::Colour (0xff8f98a6));
-                }
-                {
-                    juce::Graphics::ScopedSaveState ss (g);
-                    g.reduceClipRegion (juce::Rectangle<float> (skipX, (float) r.getY(), (float) r.getRight() - skipX, (float) r.getHeight()).toNearestInt());
-                    drawWave (col);
-                }
-            }
-            else
-                drawWave (col);
             if (pass == 0) return; // lo que sigue va encima de la imagen (paint)
 
             if (showSkipLine)

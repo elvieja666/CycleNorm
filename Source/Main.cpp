@@ -741,11 +741,6 @@ public:
         info.setJustificationType (juce::Justification::centredLeft); // la info del loop, desde la línea de al lado de Loop section
         info.setBorderSize ({});
         addAndMakeVisible (info);
-        pitchLabel.setColour (juce::Label::textColourId, kAccent);
-        pitchLabel.setFont (Theme::font (12.5f, 400));
-        pitchLabel.setJustificationType (juce::Justification::centredLeft);
-        pitchLabel.setBorderSize ({});
-        addChildComponent (pitchLabel); // (oculto: el renglón del pitch ahora va dentro del visor Original)
 
         dragOut.makeFile = [this] { return writeForDrag(); };
         addAndMakeVisible (dragOut);
@@ -831,15 +826,12 @@ public:
         g.setColour (juce::Colours::black.withAlpha (0.10f));
         for (int x : groupDividers) g.fillRect ((float) x, (float) buttonRowY, 1.0f, (float) buttonRowH);
         if (groupDividersRight > 0) g.fillRect ((float) groupDividersRight, (float) buttonRowY, 1.0f, (float) buttonRowH);
-        // separador fino debajo de la fila de botones
-        g.setColour (juce::Colours::black.withAlpha (0.07f));
-        g.fillRect (juce::Rectangle<float> ((float) titleArea.getX(), (float) separatorY, (float) titleArea.getWidth(), 1.0f));
     }
 
     // Medidas del diseño base de UNISON (después toda la ventana se achica al 80,3 %, como UNISON):
     // márgenes de 20, fila del título de 38 (título de 14 de alto de mayúsculas), botones de 33 de
     // alto visible con letra de 14, barras de 24 de alto (las pastillas de UNISON), visor con margen de 7.
-    static constexpr int kMargin = 20, kTitleH = 38, kButtonH = 33, kPillH = 24, kGap = 8;
+    static constexpr int kMargin = 20, kButtonH = 33, kPillH = 24, kGap = 8;
     static constexpr float kTitleCap = 14.0f;
 
     void resized() override
@@ -918,14 +910,7 @@ public:
         loopInfoX = loopButton.getX() + 4; // la info del loop arranca en el borde izquierdo (visible) de Loop section
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
-        separatorY = -10; // (sin la rayita de abajo de los botones: el visor ya separa)
-        // abajo de todo, a la izquierda: el renglón del pitch medido (25)
-        {
-            auto foot = getLocalBounds().withTrimmedLeft (kMargin).withTrimmedRight (kMargin).removeFromBottom (20);
-            pitchLabel.setBounds (foot.withSizeKeepingCentre (foot.getWidth(), 16));
-        }
-        // el visor: el recuadro negro de 75 a 625 (550), con el margen del osciloscopio de UNISON (7) a los
-        // costados; adentro, los dos visores de 250 (+ 1 de borde cada uno), centrados
+        // el visor: el recuadro negro de 100 a 630 (530), a 20 de los costados; abajo quedan 20 libres
         waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, 530); // a 20 de los dos costados
         wave.setBounds (waveArea); // de borde a borde del recuadro // dos visores de 265: 40 + 185 (la onda) + 40 cada uno; a la derecha, hasta el borde (el teclado de 40)
     }
@@ -1060,12 +1045,11 @@ private:
     std::vector<EditState> undoStack, redoStack;
     EditState lastState;
     bool haveLastState = false;
-    juce::Label amountLabel, rampLabel, info, pitchLabel, pitchShiftLabel;
+    juce::Label amountLabel, rampLabel, info, pitchShiftLabel;
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
     juce::Rectangle<int> titleArea, controlsArea;
-    int separatorY = 0;
     juce::Rectangle<int> waveArea, fileName, titleRest;
     int pitchInfoX = 0, loopInfoX = 0;
     juce::StringArray loopInfoVals; // los números de la info del loop (se dibujan con lugar fijo)
@@ -1313,12 +1297,12 @@ private:
         for (int ch = 0; ch < out->getNumChannels(); ++ch)
         {
             auto* d = out->getWritePointer (ch);
-            const auto* src = it.original->getReadPointer (ch);
+            const auto* in = src.getReadPointer (ch);
             const int n = out->getNumSamples();
             float pk = 0.0f;
             for (int i = 0; i < n; ++i)
             {
-                d[i] = src[i] * curve[(size_t) i];
+                d[i] = in[i] * curve[(size_t) i];
                 pk = juce::jmax (pk, std::abs (d[i]));
             }
             peak = juce::jmax (peak, pk);
@@ -1810,7 +1794,6 @@ private:
         if (! juce::isPositiveAndBelow (current, (int) items.size()))
         {
             info.setText ({}, juce::dontSendNotification);
-            pitchLabel.setText ({}, juce::dontSendNotification);
             return;
         }
         auto& it = *items[(size_t) current];
@@ -1979,7 +1962,6 @@ private:
         const auto sus = line (cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite()), false);
         const bool inLoop = loopActive (it);
         const auto lp = inLoop ? line (cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8), true) : juce::String();
-        pitchLabel.setText (inLoop ? lp : sus, juce::dontSendNotification);
         wave.setPitchInfo (sus, juce::Colour (0xff8b9096), lp, kAccent); // (se muestran en el visor Original)
         layoutTitleRow();
     }
