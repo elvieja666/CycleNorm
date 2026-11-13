@@ -640,11 +640,12 @@ public:
         wave.onSeek = [this] (double s) { transport.setPosition (s); wave.repaint(); };
         wave.getPitchCents = [this] { return pitchShift.getValue(); };
         wave.onPitchDragged = [this] (double cents) { pitchShift.setValue (cents, juce::sendNotificationSync); };
+        // la referencia de la línea celeste (la pildorita de los cents, el imán y las teclas del piano):
+        // siempre el sustain, como la curva; prender o apagar el loop no la cambia
         wave.getPitchReference = [this] {
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return 0.0;
             const auto& it = *items[(size_t) current];
-            bool inLoop = false;
-            const auto p = pitchOf (it, readSettings(), inLoop);
+            const auto p = cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite());
             return p.valid ? p.midi + (pitchShift.getValue() / 100.0 - it.tuneSemis) : 0.0;
         };
         wave.maxSkip = kMaxSkip;
