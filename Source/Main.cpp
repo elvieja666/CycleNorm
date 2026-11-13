@@ -759,7 +759,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (948, 650); // (diseño base: 948 x 650; la ventana lo muestra al 80,3 %, como UNISON)
+        setSize (948, 610); // (diseño base: 948 x 610; la ventana lo muestra al 80,3 %, como UNISON)
         updateButtons();
         startTimerHz (60);
     }
@@ -870,7 +870,7 @@ public:
 
     void resized() override
     {
-        // altos (diseño de 650): barra de arriba 100 · recuadro del visor 530 (dos visores de 265: 40 + 185 + 40) · renglón 20
+        // altos (diseño de 610): barra de arriba 100 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · renglón 20
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
@@ -946,8 +946,11 @@ public:
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
         // el visor: el recuadro negro de 100 a 630 (530), a 20 de los costados; abajo quedan 20 libres
-        waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, 530); // a 20 de los dos costados
-        wave.setBounds (waveArea); // de borde a borde del recuadro // dos visores de 265: 40 + 185 (la onda) + 40 cada uno; a la derecha, hasta el borde (el teclado de 40)
+        waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, 490); // a 20 de los dos costados
+        // el visor arma dos carriles de 265 (40 + 185 + 40); los 20 de más arriba y de más abajo quedan
+        // vacíos y no se ven: el componente sobresale 20 arriba y abajo del recuadro (recorta y no
+        // recibe clics ahí)
+        wave.setBounds (waveArea.expanded (0, WaveformView::kHiddenPad)); // de borde a borde del recuadro // dos visores de 265: 40 + 185 (la onda) + 40 cada uno; a la derecha, hasta el borde (el teclado de 40)
     }
 
     bool keyPressed (const juce::KeyPress& k) override
@@ -2351,7 +2354,7 @@ private:
     {
         static constexpr float kScale = 1.05f * 497.0f / 650.0f; // la escala de UNISON (≈ 0,803)
         ScaledHolder() { addAndMakeVisible (content); }
-        int designW = 948, designH = 650;
+        int designW = 948, designH = 610;
         // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
         // la proporción; el tamaño por defecto (80,3 %) es el mínimo
         void resized() override
@@ -2381,7 +2384,7 @@ private:
             content = &holder->content;
             const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "948").getIntValue(); // (948: entre secciones 20 visibles, también de Option N a Drag to DAW)
             holder->designW = designW;
-            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (650 * ScaledHolder::kScale);
+            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (610 * ScaledHolder::kScale);
             holder->setSize (w0, h0); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);

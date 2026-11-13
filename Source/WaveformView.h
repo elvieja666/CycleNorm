@@ -142,7 +142,7 @@ public:
     {
         {   // el visor va de borde a borde del recuadro (redondeado): se recorta con sus esquinas
             juce::Path clip;
-            clip.addRoundedRectangle (getLocalBounds().toFloat(), 12.0f);
+            clip.addRoundedRectangle (visibleBounds().toFloat(), 12.0f);
             g.reduceClipRegion (clip);
         }
         // la imagen se arma a la resolución real de la pantalla (Retina = el doble de píxeles), así no se ve borrosa
@@ -198,7 +198,7 @@ public:
     {
         showAllArea = {};
         if (totalLen() == 0) return;
-        const auto b = getLocalBounds().toFloat();
+        const auto b = visibleBounds().toFloat();
         const double total = (double) totalLen();
         if (viewStart > 0.5 || viewLen < total - 0.5)
         {
@@ -226,7 +226,7 @@ public:
         auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (font, t); };
         const juce::String showAll ("Show all");
         const float sw = wOf (showAll);
-        const float right = (float) plotWidth() - 5.0f, top = 1.0f;
+        const float right = (float) plotWidth() - 5.0f, top = (float) kHiddenPad + 1.0f; // la mitad de abajo de los 40 (la de arriba no se ve)
         // cada número en un lugar del ancho de "100": al pasar de 0 a 100 no se mueve ningún texto
         const float numW = wOf ("100");
         const juce::String pieces[] = { "Zoom  X ", pct (hf, hmax), dot + "Y ", pct (vf, vmax), dot };
@@ -260,6 +260,10 @@ public:
     }
 
     void resized() override { dirty = true; }
+    // lo que se ve: sin los 20 vacíos de arriba (Original) y de abajo (Processed)
+    static constexpr int kHiddenPad = 20;
+    juce::Rectangle<int> visibleBounds() const { return getLocalBounds().reduced (0, kHiddenPad); }
+    bool hitTest (int x, int y) override { return visibleBounds().contains (x, y); }
 
     void mouseMove (const juce::MouseEvent& e) override
     {
@@ -1320,9 +1324,11 @@ private:
         if (pass == 0) return;
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
         g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
-        // el título ocupa la mitad de arriba de los 40 libres (la de abajo es de las pestañas)
+        // Processed: el título en la mitad de arriba de los 40 libres (la de abajo es de las pestañas);
+        // Original: en la de abajo (la de arriba no se ve)
         // a 5 del borde izquierdo (lo mismo que hay arriba hasta las mayúsculas), medido a la letra
-        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + (float) plotLeft() + 5.0f - leftBearing (g.getCurrentFont(), title), (float) r.getY() + 1.0f, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
+        const float titleY = (float) r.getY() + (r.getY() == topLaneRect().getY() ? (float) kHiddenPad : 0.0f) + 1.0f;
+        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + (float) plotLeft() + 5.0f - leftBearing (g.getCurrentFont(), title), titleY, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
                     juce::Justification::centredLeft);
         if (! showSkipLine && pitchInfo.isNotEmpty()) // el Original: el pitch medido, debajo de la onda (mismo tamaño que el título)
         {
