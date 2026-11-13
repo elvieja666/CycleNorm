@@ -765,7 +765,8 @@ private:
     //      arriba Start / End (1ª fila) y los fades (2ª fila); abajo Skip / crossfade (1ª fila desde abajo)
     //      y las puntas del loop (2ª). Así, aunque dos líneas estén pegadas, sus pestañas no se pisan.
     // id: 1 Skip, 2 End, 3 inicio del loop, 4 fin del loop, 5 crossfade, 6 Start, 7 fade in, 8 fade out
-    static constexpr float kTabH = 15.0f;
+    static constexpr float kTabH = 9.0f;
+    static juce::Font tabFont() { return uiFont (6.8f); }
     static juce::String tabText (int id)
     {
         switch (id) { case 1: return "Skip"; case 2: return "End"; case 3: return "Loop"; case 4: return "Loop end";
@@ -777,22 +778,27 @@ private:
         if (totalLen() == 0) return {};
         const auto lane = procLaneRect().toFloat();
         double sample = 0; int side = 1; float y = 0;
+        // las dos líneas de 0 dB del procesado (como las dibuja drawLane): cada pestaña a 1 px de una
+        const float mid = (float) procLaneRect().getCentreY(), half = juce::jmax (10.0f, (lane.getHeight() - 80.0f) * 0.5f);
+        const float topLine = (float) (int) (mid - half), botLine = (float) (int) (mid + half);
         switch (id)
         {
-            case 6: if (! hasStartLine()) return {}; sample = (double) startSample; side = 1;  y = lane.getY() + 22.0f; break;
-            case 2: if (! hasEndLine()) return {};   sample = (double) endOrLen();  side = -1; y = lane.getY() + 22.0f; break;
-            case 7: if (! hasFadeHandle()) return {};    sample = (double) fadeEndSample();      side = 1;  y = lane.getY() + 22.0f + kTabH + 5.0f; break;
-            case 8: if (! hasFadeOutHandle()) return {}; sample = (double) fadeOutStartSample(); side = -1; y = lane.getY() + 22.0f + kTabH + 5.0f; break;
-            case 1: if (! hasSkipLine()) return {}; sample = skipLineSample(); side = 1; y = lane.getBottom() - 6.0f - kTabH; break;
-            case 5: if (! hasLoop() || onXfadeDragged == nullptr) return {}; sample = (double) (loopEnd - std::min (xfadeLen, loopEnd)); side = -1; y = lane.getBottom() - 6.0f - kTabH; break;
-            case 3: if (! hasLoop()) return {}; sample = (double) loopStart; side = 1;  y = lane.getBottom() - 11.0f - 2.0f * kTabH; break;
-            case 4: if (! hasLoop()) return {}; sample = (double) loopEnd;   side = -1; y = lane.getBottom() - 11.0f - 2.0f * kTabH; break;
+            // arriba de la línea de arriba: Start / End; abajo de ella: los fades.
+            // arriba de la línea de abajo: las puntas del loop; abajo de ella: Skip / Xfade. (1 px de aire)
+            case 6: if (! hasStartLine()) return {}; sample = (double) startSample; side = 1;  y = topLine - 1.0f - kTabH; break;
+            case 2: if (! hasEndLine()) return {};   sample = (double) endOrLen();  side = -1; y = topLine - 1.0f - kTabH; break;
+            case 7: if (! hasFadeHandle()) return {};    sample = (double) fadeEndSample();      side = 1;  y = topLine + 2.0f; break;
+            case 8: if (! hasFadeOutHandle()) return {}; sample = (double) fadeOutStartSample(); side = -1; y = topLine + 2.0f; break;
+            case 1: if (! hasSkipLine()) return {}; sample = skipLineSample(); side = 1; y = botLine + 2.0f; break;
+            case 5: if (! hasLoop() || onXfadeDragged == nullptr) return {}; sample = (double) (loopEnd - std::min (xfadeLen, loopEnd)); side = -1; y = botLine + 2.0f; break;
+            case 3: if (! hasLoop()) return {}; sample = (double) loopStart; side = 1;  y = botLine - 1.0f - kTabH; break;
+            case 4: if (! hasLoop()) return {}; sample = (double) loopEnd;   side = -1; y = botLine - 1.0f - kTabH; break;
             default: return {};
         }
         float x = (float) sampleToX (sample);
         if (x < -1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
         x = juce::jlimit (1.0f, (float) plotWidth() - 1.0f, x);
-        const float w = juce::GlyphArrangement::getStringWidth (uiFont (10.5f), tabText (id)) + 12.0f;
+        const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 8.0f;
         auto rr = side > 0 ? juce::Rectangle<float> (x, y, w, kTabH) : juce::Rectangle<float> (x - w, y, w, kTabH);
         // que no se salga del gráfico (pegada al borde, se da vuelta)
         if (rr.getRight() > (float) plotWidth()) rr.setX (x - w);
@@ -820,9 +826,9 @@ private:
             const bool hot = isDraggingTab (id) || rr.expanded (2.0f).contains (hoverPoint);
             const juce::Colour base = loopTab ? juce::Colour (0xffe0782f) : juce::Colour (0xffd9dee5);
             g.setColour (hot ? base.brighter (0.25f) : base.withAlpha (0.92f));
-            g.fillRoundedRectangle (rr, 3.0f);
+            g.fillRoundedRectangle (rr, 2.0f);
             g.setColour (juce::Colour (0xff15181c));
-            g.setFont (uiFont (10.5f));
+            g.setFont (tabFont());
             g.drawText (tabText (id), rr, juce::Justification::centred);
         }
     }
