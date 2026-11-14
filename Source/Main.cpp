@@ -122,9 +122,8 @@ public:
         return r;
     }
     // la forma del botón grande PRE / POST FX de UNISON (esquinas suaves, no píldora): radio 18 sobre 74 de alto
-    static float bigCorner (float height) { return height * 18.0f / 74.0f; }
     // la misma curvatura en todas las píldoras: la del transporte (33 de alto -> radio ≈ 8)
-    static float pillCorner (float height) { return juce::jmin (bigCorner (33.0f), height * 0.5f); }
+    static float pillCorner (float) { return 0.0f; } // (sin curvas: todo con esquinas rectas)
 
     juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (14.0f, 400); } // como Measure / Bypass / Scope
 
@@ -182,7 +181,7 @@ public:
             }
             else if (icon == "stop")
             {
-                g.fillRoundedRectangle (juce::Rectangle<float> (s * 0.95f, s * 0.95f).withCentre (c), 1.5f);
+                g.fillRect (juce::Rectangle<float> (s * 0.95f, s * 0.95f).withCentre (c));
             }
             else // loop de escucha: flecha en círculo
             {
@@ -833,7 +832,7 @@ public:
         }
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
         g.setColour (Theme::darkBg);
-        g.fillRoundedRectangle (waveArea.toFloat(), 12.0f); // esquinas redondeadas (como al principio)
+        g.fillRect (waveArea); // esquinas rectas
         // divisores finos entre los grupos de botones
         g.setColour (juce::Colours::black.withAlpha (0.10f));
         for (int x : groupDividers) g.fillRect ((float) x, (float) buttonRowY, 1.0f, (float) buttonRowH);
@@ -2291,7 +2290,7 @@ private:
     {
         if (! juce::isPositiveAndBelow (row, (int) items.size())) return;
         auto& it = *items[(size_t) row];
-        if (selected) Theme::drawRaised (g, juce::Rectangle<float> (3.0f, 2.0f, (float) w - 6.0f, (float) h - 5.0f), 8.0f, false, false);
+        if (selected) Theme::drawRaised (g, juce::Rectangle<float> (3.0f, 2.0f, (float) w - 6.0f, (float) h - 5.0f), 0.0f, false, false);
         g.setColour (selected ? Theme::accent : Theme::ink);
         g.setFont (Theme::font (13.0f, selected ? 500 : 400));
         g.drawText (it.file.getFileName(), 10, 2, w - 16, h / 2, juce::Justification::bottomLeft, true);

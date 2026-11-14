@@ -139,11 +139,7 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        {   // el visor va de borde a borde del recuadro (redondeado): se recorta con sus esquinas
-            juce::Path clip;
-            clip.addRoundedRectangle (visibleBounds().toFloat(), 12.0f);
-            g.reduceClipRegion (clip);
-        }
+        g.reduceClipRegion (visibleBounds()); // el visor: de borde a borde del recuadro (esquinas rectas)
         // la imagen se arma a la resolución real de la pantalla (Retina = el doble de píxeles), así no se ve borrosa
         const float scale = juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
         const int pw = juce::roundToInt ((float) getWidth() * scale), ph = juce::roundToInt ((float) getHeight() * scale);
@@ -203,10 +199,10 @@ public:
         {
             const auto track = juce::Rectangle<float> (b.getX() + 6.0f, b.getBottom() - 4.0f, b.getWidth() - 12.0f, 3.0f);
             g.setColour (juce::Colours::white.withAlpha (0.08f));
-            g.fillRoundedRectangle (track, 1.5f);
+            g.fillRect (track);
             g.setColour (juce::Colours::white.withAlpha (0.45f));
-            g.fillRoundedRectangle (track.withX (track.getX() + (float) (viewStart / total) * track.getWidth())
-                                         .withWidth (juce::jmax (4.0f, (float) (viewLen / total) * track.getWidth())), 1.5f);
+            g.fillRect (track.withX (track.getX() + (float) (viewStart / total) * track.getWidth())
+                                         .withWidth (juce::jmax (4.0f, (float) (viewLen / total) * track.getWidth())));
         }
         // arriba a la derecha del visor Original (en la franja del título): siempre "Zoom X n · Y n"
         // (sin zoom: 0); con zoom, además "Show all", que se clickea y vuelve a mostrar todo
@@ -590,7 +586,7 @@ private:
             const auto tag = juce::Rectangle<float> (right - tw, y - 8.0f, tw, 16.0f);
             pitchTagArea = tag; // (también se agarra de acá para mover el pitch)
             g.setColour (juce::Colour (0xff6fd6ff));
-            g.fillRoundedRectangle (tag, 8.0f);
+            g.fillRect (tag);
             g.setColour (juce::Colour (0xff0b0c0e));
             g.drawText (t, tag, juce::Justification::centred);
             return;
@@ -659,7 +655,7 @@ private:
                 if (isBlack (m))
                 {
                     g.setColour (m == refNote ? juce::Colour (0xff2f9fd0) : juce::Colour (0xff1c1f24));
-                    g.fillRoundedRectangle (juce::Rectangle<float> (kbX, y0, kbW * 0.6f, y1 - y0).reduced (0.0f, 0.5f), 1.5f);
+                    g.fillRect (juce::Rectangle<float> (kbX, y0, kbW * 0.6f, y1 - y0).reduced (0.0f, 0.5f));
                     // el borde entre las dos blancas pasa por el medio de la negra
                     g.setColour (juce::Colour (0x40000000));
                     g.fillRect (juce::Rectangle<float> (kbX + kbW * 0.6f, std::round (yc) - 0.5f, kbW * 0.4f, 1.0f));
@@ -868,7 +864,7 @@ private:
             const bool hot = isDraggingTab (id) || rr.expanded (2.0f).contains (hoverPoint);
             const juce::Colour base = loopTab ? juce::Colour (0xffe0782f) : juce::Colour (0xffd9dee5);
             g.setColour (hot ? base.brighter (0.25f) : base.withAlpha (0.92f));
-            g.fillRoundedRectangle (rr, 3.0f);
+            g.fillRect (rr);
             g.setColour (juce::Colour (0xff15181c));
             g.setFont (tabFont());
             g.drawText (tabText (id), rr, juce::Justification::centred);
