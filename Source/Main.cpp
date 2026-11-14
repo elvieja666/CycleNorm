@@ -731,7 +731,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (928, 567); // (diseño base: 928 x 567, al 100 %)
+        setSize (928, 572); // (diseño base: 928 x 572, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -828,16 +828,16 @@ public:
     // Medidas del diseño base de UNISON (después toda la ventana se achica al 80,3 %, como UNISON):
     // márgenes de 20, fila del título de 38 (título de 14 de alto de mayúsculas), botones de 33 de
     // alto visible con letra de 14, barras de 24 de alto (las pastillas de UNISON), visor con margen de 7.
-    static constexpr int kMargin = 10, kButtonH = 20, kPillH = 20;
+    static constexpr int kMargin = 10, kButtonH = 25, kPillH = 25;
     static constexpr float kTitleCap = 14.0f;
 
     void resized() override
     {
-        // altos (diseño de 567): barra de arriba 67 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
+        // altos (diseño de 572): barra de arriba 72 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
-        r.removeFromTop (35);          // los botones: lo visible de 37 a 57 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
+        r.removeFromTop (35);          // los botones: lo visible de 37 a 62 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
         {
             // fila del título: TOOLKIT · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
@@ -2331,7 +2331,7 @@ private:
             setUsingNativeTitleBar (true);
             content = new MainComponent();
             const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "928").getIntValue();
-            content->setSize (w, 567);
+            content->setSize (w, 572);
             setContentOwned (content, true);
             setResizable (false, false);
             centreWithSize (getWidth(), getHeight());
