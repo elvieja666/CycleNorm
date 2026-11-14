@@ -1200,7 +1200,7 @@ private:
                 }
             }
             // lo que queda antes de la línea de Start: oscurecido (no se exporta ni suena)
-            if (hasStartLine() && startLineVisible()) // (en los dos visores)
+            if (hasStartLine() && startLineVisible() && (showSkipLine || startSample > 0)) // (en Original sólo si se movió: si no, sería el borde)
             {
                 const float sx = (float) r.getX() + startLineX();
                 g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
@@ -1305,7 +1305,7 @@ private:
                     }
                 }
             }
-            if (hasEndLine() && endLineVisible()) // (en los dos visores)
+            if (hasEndLine() && endLineVisible() && (showSkipLine || endSample > 0)) // (ídem: en Original sólo si se movió)
             {
                 const float ex = (float) r.getX() + endLineX();
                 {
