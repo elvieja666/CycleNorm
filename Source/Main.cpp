@@ -2348,6 +2348,12 @@ private:
         static constexpr float kScale = 1.0f; // al 100 %: cada línea cae justo en un píxel (nítido)
         ScaledHolder() { addAndMakeVisible (content); }
         int designW = 928, designH = 580;
+        // (si la ventana no tiene justo la proporción, sobra una franja al costado o abajo, fuera del
+        // contenido: ⌥ + clic ahí también vuelve al tamaño por defecto)
+        void mouseDown (const juce::MouseEvent& e) override
+        {
+            if (e.mods.isAltDown() && content.onResetWindowSize) content.onResetWindowSize();
+        }
         // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
         // la proporción; el tamaño por defecto (80,3 %) es el mínimo
         void resized() override
