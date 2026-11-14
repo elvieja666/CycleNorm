@@ -794,6 +794,7 @@ private:
     //      arriba Start / End (1ª fila) y los fades (2ª fila); abajo Skip / crossfade (1ª fila desde abajo)
     //      y las puntas del loop (2ª). Así, aunque dos líneas estén pegadas, sus pestañas no se pisan.
     // id: 1 Skip, 2 End, 3 inicio del loop, 4 fin del loop, 5 crossfade, 6 Start, 7 fade in, 8 fade out
+    static constexpr float kTabBoxH = 16.0f; // el alto de la caja (dentro del lugar de kTabH)
     static constexpr float kTabH = 18.0f; // la mitad de abajo de los 40 libres (menos 1 de aire con la línea y 1 con el título)
     static juce::Font tabFont() { return uiFont (11.0f); }
     static juce::String tabText (int id)
@@ -830,7 +831,8 @@ private:
         const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
         // 1 px de aire con la línea vertical (que ocupa el píxel de x)
         const float lx = std::round (x), xr = lx + 2.0f, xl = lx - 1.0f - w;
-        auto rr = juce::Rectangle<float> (side > 0 ? xr : xl, y, w, kTabH);
+        // la caja es de 16 de alto, centrada en el lugar de 18 (1 menos arriba y 1 menos abajo: el texto no se mueve)
+        auto rr = juce::Rectangle<float> (side > 0 ? xr : xl, y + (kTabH - kTabBoxH) * 0.5f, w, kTabBoxH);
         // que no se salga del gráfico (pegada al borde, se da vuelta)
         if (rr.getRight() > (float) plotWidth()) rr.setX (xl);
         if (rr.getX() < 0.0f) rr.setX (xr);
