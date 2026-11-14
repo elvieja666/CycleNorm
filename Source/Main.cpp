@@ -747,7 +747,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (948, 610); // (diseño base: 948 x 610; la ventana lo muestra al 80,3 %, como UNISON)
+        setSize (948, 600); // (diseño base: 948 x 600; la ventana lo muestra al 80,3 %, como UNISON)
         updateButtons();
         startTimerHz (60);
     }
@@ -856,7 +856,7 @@ public:
 
     void resized() override
     {
-        // altos (diseño de 610): barra de arriba 100 · recuadro del visor 500 (Original 20 + 185 + 40 · Processed 40 + 185 + 30) · 10 abajo
+        // altos (diseño de 600): barra de arriba 100 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
@@ -2326,7 +2326,7 @@ private:
     {
         static constexpr float kScale = 1.05f * 497.0f / 650.0f; // la escala de UNISON (≈ 0,803)
         ScaledHolder() { addAndMakeVisible (content); }
-        int designW = 948, designH = 610;
+        int designW = 948, designH = 600;
         // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
         // la proporción; el tamaño por defecto (80,3 %) es el mínimo
         void resized() override
@@ -2356,7 +2356,7 @@ private:
             content = &holder->content;
             const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "948").getIntValue(); // (948: entre secciones 20 visibles, también de Option N a Drag to DAW)
             holder->designW = designW;
-            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (610 * ScaledHolder::kScale);
+            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (600 * ScaledHolder::kScale);
             holder->setSize (w0, h0); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);
