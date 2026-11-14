@@ -3,34 +3,33 @@
 #include "BinaryData.h"
 
 // ---------------------------------------------------------------------------
-//  Estilo visual (el mismo de UNISON / MeteringAB): controles en gris claro
-//  (en relieve y pastillas), visor de onda en oscuro, azul como color
-//  principal y la letra Inter incluida en la app.
+//  Estilo visual: grises oscuros como Logic Pro (todo plano, bordes finos),
+//  visor en gris más oscuro, azul como color principal y la letra Inter.
 // ---------------------------------------------------------------------------
 namespace Theme
 {
     // Parte de arriba (clara)
-    const juce::Colour topLight   { 0xffe9ebed };     // degradé de arriba...
-    const juce::Colour topDark    { 0xffdcdfe2 };     // ...hacia abajo
-    const juce::Colour ink        { 0xff2b2e33 };     // texto principal
-    const juce::Colour inkStrong  { 0xff23262b };     // números grandes
-    const juce::Colour inkDim     { 0xff6b7078 };     // títulos chicos
-    const juce::Colour inkFaint   { 0xff8b9096 };     // ayudas
-    const juce::Colour pill       { 0xffd3d6da };     // pastillas (menú, Link ID, ms|Sync)
-    const juce::Colour well       { 0xfff1f2f3 };     // recuadros hundidos (números)
-    const juce::Colour raisedTop  { 0xfff8f9fa };     // botones en relieve
-    const juce::Colour raisedBot  { 0xffe6e8ea };
-    const juce::Colour line       { 0xffc3c7cc };     // bordes finos (todo plano, como una herramienta)
-    const juce::Colour track      { 0xffc9ccd1 };     // arco de fondo de la perilla
-    const juce::Colour accent     { 0xff2f74d0 };     // azul sobre fondo claro
-    const juce::Colour good       { 0xff2f74d0 };
+    const juce::Colour topLight   { 0xff2f2f31 };     // degradé de arriba...
+    const juce::Colour topDark    { 0xff2f2f31 };     // ...hacia abajo
+    const juce::Colour ink        { 0xffe0e0e2 };     // texto principal
+    const juce::Colour inkStrong  { 0xfff0f0f2 };     // números grandes
+    const juce::Colour inkDim     { 0xff9c9ca0 };     // títulos chicos
+    const juce::Colour inkFaint   { 0xff6e6e72 };     // ayudas
+    const juce::Colour pill       { 0xff444447 };     // pastillas (menú, Link ID, ms|Sync)
+    const juce::Colour well       { 0xff232325 };     // recuadros hundidos (números)
+    const juce::Colour raisedTop  { 0xff46464a };     // botones en relieve
+    const juce::Colour raisedBot  { 0xff3c3c40 };
+    const juce::Colour line       { 0xff1a1a1c };     // bordes finos (todo plano, como una herramienta)
+    const juce::Colour track      { 0xff3a3a3d };     // arco de fondo de la perilla
+    const juce::Colour accent     { 0xff4a90f0 };     // azul sobre fondo claro
+    const juce::Colour good       { 0xff4a90f0 };
     const juce::Colour bad        { 0xffd04848 };
     const juce::Colour warn       { 0xffe0782f };     // naranja: algo desactivado a propósito (bypass)
-    const juce::Colour preInk     { 0xff6b7078 };     // botón grande en PRE FX (gris)
+    const juce::Colour preInk     { 0xff9c9ca0 };     // botón grande en PRE FX (gris)
 
     // Osciloscopio (oscuro)
-    const juce::Colour darkBg     { 0xff0b0c0e };
-    const juce::Colour darkPanel  { 0xff0f1114 };
+    const juce::Colour darkBg     { 0xff1e1e20 };
+    const juce::Colour darkPanel  { 0xff28282a };
     const juce::Colour chipLine   { 0xff2c3036 };
     const juce::Colour chipText   { 0xff9a9fa6 };
     const juce::Colour darkText   { 0xffd5d7da };
@@ -99,7 +98,7 @@ namespace Theme
     // apretado, apenas más oscuro
     inline void drawRaised (juce::Graphics& g, juce::Rectangle<float> r, float, bool over, bool down)
     {
-        g.setColour (down ? juce::Colour (0xffe2e5e8) : over ? juce::Colour (0xffeff1f3) : raisedTop);
+        g.setColour (down ? raisedBot : over ? raisedTop.brighter (0.08f) : raisedTop);
         g.fillRect (r);
         g.setColour (line);
         g.drawRect (r, 1.0f);

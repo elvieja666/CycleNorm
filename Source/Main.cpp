@@ -140,7 +140,7 @@ public:
             p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
             // plano: fondo claro y borde oscuro (siempre igual); prendido (sonando / loop de escucha)
             // o apretado, sólo el ícono se pone azul
-            g.setColour (down ? juce::Colour (0xffe2e5e8) : over && b.isEnabled() ? juce::Colour (0xffeff1f3) : Theme::raisedTop);
+            g.setColour (down ? Theme::raisedBot : over && b.isEnabled() ? Theme::raisedTop.brighter (0.08f) : Theme::raisedTop);
             g.fillPath (p);
             const auto edge = shape.reduced (0.5f);
             juce::Path outline;

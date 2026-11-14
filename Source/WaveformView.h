@@ -654,7 +654,7 @@ private:
                 if (m == refNote && ! isBlack (m)) { g.setColour (juce::Colour (0xff6fd6ff)); g.fillRect (juce::Rectangle<float> (kbX, y0, kbW, y1 - y0)); }
                 if (isBlack (m))
                 {
-                    g.setColour (m == refNote ? juce::Colour (0xff2f9fd0) : juce::Colour (0xff1c1f24));
+                    g.setColour (m == refNote ? juce::Colour (0xff2f9fd0) : juce::Colour (0xff232325));
                     g.fillRect (juce::Rectangle<float> (kbX, y0, kbW * 0.6f, y1 - y0).reduced (0.0f, 0.5f));
                     // el borde entre las dos blancas pasa por el medio de la negra
                     g.setColour (juce::Colour (0x40000000));
@@ -1070,7 +1070,7 @@ private:
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
         if (pass == 0)
         {
-            g.setColour (juce::Colour (0xff0b0c0e)); // alrededor de las ondas: negro (como la barra de la izquierda)
+            g.setColour (juce::Colour (0xff1e1e20)); // alrededor de las ondas: negro (como la barra de la izquierda)
             g.fillRect (r);
         }
         const float mid = (float) r.getCentreY(), half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f); // la onda en el medio (185) y 40 libres arriba y abajo
@@ -1078,7 +1078,7 @@ private:
         const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
         if (pass == 0) // la franja de la onda (185, entre los 40 de la izquierda y el teclado), apenas más clara
         {
-            g.setColour (juce::Colour (0xff0f1114));
+            g.setColour (juce::Colour (0xff28282a));
             g.fillRect (juce::Rectangle<float> ((float) (r.getX() + plotLeft()), vTop, (float) plotSpan(), vBot - vTop));
         }
 
@@ -1087,10 +1087,10 @@ private:
         else
         {
             // líneas de -6 dB y centro
-            g.setColour (juce::Colour (0xff22262c));
+            g.setColour (juce::Colour (0xff323235));
             g.drawHorizontalLine ((int) (mid - half * 0.5f), (float) r.getX(), (float) r.getRight());
             g.drawHorizontalLine ((int) (mid + half * 0.5f), (float) r.getX(), (float) r.getRight());
-            g.setColour (juce::Colour (0xff2c3138));
+            g.setColour (juce::Colour (0xff3c3c40));
             g.drawHorizontalLine ((int) mid, (float) r.getX(), (float) r.getRight());
         }
 
@@ -1246,7 +1246,7 @@ private:
                 const float px1 = (float) (r.getX() + plotWidth());
                 if (ex < px1)
                 {   // sólo sobre la franja de la onda (alrededor todo negro; el teclado no se oscurece)
-                    g.setColour (juce::Colour (0xcc0e1013));
+                    g.setColour (juce::Colour (0xcc1c1c1e));
                     const float x0 = juce::jmax ((float) (r.getX() + plotLeft()), ex);
                     g.fillRect (juce::Rectangle<float> (x0, vTop, px1 - x0, vBot - vTop));
                 }
@@ -1373,7 +1373,7 @@ private:
         juce::Graphics g (cache);
         g.addTransform (juce::AffineTransform::scale (cacheScale)); // se dibuja en coordenadas normales
 
-        g.fillAll (juce::Colour (0xff0b0c0e));
+        g.fillAll (juce::Colour (0xff1e1e20));
         if (totalLen() == 0)
         {
             g.setColour (juce::Colour (0xff8a919c));
@@ -1401,7 +1401,7 @@ private:
         juce::Graphics g (cache);
         g.addTransform (juce::AffineTransform::scale (cacheScale));
         g.reduceClipRegion (procLaneRect());
-        g.fillAll (juce::Colour (0xff0b0c0e));
+        g.fillAll (juce::Colour (0xff1e1e20));
         const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
         drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
         drawKeyboardStrip (g);
@@ -1412,14 +1412,14 @@ private:
         for (auto lane : { topLaneRect(), procLaneRect() })
         {
             const auto pad = lane.withWidth (plotLeft());
-            g.setColour (juce::Colour (0xff0b0c0e));
+            g.setColour (juce::Colour (0xff1e1e20));
             g.fillRect (pad); // (todo negro: sin rayita de borde)
         }
         auto r = procLaneRect();
         if (plotWidth() < getWidth()) // debajo del teclado: vacío, así las dos ondas terminan en la misma línea
         {
             const auto strip = r.withTrimmedLeft (plotWidth());
-            g.setColour (juce::Colour (0xff0b0c0e));
+            g.setColour (juce::Colour (0xff1e1e20));
             g.fillRect (strip);
         }
     }
