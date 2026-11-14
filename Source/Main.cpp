@@ -570,8 +570,7 @@ public:
 
         setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", 100.0);
         // se cambia arrastrando la línea en el visor; se cuenta en semiciclos (antes en ondas: 1 onda = 2)
-        skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
-                                                                                 : props->getIntValue ("skip", 2) * 2);
+        skipHalves = 0; // (por defecto: desde el principio)
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", 0.0); // (por defecto: 0 %)
         ramp.getProperties().set ("resetValue", 0.0);      // ⌥ + clic: 0 %
         // Amount ya no está en la ventana: lo maneja el botón Normalize (100 % o 0 %)
@@ -1028,7 +1027,7 @@ private:
     StepSlider ramp; // (⌥ + clic = 0 %)
     StepSlider pitchShift;
     static constexpr int kMaxSkip = 512; // semiciclos
-    int skipHalves = 4;
+    int skipHalves = 0;
 
     // deshacer / rehacer: fotos del estado editable (por archivo + los controles globales)
     struct EditState
@@ -1124,7 +1123,6 @@ private:
 
     void saveSettings()
     {
-        props->setValue ("skipHalves", skipHalves);
         props->saveIfNeeded();
     }
 
@@ -1275,7 +1273,7 @@ private:
     }
 
     // los valores por defecto (al abrir la app y con cada sample nuevo): Processed y Normalize
-    // prendidos, Ramp en 0 % y Loop apagado
+    // prendidos, Ramp en 0 %, Skip desde el principio y Loop apagado
     void resetToDefaults()
     {
         abButton.setToggleState (true, juce::dontSendNotification);
@@ -1284,6 +1282,7 @@ private:
         amount.setValue (100.0, juce::dontSendNotification);
         normButton.setToggleState (true, juce::dontSendNotification);
         ramp.setValue (0.0, juce::dontSendNotification);
+        skipHalves = 0; // Skip: desde el principio
         loopButton.setToggleState (false, juce::dontSendNotification);
         source.setRegionLooping (false);
         saveSettings();
