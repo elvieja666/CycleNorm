@@ -587,10 +587,10 @@ public:
         // se cambia arrastrando la línea en el visor; se cuenta en semiciclos (antes en ondas: 1 onda = 2)
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
-        setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
+        setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", 0.0); // (por defecto: 0 %)
         ramp.getProperties().set ("resetValue", 0.0);      // ⌥ + clic: 0 %
         // Amount ya no está en la ventana: lo maneja el botón Normalize (100 % o 0 %)
-        amount.setValue (props->getDoubleValue ("amount", 100.0) >= 50.0 ? 100.0 : 0.0, juce::dontSendNotification);
+        amount.setValue (100.0, juce::dontSendNotification); // (por defecto: Normalize prendido)
         normButton.setToggleState (amount.getValue() >= 50.0, juce::dontSendNotification);
         amount.setVisible (false);
         amountLabel.setVisible (false);
@@ -622,7 +622,7 @@ public:
             }
         };
 
-        loopButton.setToggleState (props->getBoolValue ("loop", false), juce::dontSendNotification);
+        loopButton.setToggleState (false, juce::dontSendNotification); // (por defecto: apagado)
         source.setRegionLooping (loopButton.getToggleState());
         repeatButton.setToggleState (props->getBoolValue ("repeat", false), juce::dontSendNotification);
         source.setLooping (repeatButton.getToggleState());
@@ -1278,6 +1278,7 @@ private:
             for (auto& old : items) forgetUndo (old.get());
             items.clear();
             current = -1;
+            resetToDefaults(); // cada sample nuevo arranca con los valores por defecto
             items.push_back (std::move (item));
             list.updateContent();
             list.deselectAllRows();
@@ -1288,6 +1289,22 @@ private:
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Could not open",
                                                     failed.joinIntoString ("\n"));
         updateButtons();
+    }
+
+    // los valores por defecto (al abrir la app y con cada sample nuevo): Processed y Normalize
+    // prendidos, Ramp en 0 % y Loop apagado
+    void resetToDefaults()
+    {
+        abButton.setToggleState (true, juce::dontSendNotification);
+        abButton.setButtonText ("Processed");
+        source.setPlayProcessed (true);
+        amount.setValue (100.0, juce::dontSendNotification);
+        normButton.setToggleState (true, juce::dontSendNotification);
+        ramp.setValue (0.0, juce::dontSendNotification);
+        loopButton.setToggleState (false, juce::dontSendNotification);
+        source.setRegionLooping (false);
+        props->setValue ("loop", false);
+        saveSettings();
     }
 
     std::unique_ptr<Item> loadItem (const juce::File& f)
@@ -1756,7 +1773,6 @@ private:
         ensureLoop (true); // con Loop prendido: busca el loop de este 808 si no tiene
     }
 
-    // el Skip más chico que no queda antes de la línea de Start
     // dónde terminan las ondas salteadas con Skip (para pintarlas en gris en el procesado)
     void updateSkipView()
     {
