@@ -20,6 +20,7 @@ namespace Theme
     const juce::Colour well       { 0xfff1f2f3 };     // recuadros hundidos (números)
     const juce::Colour raisedTop  { 0xfff8f9fa };     // botones en relieve
     const juce::Colour raisedBot  { 0xffe6e8ea };
+    const juce::Colour line       { 0xffc3c7cc };     // bordes finos (todo plano, como una herramienta)
     const juce::Colour track      { 0xffc9ccd1 };     // arco de fondo de la perilla
     const juce::Colour accent     { 0xff2f74d0 };     // azul sobre fondo claro
     const juce::Colour good       { 0xff2f74d0 };
@@ -85,39 +86,23 @@ namespace Theme
         return juce::Font (juce::FontOptions (typeface (weight)).withHeight (height * textScale).withKerningFactor (kerning));
     }
 
-    // Recuadro hundido (fondo claro con sombra interior arriba).
-    inline void drawWell (juce::Graphics& g, juce::Rectangle<float> r, float radius)
+    // Recuadro (barras): plano, fondo claro y borde fino
+    inline void drawWell (juce::Graphics& g, juce::Rectangle<float> r, float)
     {
         g.setColour (well);
-        g.fillRoundedRectangle (r, radius);
-
-        juce::Graphics::ScopedSaveState save (g);
-        juce::Path clip;
-        clip.addRoundedRectangle (r, radius);
-        g.reduceClipRegion (clip);
-        g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.13f), 0.0f, r.getY(),
-                                                 juce::Colours::transparentBlack, 0.0f, r.getY() + 5.0f, false));
-        g.fillRect (r.withHeight (6.0f));
-        g.setColour (juce::Colours::black.withAlpha (0.06f));
-        g.drawRoundedRectangle (r.reduced (0.5f), radius, 1.0f);
+        g.fillRect (r);
+        g.setColour (line);
+        g.drawRect (r, 1.0f);
     }
 
-    // Botón en relieve (claro, con sombra abajo).
-    inline void drawRaised (juce::Graphics& g, juce::Rectangle<float> r, float radius, bool over, bool down)
+    // Botón: plano, fondo claro y borde fino (sin relieve ni sombra); con el mouse encima o
+    // apretado, apenas más oscuro
+    inline void drawRaised (juce::Graphics& g, juce::Rectangle<float> r, float, bool over, bool down)
     {
-        juce::Path shape;
-        shape.addRoundedRectangle (r, radius);
-
-        if (! down)
-            juce::DropShadow (juce::Colours::black.withAlpha (0.2f), 5, { 0, 2 }).drawForPath (g, shape);
-
-        const float lift = over && ! down ? 0.02f : 0.0f;
-        g.setGradientFill (juce::ColourGradient (raisedTop.brighter (lift), 0.0f, r.getY(),
-                                                 down ? raisedBot.darker (0.04f) : raisedBot.brighter (lift), 0.0f, r.getBottom(), false));
-        g.fillPath (shape);
-
-        g.setColour (juce::Colours::white.withAlpha (down ? 0.3f : 0.9f));
-        g.drawLine (r.getX() + radius, r.getY() + 0.75f, r.getRight() - radius, r.getY() + 0.75f, 1.0f);
+        g.setColour (down ? juce::Colour (0xffe2e5e8) : over ? juce::Colour (0xffeff1f3) : raisedTop);
+        g.fillRect (r);
+        g.setColour (line);
+        g.drawRect (r, 1.0f);
     }
 
     // Íconos: parlante = lo que suena; ojo = lo que se ve (solo dibujo).

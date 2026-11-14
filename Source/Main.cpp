@@ -140,12 +140,12 @@ public:
             p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
             // plano: fondo claro y borde oscuro (siempre igual); prendido (sonando / loop de escucha)
             // o apretado, sólo el ícono se pone azul
-            g.setColour (down ? Theme::raisedBot.darker (0.04f) : Theme::raisedTop.brighter (over && b.isEnabled() ? 0.02f : 0.0f));
+            g.setColour (down ? juce::Colour (0xffe2e5e8) : over && b.isEnabled() ? juce::Colour (0xffeff1f3) : Theme::raisedTop);
             g.fillPath (p);
             const auto edge = shape.reduced (0.5f);
             juce::Path outline;
             outline.addRoundedRectangle (edge.getX(), edge.getY(), edge.getWidth(), edge.getHeight(), rad, rad, L, R, L, R);
-            g.setColour (Theme::inkDim); // el borde siempre igual, en el gris de "Ramp" (sólo el ícono se pone azul)
+            g.setColour (Theme::line); // borde fino, siempre igual (sólo el ícono se pone azul)
             g.strokePath (outline, juce::PathStrokeType (1.0f));
             return;
         }
@@ -153,10 +153,10 @@ public:
         // prendidos, además con borde y texto azul
         const auto shape = raisedShape (r);
         Theme::drawRaised (g, shape, pillCorner (shape.getHeight()), over && b.isEnabled(), down);
-        if (b.getClickingTogglesState() && b.getToggleState())
+        if (b.getClickingTogglesState() && b.getToggleState()) // prendido: borde y texto azul
         {
-            g.setColour (Theme::accent.withAlpha (0.7f));
-            g.drawRoundedRectangle (shape.reduced (0.5f), pillCorner (shape.getHeight()), 1.2f);
+            g.setColour (Theme::accent);
+            g.drawRect (shape, 1.0f);
         }
     }
 
@@ -198,7 +198,7 @@ public:
         }
         auto colour = (b.getClickingTogglesState() && b.getToggleState()) ? Theme::accent : Theme::ink;
         if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
-        auto r = raisedShape (b.getLocalBounds().toFloat()).toNearestInt().translated (0, b.isDown() ? 1 : 0);
+        auto r = raisedShape (b.getLocalBounds().toFloat()).toNearestInt(); // (plano: el texto no se mueve)
         g.setColour (colour);
         g.setFont (getTextButtonFont (b, b.getHeight()));
         if (b.getProperties().contains ("speaker")) // Hearing: parlante + texto, centrados juntos
@@ -258,9 +258,8 @@ public:
             juce::Graphics::ScopedSaveState st (g);
             juce::Path clip; clip.addRoundedRectangle (r, radius);
             g.reduceClipRegion (clip);
-            g.setGradientFill (juce::ColourGradient (Theme::accent.withAlpha (0.30f), 0.0f, r.getY(),
-                                                     Theme::accent.withAlpha (0.20f), 0.0f, r.getBottom(), false));
-            g.fillRect (juce::Rectangle<float> (a, r.getY(), b - a, r.getHeight())); // (sin línea en el borde)
+            g.setColour (Theme::accent.withAlpha (0.22f));
+            g.fillRect (juce::Rectangle<float> (a, r.getY(), b - a, r.getHeight()).reduced (0.0f, 1.0f)); // plano
         }
     }
     juce::Label* createSliderTextBox (juce::Slider& s) override
@@ -387,21 +386,9 @@ public:
         }
         else
         {
-            const juce::Colour blue = Theme::accent, blueLight = Theme::accentBright;
-            // apretado: se hunde (sin sombra, 2 px más abajo, un poco más oscuro), como los otros botones
-            auto body = r.withTrimmedBottom (2.0f).translated (0.0f, pressed ? 2.0f : 0.0f);
-            if (! pressed)
-            {
-                g.setColour (juce::Colours::black.withAlpha (0.18f));
-                g.fillRoundedRectangle (body.translated (0.0f, 2.0f), radius);
-            }
-            const float lift = hover && ! pressed ? 0.05f : 0.0f;
-            g.setGradientFill (juce::ColourGradient (pressed ? blueLight.darker (0.06f) : blueLight.brighter (lift), 0.0f, body.getY(),
-                                                     pressed ? blue.darker (0.08f) : blue.brighter (lift * 1.6f), 0.0f, body.getBottom(), false));
-            g.fillRoundedRectangle (body, radius);
-            g.setColour (juce::Colours::white.withAlpha (pressed ? 0.12f : 0.28f));
-            g.drawLine (body.getX() + radius, body.getY() + 1.0f, body.getRight() - radius, body.getY() + 1.0f, 1.0f);
-            r = body;
+            // plano: azul lleno, apenas más claro con el mouse encima y más oscuro apretado
+            g.setColour (pressed ? Theme::accent.darker (0.12f) : hover ? Theme::accent.brighter (0.08f) : Theme::accent);
+            g.fillRect (r);
         }
         g.setColour (text);
         g.setFont (Theme::font (14.0f, 400));
@@ -768,7 +755,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         // fondo claro con degradé, como UNISON
-        g.setGradientFill (juce::ColourGradient (Theme::topLight, 0.0f, 0.0f, Theme::topDark, 0.0f, (float) getHeight(), false));
+        g.setColour (Theme::topLight); // fondo plano
         g.fillAll();
         // título en Akira Expanded
         // (igual que "UNISON": la T empieza justo a 20 del borde izquierdo y las mayúsculas quedan a la
