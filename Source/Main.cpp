@@ -747,7 +747,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (948, 600); // (diseño base: 948 x 600; la ventana lo muestra al 80,3 %, como UNISON)
+        setSize (928, 600); // (diseño base: 928 x 600; la ventana lo muestra al 80,3 %, como UNISON)
         updateButtons();
         startTimerHz (60);
     }
@@ -844,7 +844,7 @@ public:
     // Medidas del diseño base de UNISON (después toda la ventana se achica al 80,3 %, como UNISON):
     // márgenes de 20, fila del título de 38 (título de 14 de alto de mayúsculas), botones de 33 de
     // alto visible con letra de 14, barras de 24 de alto (las pastillas de UNISON), visor con margen de 7.
-    static constexpr int kMargin = 20, kButtonH = 33, kPillH = 24;
+    static constexpr int kMargin = 10, kButtonH = 33, kPillH = 24;
     static constexpr float kTitleCap = 14.0f;
 
     // ⌥ + clic en el margen derecho (donde se agarra para escalar): la ventana vuelve al tamaño por defecto
@@ -932,8 +932,8 @@ public:
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
         // el visor: el recuadro negro de 100 a 630 (530), a 20 de los costados; abajo quedan 20 libres
-        // el recuadro negro: a 10 de los costados y de abajo (los botones siguen a 20)
-        waveArea = juce::Rectangle<int> (kMargin - 10, 100, getWidth() - 2 * kMargin + 20, getHeight() - 100 - 10);
+        // el recuadro negro: a 10 de los costados y de abajo (como todo lo de arriba)
+        waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, getHeight() - 100 - kMargin); // (a la misma línea que los botones y el título)
         // el visor arma dos carriles de 265 (40 + 185 + 40); los 20 de más arriba no se ven (el
         // componente sobresale 20 por arriba del recuadro: recorta y no recibe clics ahí); abajo
         // sobran 10 dentro del recuadro
@@ -2326,7 +2326,7 @@ private:
     {
         static constexpr float kScale = 1.05f * 497.0f / 650.0f; // la escala de UNISON (≈ 0,803)
         ScaledHolder() { addAndMakeVisible (content); }
-        int designW = 948, designH = 600;
+        int designW = 928, designH = 600;
         // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
         // la proporción; el tamaño por defecto (80,3 %) es el mínimo
         void resized() override
@@ -2354,7 +2354,7 @@ private:
             setUsingNativeTitleBar (true);
             holder = new ScaledHolder();
             content = &holder->content;
-            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "948").getIntValue(); // (948: entre secciones 20 visibles, también de Option N a Drag to DAW)
+            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "928").getIntValue(); // (928: entre secciones 20 visibles, también de Option N a Drag to DAW)
             holder->designW = designW;
             const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (600 * ScaledHolder::kScale);
             holder->setSize (w0, h0); // como UNISON
