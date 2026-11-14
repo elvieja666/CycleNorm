@@ -42,9 +42,7 @@ public:
     // lugar dentro del loop (así no se escapa del loop al arrastrarlo). Lo aplica el hilo de audio.
     void setLoopRegion (juce::int64 start, juce::int64 end)
     {
-        const juce::int64 os = loopStart.load(), oe = loopEnd.load();
-        if (os == start && oe == end) return;
-        prevLoopStart = os; prevLoopEnd = oe;
+        if (loopStart.load() == start && loopEnd.load() == end) return;
         loopStart = start; loopEnd = end;
         remapPending = true;
     }
@@ -214,7 +212,6 @@ private:
     float mix = 1.0f, swapFade = 1.0f, jumpFade = 1.0f, fadeStep = 1.0f / 441.0f;
     juce::int64 jumpOld = 0; // (salto del cursor: de dónde venía) // (solo los toca el hilo de audio, salvo al cambiar buffers)
     std::atomic<juce::int64> pos { 0 }, endSample { 0 }, startSample { 0 }, loopStart { 0 }, loopEnd { 0 };
-    std::atomic<juce::int64> prevLoopStart { 0 }, prevLoopEnd { 0 };
     std::atomic<bool> remapPending { false };
     std::atomic<bool> useB { true }, looping { false }, regionLoop { false };
     int loopMovedRecently = 0; // (sólo el hilo de audio)

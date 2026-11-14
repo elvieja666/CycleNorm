@@ -58,7 +58,6 @@ public:
     void clear() { setData (nullptr, nullptr, {}, 44100.0, true); }
     void refresh() { dirty = true; repaint(); }
     // el audio se estiró (re-pitch): la vista se estira igual, así se sigue viendo la misma parte del sonido
-    void setMarkers (std::vector<size_t> cycleBounds) { bounds = std::move (cycleBounds); dirty = true; repaint(); }
     // hasta qué muestra llegan las ondas salteadas con Skip (en el procesado se dibujan en gris)
     void setSkipEnd (size_t sample) { if (sample != skipEnd) { skipEnd = sample; dirtyProc = true; repaint(); } }
     // dónde se corta el final (la línea de Fin); el largo total = sin cortar
@@ -744,7 +743,6 @@ private:
     }
 
     bool hasLoop() const { return loopEnd > loopStart && onLoopDragged != nullptr; }
-    bool xVisible (double sample) const { const double x = sampleToX (sample); return x >= plotLeft() - 1.0 && x <= plotWidth() + 1.0; }
     // las puntas del loop saltan de onda entera en onda entera (cruces ascendentes de la fundamental)
     void dragLoopTo (float x)
     {

@@ -547,7 +547,6 @@ public:
         loopButton.onClick = [this] {
             const bool on = loopButton.getToggleState();
             source.setRegionLooping (on);
-            props->setValue ("loop", on);
             if (! on && loopJob != nullptr) cancelLoopSearch();
             if (juce::isPositiveAndBelow (current, (int) items.size()))
             {
@@ -583,7 +582,7 @@ public:
        #endif
 
 
-        setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", props->getDoubleValue ("amount", 100.0));
+        setupSlider (amount, amountLabel, "Amount", 0, 100, 1, " %", 100.0);
         // se cambia arrastrando la línea en el visor; se cuenta en semiciclos (antes en ondas: 1 onda = 2)
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
@@ -985,7 +984,7 @@ public:
             if (testStart.isNotEmpty())
             {
                 auto& it0 = *items.front();
-                const auto& B = cyclenorm::segmentBounds (it0.analysis, readSettings());
+                const auto B = cyclenorm::segmentBounds (it0.analysis, readSettings());
                 size_t best = 0; double bd = 1e300;
                 for (auto v : B) if (std::abs ((double) v - testStart.getDoubleValue()) < bd) { bd = std::abs ((double) v - testStart.getDoubleValue()); best = v; }
                 it0.startSample = best;
@@ -1063,7 +1062,7 @@ private:
         std::vector<cyclenorm::LoopResult> cands;
         bool same (const EditState& o) const
         {
-            return item == o.item && amount == o.amount && ramp == o.ramp && std::abs (pitch - o.pitch) < 1e-9
+            return item == o.item && std::abs (amount - o.amount) < 1e-9 && std::abs (ramp - o.ramp) < 1e-9 && std::abs (pitch - o.pitch) < 1e-9
                 && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS && startS == o.startS && fade == o.fade && fadeOut == o.fadeOut
                 && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size();
         }
@@ -1075,7 +1074,7 @@ private:
     juce::ListBox list;
     WaveformView wave;
     DragOut dragOut;
-    juce::Rectangle<int> titleArea, controlsArea;
+    juce::Rectangle<int> titleArea;
     juce::Rectangle<int> waveArea, fileName, titleRest;
     int pitchInfoX = 0, loopInfoX = 0;
     // los textos de la fila del título, apoyados en el mismo renglón que TOOLKIT: la base de las
@@ -1105,6 +1104,8 @@ private:
                                                 lp ? it.loopEnd : (size_t) it.lengthToWrite(), it.sampleRate);
         }
     }
+    bool noiseDirty = false;
+    juce::uint32 noiseChangedMs = 0;
     double noisePct = -1.0; // el ruido que agregó el proceso (% de la energía, ponderada como el oído; -1 = nada abierto)
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
     bool pendingReprocess = false, pendingRetune = false;
@@ -1145,9 +1146,7 @@ private:
 
     void saveSettings()
     {
-        props->setValue ("amount", amount.getValue());
         props->setValue ("skipHalves", skipHalves);
-        props->setValue ("ramp", ramp.getValue());
         props->saveIfNeeded();
     }
 
@@ -1199,6 +1198,12 @@ private:
             lastProcessMs = juce::Time::getMillisecondCounter();
             runProcessTimed();
             list.repaint();
+        }
+        // el ruido: se mide cuando se dejó de mover (120 ms sin cambios), así arrastrar Ramp no se traba
+        if (noiseDirty && ! pendingReprocess && juce::Time::getMillisecondCounter() - noiseChangedMs > 120)
+        {
+            noiseDirty = false;
+            if (juce::isPositiveAndBelow (current, (int) items.size())) { updateNoise (*items[(size_t) current]); repaint (titleArea); }
         }
         if ((bool) playButton.getProperties()["lit"] != transport.isPlaying()) // Play prendido (azul) mientras suena
         {
@@ -1303,7 +1308,6 @@ private:
         ramp.setValue (0.0, juce::dontSendNotification);
         loopButton.setToggleState (false, juce::dontSendNotification);
         source.setRegionLooping (false);
-        props->setValue ("loop", false);
         saveSettings();
     }
 
@@ -1869,7 +1873,7 @@ private:
         }
         auto& it = *items[(size_t) current];
         updatePitch (it);
-        updateNoise (it);
+        noiseDirty = true; noiseChangedMs = juce::Time::getMillisecondCounter(); // (se mide en el timer: no frena al arrastrar)
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::ignoreUnused (peakDb);
         // corto (va en la fila del título): el loop y los avisos
@@ -2194,29 +2198,29 @@ private:
                       cmdUndo, cmdRedo, cmdPlay, cmdLoopPlay, cmdHearing, cmdFitView, cmdLoopSection,
                       cmdFindLoop, cmdNextLoop, cmdClearLoop });
     }
-    void getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& info) override
+    void getCommandInfo (juce::CommandID id, juce::ApplicationCommandInfo& result) override
     {
         const bool has = juce::isPositiveAndBelow (current, (int) items.size());
         const auto cmd = juce::ModifierKeys::commandModifier, shift = juce::ModifierKeys::shiftModifier;
         switch (id)
         {
-            case cmdOpen:      info.setInfo (u8 ("Open…"), "Add 808s", "File", 0); info.addDefaultKeypress ('o', cmd); break;
-            case cmdRemove:    info.setInfo ("Close", "", "File", 0); info.addDefaultKeypress ('w', cmd); info.setActive (has); break;
-            case cmdExport:    info.setInfo (u8 ("Export…"), "", "File", 0); info.addDefaultKeypress ('e', cmd); info.setActive (has); break;
-            case cmdExportAll: info.setInfo (u8 ("Export All…"), "", "File", 0); info.addDefaultKeypress ('e', cmd | shift); info.setActive (! items.empty()); break;
-            case cmdFmtSame:   info.setInfo ("Same as Original", "", "File", 0); info.setTicked (formatBox.getSelectedId() == 1); break;
-            case cmdFmt24:     info.setInfo ("WAV 24-bit", "", "File", 0); info.setTicked (formatBox.getSelectedId() == 2); break;
-            case cmdFmtFloat:  info.setInfo ("WAV 32-bit Float", "", "File", 0); info.setTicked (formatBox.getSelectedId() == 3); break;
-            case cmdUndo:      info.setInfo ("Undo", "", "Edit", 0); info.addDefaultKeypress ('z', cmd); info.setActive (! undoStack.empty() || pendingRetune || pendingReprocess || (haveLastState && ! captureState().same (lastState))); break;
-            case cmdRedo:      info.setInfo ("Redo", "", "Edit", 0); info.addDefaultKeypress ('z', cmd | shift); info.setActive (! redoStack.empty()); break;
-            case cmdPlay:      info.setInfo (transport.isPlaying() ? "Stop" : "Play", "Space", "Playback", 0); info.setActive (has); break;
-            case cmdLoopPlay:  info.setInfo ("Loop Playback", "", "Playback", 0); info.addDefaultKeypress ('r', cmd); info.setTicked (repeatButton.getToggleState()); break;
-            case cmdLoopSection: info.setInfo ("Loop", "", "Loop", 0); info.addDefaultKeypress ('l', cmd | shift); info.setTicked (loopButton.getToggleState()); break;
-            case cmdHearing:   info.setInfo ("Hear Processed", "A", "Playback", 0); info.setTicked (abButton.getToggleState()); break;
-            case cmdFitView:   info.setInfo ("Show Whole Sound", "", "Playback", 0); info.addDefaultKeypress ('0', cmd); info.setActive (has); break;
-            case cmdFindLoop:  info.setInfo (loopJob != nullptr ? "Cancel Loop Search" : "Find Loop", "", "Loop", 0); info.addDefaultKeypress ('l', cmd); info.setActive (has || loopJob != nullptr); break;
-            case cmdNextLoop:  info.setInfo ("Next Loop", "", "Loop", 0); info.addDefaultKeypress ('n', cmd); info.setActive (otherLoopButton.isEnabled()); break;
-            case cmdClearLoop: info.setInfo ("Clear Loop", "", "Loop", 0); info.setActive (clearLoopButton.isEnabled()); break;
+            case cmdOpen:      result.setInfo (u8 ("Open…"), "Add 808s", "File", 0); result.addDefaultKeypress ('o', cmd); break;
+            case cmdRemove:    result.setInfo ("Close", "", "File", 0); result.addDefaultKeypress ('w', cmd); result.setActive (has); break;
+            case cmdExport:    result.setInfo (u8 ("Export…"), "", "File", 0); result.addDefaultKeypress ('e', cmd); result.setActive (has); break;
+            case cmdExportAll: result.setInfo (u8 ("Export All…"), "", "File", 0); result.addDefaultKeypress ('e', cmd | shift); result.setActive (! items.empty()); break;
+            case cmdFmtSame:   result.setInfo ("Same as Original", "", "File", 0); result.setTicked (formatBox.getSelectedId() == 1); break;
+            case cmdFmt24:     result.setInfo ("WAV 24-bit", "", "File", 0); result.setTicked (formatBox.getSelectedId() == 2); break;
+            case cmdFmtFloat:  result.setInfo ("WAV 32-bit Float", "", "File", 0); result.setTicked (formatBox.getSelectedId() == 3); break;
+            case cmdUndo:      result.setInfo ("Undo", "", "Edit", 0); result.addDefaultKeypress ('z', cmd); result.setActive (! undoStack.empty() || pendingRetune || pendingReprocess || (haveLastState && ! captureState().same (lastState))); break;
+            case cmdRedo:      result.setInfo ("Redo", "", "Edit", 0); result.addDefaultKeypress ('z', cmd | shift); result.setActive (! redoStack.empty()); break;
+            case cmdPlay:      result.setInfo (transport.isPlaying() ? "Stop" : "Play", "Space", "Playback", 0); result.setActive (has); break;
+            case cmdLoopPlay:  result.setInfo ("Loop Playback", "", "Playback", 0); result.addDefaultKeypress ('r', cmd); result.setTicked (repeatButton.getToggleState()); break;
+            case cmdLoopSection: result.setInfo ("Loop", "", "Loop", 0); result.addDefaultKeypress ('l', cmd | shift); result.setTicked (loopButton.getToggleState()); break;
+            case cmdHearing:   result.setInfo ("Hear Processed", "A", "Playback", 0); result.setTicked (abButton.getToggleState()); break;
+            case cmdFitView:   result.setInfo ("Show Whole Sound", "", "Playback", 0); result.addDefaultKeypress ('0', cmd); result.setActive (has); break;
+            case cmdFindLoop:  result.setInfo (loopJob != nullptr ? "Cancel Loop Search" : "Find Loop", "", "Loop", 0); result.addDefaultKeypress ('l', cmd); result.setActive (has || loopJob != nullptr); break;
+            case cmdNextLoop:  result.setInfo ("Next Loop", "", "Loop", 0); result.addDefaultKeypress ('n', cmd); result.setActive (otherLoopButton.isEnabled()); break;
+            case cmdClearLoop: result.setInfo ("Clear Loop", "", "Loop", 0); result.setActive (clearLoopButton.isEnabled()); break;
             default: break;
         }
     }
