@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Toolkit VERSION 1.21.0)
+project(Toolkit VERSION 1.22.0)
 
 set(CMAKE_CXX_STANDARD 17)
 if(APPLE)
