@@ -53,12 +53,8 @@ namespace Theme
         }
     }
 
-    // Letra del título: Akira Expanded (Typologic, con licencia).
-    inline juce::Typeface::Ptr titleTypeface()
-    {
-        static juce::Typeface::Ptr t = juce::Typeface::createSystemTypefaceFor (BinaryData::AkiraExpandedDemo_otf, BinaryData::AkiraExpandedDemo_otfSize);
-        return t;
-    }
+    // Letra del título: la misma Inter del resto (en semibold)
+    inline juce::Typeface::Ptr titleTypeface() { return typeface (600); }
 
     // La letra del título con mayúsculas de capHeight px (se mide la "B": cada sistema
     // calcula el alto de la letra un poco distinto).

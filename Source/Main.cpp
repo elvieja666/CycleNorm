@@ -757,7 +757,7 @@ public:
         // fondo claro con degradé, como UNISON
         g.setColour (Theme::topLight); // fondo plano
         g.fillAll();
-        // título en Akira Expanded
+        // título (Inter, como el resto)
         // (igual que "UNISON": la T empieza justo a 20 del borde izquierdo y las mayúsculas quedan a la
         // misma distancia del borde de arriba que de la píldora de abajo en UNISON (que está en y = 40))
         g.setColour (Theme::inkStrong);

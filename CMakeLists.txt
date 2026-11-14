@@ -21,13 +21,12 @@ juce_add_gui_app(Toolkit
     DOCUMENT_EXTENSIONS wav aif aiff flac mp3 m4a caf
     VERSION ${PROJECT_VERSION})
 
-# letras (las mismas de UNISON): Inter (OFL) y Akira Expanded para el título
+# letra: Inter (OFL), en todo (también el título)
 juce_add_binary_data(CycleNormFonts SOURCES
     Resources/Fonts/Inter-Light.otf
     Resources/Fonts/Inter-Regular.otf
     Resources/Fonts/Inter-Medium.otf
-    Resources/Fonts/Inter-SemiBold.otf
-    Resources/Fonts/AkiraExpanded-Demo.otf)
+    Resources/Fonts/Inter-SemiBold.otf)
 
 target_sources(Toolkit PRIVATE
     Source/Main.cpp
