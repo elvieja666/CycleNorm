@@ -851,7 +851,8 @@ public:
     std::function<void()> onResetWindowSize;
     void mouseDown (const juce::MouseEvent& e) override
     {
-        if (e.mods.isAltDown() && e.x >= waveArea.getRight() && onResetWindowSize) onResetWindowSize();
+        // (en el margen de la derecha o en el de abajo: la esquina de abajo a la derecha, de donde se agranda)
+        if (e.mods.isAltDown() && (e.x >= waveArea.getRight() || e.y >= waveArea.getBottom()) && onResetWindowSize) onResetWindowSize();
     }
 
     void resized() override
