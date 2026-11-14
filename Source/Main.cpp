@@ -2011,7 +2011,7 @@ private:
     }
     void updatePitch (const Item& it, double previewSemis = 0.0)
     {
-        // dos renglones en el visor Original: el del sustain (gris) y, con loop, el del loop (azul)
+        // dos renglones en el visor Original: el del sustain (gris) y el del loop (azul; sin loop, "--")
         // cada renglón va por columnas (separadas con tabs) y se dibujan con lugar fijo: los dos quedan
         // alineados aunque cambien los valores
         auto line = [&] (cyclenorm::PitchInfo p, bool inLoop) -> juce::String {
@@ -2028,7 +2028,9 @@ private:
         };
         const auto sus = line (cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite()), false);
         const bool inLoop = loopActive (it);
-        const auto lp = inLoop ? line (cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8), true) : juce::String();
+        // (con Loop apagado, el renglón se ve igual, sin medida: "Pitch (loop) : --")
+        const auto lp = inLoop ? line (cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8), true)
+                               : juce::String ("Pitch (loop)\t--");
         wave.setPitchInfo (sus, juce::Colour (0xff8b9096), lp, kAccent); // (se muestran en el visor Original)
         layoutTitleRow();
     }
