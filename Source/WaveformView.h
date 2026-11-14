@@ -834,7 +834,7 @@ private:
         // que no se salga del gráfico (pegada al borde, se da vuelta)
         if (rr.getRight() > (float) plotWidth()) rr.setX (xl);
         if (rr.getX() < 0.0f) rr.setX (xr);
-        if (id == 3) // Loop comparte fila con Fade in: si se pisan, se corre a la derecha de esa
+        if (id == 3 || id == 8) // Loop y Fade out comparten fila con Fade in: si se pisan, se corren a la derecha de esa
         {
             const auto fi = tabRect (7);
             if (! fi.isEmpty() && rr.getX() < fi.getRight() + 2.0f && rr.getRight() > fi.getX() - 2.0f)
