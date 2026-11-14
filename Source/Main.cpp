@@ -125,7 +125,7 @@ public:
     // la misma curvatura en todas las píldoras: la del transporte (33 de alto -> radio ≈ 8)
     static float pillCorner (float) { return 0.0f; } // (sin curvas: todo con esquinas rectas)
 
-    juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (14.0f, 400); } // como Measure / Bypass / Scope
+    juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (13.0f, 400); } // como Measure / Bypass / Scope
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
     {
@@ -731,7 +731,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (928, 580); // (diseño base: 928 x 580, al 100 %)
+        setSize (928, 567); // (diseño base: 928 x 567, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -828,16 +828,16 @@ public:
     // Medidas del diseño base de UNISON (después toda la ventana se achica al 80,3 %, como UNISON):
     // márgenes de 20, fila del título de 38 (título de 14 de alto de mayúsculas), botones de 33 de
     // alto visible con letra de 14, barras de 24 de alto (las pastillas de UNISON), visor con margen de 7.
-    static constexpr int kMargin = 10, kButtonH = 33, kPillH = 24;
+    static constexpr int kMargin = 10, kButtonH = 20, kPillH = 20;
     static constexpr float kTitleCap = 14.0f;
 
     void resized() override
     {
-        // altos (diseño de 580): barra de arriba 80 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
+        // altos (diseño de 567): barra de arriba 67 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
-        r.removeFromTop (35);          // los botones: lo visible de 37 a 70 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
+        r.removeFromTop (35);          // los botones: lo visible de 37 a 57 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
         {
             // fila del título: TOOLKIT · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
@@ -876,7 +876,7 @@ public:
         // 5) a la derecha de todo: Drag to DAW
         {
             const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
-            dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (2).withHeight (kButtonH + 1).translated (1, 0)); // (el borde visible a 20 del de la ventana, como el título)
+            dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (1).withHeight (kButtonH + 2).translated (1, 0)); // (el borde visible a 20 del de la ventana, como el título)
         }
         // 3) el proceso: Normalize y Ramp
         place (normButton, 0);
@@ -910,7 +910,7 @@ public:
         layoutTitleRow();
         // el visor: el recuadro negro de 100 a 630 (530), a 20 de los costados; abajo quedan 20 libres
         // el recuadro negro: a 10 de los costados y de abajo (como todo lo de arriba)
-        waveArea = juce::Rectangle<int> (kMargin, 80, getWidth() - 2 * kMargin, getHeight() - 80 - kMargin); // (a la misma línea que los botones y el título)
+        waveArea = juce::Rectangle<int> (kMargin, 37 + kButtonH + 10, getWidth() - 2 * kMargin, getHeight() - (37 + kButtonH + 10) - kMargin); // (a la misma línea que los botones y el título)
         // el visor arma dos carriles de 265 (40 + 185 + 40); los 20 de más arriba no se ven (el
         // componente sobresale 20 por arriba del recuadro: recorta y no recibe clics ahí); abajo
         // sobran 10 dentro del recuadro
@@ -2331,7 +2331,7 @@ private:
             setUsingNativeTitleBar (true);
             content = new MainComponent();
             const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "928").getIntValue();
-            content->setSize (w, 580);
+            content->setSize (w, 567);
             setContentOwned (content, true);
             setResizable (false, false);
             centreWithSize (getWidth(), getHeight());
