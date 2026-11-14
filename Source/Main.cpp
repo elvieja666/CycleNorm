@@ -747,7 +747,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (928, 600); // (diseño base: 928 x 600; la ventana lo muestra al 80,3 %, como UNISON)
+        setSize (928, 580); // (diseño base: 928 x 580, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -857,11 +857,11 @@ public:
 
     void resized() override
     {
-        // altos (diseño de 600): barra de arriba 100 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
+        // altos (diseño de 580): barra de arriba 80 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
-        r.removeFromTop (45);          // los botones: lo visible de 47 a 80 (20 de aire arriba, hasta el título, y abajo, hasta el visor)
+        r.removeFromTop (35);          // los botones: lo visible de 37 a 70 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
         {
             // fila del título: TOOLKIT · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
@@ -934,7 +934,7 @@ public:
         layoutTitleRow();
         // el visor: el recuadro negro de 100 a 630 (530), a 20 de los costados; abajo quedan 20 libres
         // el recuadro negro: a 10 de los costados y de abajo (como todo lo de arriba)
-        waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, getHeight() - 100 - kMargin); // (a la misma línea que los botones y el título)
+        waveArea = juce::Rectangle<int> (kMargin, 80, getWidth() - 2 * kMargin, getHeight() - 80 - kMargin); // (a la misma línea que los botones y el título)
         // el visor arma dos carriles de 265 (40 + 185 + 40); los 20 de más arriba no se ven (el
         // componente sobresale 20 por arriba del recuadro: recorta y no recibe clics ahí); abajo
         // sobran 10 dentro del recuadro
@@ -2343,7 +2343,7 @@ private:
     {
         static constexpr float kScale = 1.0f; // al 100 %: cada línea cae justo en un píxel (nítido)
         ScaledHolder() { addAndMakeVisible (content); }
-        int designW = 928, designH = 600;
+        int designW = 928, designH = 580;
         // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
         // la proporción; el tamaño por defecto (80,3 %) es el mínimo
         void resized() override
@@ -2373,7 +2373,7 @@ private:
             content = &holder->content;
             const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "928").getIntValue(); // (928: entre secciones 20 visibles, también de Option N a Drag to DAW)
             holder->designW = designW;
-            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (600 * ScaledHolder::kScale);
+            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (580 * ScaledHolder::kScale);
             holder->setSize (w0, h0); // como UNISON
             setContentOwned (holder, true);
             setResizable (true, true);
