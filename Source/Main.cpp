@@ -587,7 +587,6 @@ public:
         // se cambia arrastrando la línea en el visor; se cuenta en semiciclos (antes en ondas: 1 onda = 2)
         skipHalves = juce::jlimit (0, kMaxSkip, props->containsKey ("skipHalves") ? props->getIntValue ("skipHalves")
                                                                                  : props->getIntValue ("skip", 2) * 2);
-        userSkipHalves = skipHalves;
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", props->getDoubleValue ("ramp", 0.0));
         ramp.getProperties().set ("resetValue", 0.0);      // ⌥ + clic: 0 %
         // Amount ya no está en la ventana: lo maneja el botón Normalize (100 % o 0 %)
@@ -675,15 +674,7 @@ public:
             source.setStartSample ((juce::int64) s);
             wave.setStartSample (s);
             if (it.fadeHalves > 0) settingsChanged(); // el fade in arranca en Start: se corre con ella
-            // Skip: Start lo empuja si lo pasa, y si Start vuelve, vuelve con ella (hasta donde lo
-            // habías puesto vos)
-            const int wantSkip = juce::jmax (userSkipHalves, minSkipFor (it));
-            if (skipHalves != wantSkip)
-            {
-                skipHalves = wantSkip;
-                settingsChanged();
-                updateSkipView();
-            }
+            // (Skip no depende de Start: puede quedar a la izquierda)
             // el cursor: si estaba antes de Start, o pegado a Start, sigue a Start (para los dos lados)
             const double posS = transport.getCurrentPosition() * it.sampleRate;
             if (posS < (double) s || (! transport.isPlaying() && std::abs (posS - (double) oldStart) < 2.0))
@@ -728,9 +719,6 @@ public:
         };
         wave.onSkipDragged = [this] (int n)
         {
-            userSkipHalves = n; // lo que puso el usuario (Start lo empuja, pero al volver vuelve acá)
-            if (juce::isPositiveAndBelow (current, (int) items.size()))
-                n = juce::jmax (n, minSkipFor (*items[(size_t) current])); // Skip no puede quedar antes de Start
             if (skipHalves == n) { wave.refresh(); return; }
             if (juce::isPositiveAndBelow (current, (int) items.size()))
             {   // Skip no puede pasar la línea de Fin
@@ -998,7 +986,6 @@ public:
                 size_t best = 0; double bd = 1e300;
                 for (auto v : B) if (std::abs ((double) v - testStart.getDoubleValue()) < bd) { bd = std::abs ((double) v - testStart.getDoubleValue()); best = v; }
                 it0.startSample = best;
-                skipHalves = juce::jmax (skipHalves, minSkipFor (it0));
                 processItem (it0);
             }
             if (juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_LOOP", {}).isNotEmpty())
@@ -1088,7 +1075,6 @@ private:
     juce::Rectangle<int> titleArea, controlsArea;
     juce::Rectangle<int> waveArea, fileName, titleRest;
     int pitchInfoX = 0, loopInfoX = 0;
-    int userSkipHalves = -1; // el Skip que puso el usuario (-1: el que se cargó)
     // los textos de la fila del título, apoyados en el mismo renglón que TOOLKIT: la base de las
     // letras en y = 27, a 20 del borde de arriba (visible) de los botones
     static constexpr float kTitleBaseline = 27.0f;
@@ -1684,7 +1670,6 @@ private:
         normButton.setToggleState (st.amount >= 50.0, juce::dontSendNotification);
         ramp.setValue (st.ramp, juce::dontSendNotification);
         skipHalves = st.skip;
-        userSkipHalves = st.skip;
         saveSettings();
         pendingReprocess = false;
         if (row >= 0)
@@ -1769,14 +1754,6 @@ private:
     }
 
     // el Skip más chico que no queda antes de la línea de Start
-    int minSkipFor (const Item& it) const
-    {
-        if (it.startSample == 0) return 0;
-        const auto& B = cyclenorm::segmentBounds (it.analysis, readSettings());
-        for (size_t j = 0; j < B.size() && (int) j < kMaxSkip; ++j)
-            if (B[j] >= it.startSample) return (int) j + 1;
-        return kMaxSkip;
-    }
     // dónde terminan las ondas salteadas con Skip (para pintarlas en gris en el procesado)
     void updateSkipView()
     {
@@ -1918,7 +1895,7 @@ private:
         const bool hadStart = it.startSample > 0;
         const size_t oldEnd = it.endSample, oldStart = it.startSample;
         auto skipEndOf = [&] (int n) { return n >= 1 ? ((size_t) n - 1 < HB.size() ? HB[(size_t) n - 1] : it.analysis.numSamples) : (size_t) 0; };
-        const size_t oldSkipEnd = skipEndOf (skipHalves), oldUserSkipEnd = skipEndOf (userSkipHalves);
+        const size_t oldSkipEnd = skipEndOf (skipHalves);
         const double semis = (double) st + cents / 100.0;
         const double oldSpeed = std::pow (2.0, it.tuneSemis / 12.0), newSpeed = std::pow (2.0, semis / 12.0);
         auto scaled = [&] (size_t v) { return (size_t) std::llround ((double) v * oldSpeed / newSpeed); };
@@ -1961,7 +1938,6 @@ private:
             return juce::jlimit (1, kMaxSkip, (int) nearestBound (HB2, scaled (oldE)) + 1);
         };
         skipHalves = skipFor (skipHalves, oldSkipEnd);
-        if (userSkipHalves >= 1) userSkipHalves = skipFor (userSkipHalves, oldUserSkipEnd);
 
         // refrescar sin cortar: sigue sonando desde el mismo punto del sonido y mantiene el zoom
         const double factor = oldSpeed / newSpeed; // cuánto se estiró el audio
