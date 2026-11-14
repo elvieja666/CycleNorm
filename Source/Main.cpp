@@ -846,14 +846,6 @@ public:
     static constexpr int kMargin = 10, kButtonH = 33, kPillH = 24;
     static constexpr float kTitleCap = 14.0f;
 
-    // ⌥ + clic en el margen derecho (donde se agarra para escalar): la ventana vuelve al tamaño por defecto
-    std::function<void()> onResetWindowSize;
-    void mouseDown (const juce::MouseEvent& e) override
-    {
-        // (en el margen de la derecha o en el de abajo: la esquina de abajo a la derecha, de donde se agranda)
-        if (e.mods.isAltDown() && (e.x >= waveArea.getRight() || e.y >= waveArea.getBottom()) && onResetWindowSize) onResetWindowSize();
-    }
-
     void resized() override
     {
         // altos (diseño de 580): barra de arriba 80 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
@@ -2343,87 +2335,23 @@ public:
 private:
     // Todo se diseña en estas medidas y se muestra al 100 % (sin achicar: así las líneas y las letras
     // caen justo en los píxeles y se ven nítidas); al agrandar la ventana se agranda todo junto.
-    struct ScaledHolder : juce::Component
-    {
-        static constexpr float kScale = 1.0f; // al 100 %: cada línea cae justo en un píxel (nítido)
-        ScaledHolder() { addAndMakeVisible (content); }
-        int designW = 928, designH = 580;
-        // (si la ventana no tiene justo la proporción, sobra una franja al costado o abajo, fuera del
-        // contenido: ⌥ + clic ahí también vuelve al tamaño por defecto)
-        void mouseDown (const juce::MouseEvent& e) override
-        {
-            if (e.mods.isAltDown() && content.onResetWindowSize) content.onResetWindowSize();
-        }
-        // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
-        // la proporción; el tamaño por defecto (80,3 %) es el mínimo
-        void resized() override
-        {
-            // lo que entre entero (si la ventana no tiene justo la proporción, sobra un poco a los costados
-            // o abajo, pero nunca se corta nada)
-            const float s = juce::jmax (0.1f, juce::jmin ((float) getWidth() / (float) designW, (float) getHeight() / (float) designH));
-            const float ox = juce::jmax (0.0f, ((float) getWidth() - (float) designW * s) * 0.5f);
-            content.setTransform (juce::AffineTransform::scale (s).translated (ox, 0.0f));
-            content.setBounds (0, 0, designW, designH);
-        }
-        void paint (juce::Graphics& g) override
-        {
-            g.setGradientFill (juce::ColourGradient (Theme::topLight, 0.0f, 0.0f, Theme::topDark, 0.0f, (float) getHeight(), false));
-            g.fillAll();
-        }
-        MainComponent content;
-    };
-
+    // la ventana: tamaño fijo, al 100 % (cada línea cae justo en un píxel: nítido)
     class MainWindow : public juce::DocumentWindow
     {
     public:
         MainWindow() : DocumentWindow ("Toolkit", kBg, DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
-            holder = new ScaledHolder();
-            content = &holder->content;
-            const int designW = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "928").getIntValue(); // (928: entre secciones 20 visibles, también de Option N a Drag to DAW)
-            holder->designW = designW;
-            const int w0 = juce::roundToInt (designW * ScaledHolder::kScale), h0 = juce::roundToInt (580 * ScaledHolder::kScale);
-            holder->setSize (w0, h0); // como UNISON
-            setContentOwned (holder, true);
-            setResizable (true, true);
-            // se agranda en proporción (todo escala junto); no se achica más que el tamaño por defecto.
-            // (en la Mac el sistema pasa el marco entero, con la barra del título: se descuenta)
-            contentConstrainer.ratio = (double) w0 / (double) h0;
-            contentConstrainer.minW = w0;
-            contentConstrainer.frame = [this] {
-                if (auto* peer = getPeer())
-                    if (auto f = peer->getFrameSizeIfPresent()) return *f;
-                return juce::BorderSize<int>();
-            };
-            setConstrainer (&contentConstrainer);
-            content->onResetWindowSize = [this, w0, h0] { setContentComponentSize (w0, h0); };
+            content = new MainComponent();
+            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "928").getIntValue();
+            content->setSize (w, 580);
+            setContentOwned (content, true);
+            setResizable (false, false);
             centreWithSize (getWidth(), getHeight());
             setVisible (true);
         }
         void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
-        ScaledHolder* holder = nullptr;
         MainComponent* content = nullptr;
-        // la proporción y el mínimo, sobre el contenido (no sobre el marco con la barra del título)
-        struct ContentConstrainer : juce::ComponentBoundsConstrainer
-        {
-            double ratio = 1.0;
-            int minW = 100;
-            std::function<juce::BorderSize<int>()> frame;
-            void checkBounds (juce::Rectangle<int>& b, const juce::Rectangle<int>&, const juce::Rectangle<int>&,
-                              bool top, bool left, bool bottom, bool right) override
-            {
-                const auto f = frame ? frame() : juce::BorderSize<int>();
-                auto c = f.subtractedFrom (b);
-                int w = c.getWidth(), h = c.getHeight();
-                if ((top || bottom) && ! (left || right)) w = juce::roundToInt (h * ratio); // tirando de arriba/abajo: manda el alto
-                w = juce::jlimit (minW, minW * 4, w);
-                h = juce::roundToInt (w / ratio);
-                if (left) c.setLeft (c.getRight() - w); else c.setWidth (w);
-                if (top)  c.setTop (c.getBottom() - h); else c.setHeight (h);
-                b = f.addedTo (c);
-            }
-        } contentConstrainer;
     };
 
     CycleNormLookAndFeel laf;
