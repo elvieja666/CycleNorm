@@ -1201,7 +1201,7 @@ private:
                 }
             }
             // lo que queda antes de la línea de Start: oscurecido (no se exporta ni suena)
-            if (showSkipLine && hasStartLine() && startLineVisible())
+            if (hasStartLine() && startLineVisible()) // (en los dos visores)
             {
                 const float sx = (float) r.getX() + startLineX();
                 g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
@@ -1244,11 +1244,12 @@ private:
             if (endSample > 0 && endSample < (size_t) totalLen())
             {
                 const float ex = (float) r.getX() + (float) sampleToX ((double) endSample);
-                if (ex < (float) r.getRight())
-                {
+                const float px1 = (float) (r.getX() + plotWidth());
+                if (ex < px1)
+                {   // sólo sobre la franja de la onda (alrededor todo negro; el teclado no se oscurece)
                     g.setColour (juce::Colour (0xcc0e1013));
-                    g.fillRect (juce::Rectangle<float> (juce::jmax ((float) r.getX(), ex), (float) r.getY(),
-                                                        (float) r.getRight() - juce::jmax ((float) r.getX(), ex), (float) r.getHeight()));
+                    const float x0 = juce::jmax ((float) (r.getX() + plotLeft()), ex);
+                    g.fillRect (juce::Rectangle<float> (x0, vTop, px1 - x0, vBot - vTop));
                 }
             }
             // zona de loop (verde) con sus dos puntas arrastrables (manijas abajo)
@@ -1305,7 +1306,7 @@ private:
                     }
                 }
             }
-            if (showSkipLine && hasEndLine() && endLineVisible())
+            if (hasEndLine() && endLineVisible()) // (en los dos visores)
             {
                 const float ex = (float) r.getX() + endLineX();
                 {
