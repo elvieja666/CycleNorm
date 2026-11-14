@@ -2320,11 +2320,11 @@ public:
     void systemRequestedQuit() override { quit(); }
 
 private:
-    // Todo se diseña con las medidas base de UNISON (1400 x 650 con el scope abierto) y se muestra
-    // achicado al 80,3 %, igual que UNISON: así la ventana, las letras y las burbujas miden lo mismo.
+    // Todo se diseña en estas medidas y se muestra al 100 % (sin achicar: así las líneas y las letras
+    // caen justo en los píxeles y se ven nítidas); al agrandar la ventana se agranda todo junto.
     struct ScaledHolder : juce::Component
     {
-        static constexpr float kScale = 1.05f * 497.0f / 650.0f; // la escala de UNISON (≈ 0,803)
+        static constexpr float kScale = 1.0f; // al 100 %: cada línea cae justo en un píxel (nítido)
         ScaledHolder() { addAndMakeVisible (content); }
         int designW = 928, designH = 600;
         // escalable: el diseño es siempre el mismo y se agranda entero (como un zoom), sin cambiar
