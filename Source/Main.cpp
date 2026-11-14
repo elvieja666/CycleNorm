@@ -851,12 +851,12 @@ public:
     std::function<void()> onResetWindowSize;
     void mouseDown (const juce::MouseEvent& e) override
     {
-        if (e.mods.isAltDown() && e.x >= getWidth() - kMargin && onResetWindowSize) onResetWindowSize();
+        if (e.mods.isAltDown() && e.x >= waveArea.getRight() && onResetWindowSize) onResetWindowSize();
     }
 
     void resized() override
     {
-        // altos (diseño de 610): barra de arriba 100 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · renglón 20
+        // altos (diseño de 610): barra de arriba 100 · recuadro del visor 500 (Original 20 + 185 + 40 · Processed 40 + 185 + 30) · 10 abajo
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
@@ -932,11 +932,13 @@ public:
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
         // el visor: el recuadro negro de 100 a 630 (530), a 20 de los costados; abajo quedan 20 libres
-        waveArea = juce::Rectangle<int> (kMargin, 100, getWidth() - 2 * kMargin, 490); // a 20 de los dos costados
-        // el visor arma dos carriles de 265 (40 + 185 + 40); los 20 de más arriba y de más abajo quedan
-        // vacíos y no se ven: el componente sobresale 20 arriba y abajo del recuadro (recorta y no
-        // recibe clics ahí)
-        wave.setBounds (waveArea.expanded (0, WaveformView::kHiddenPad)); // de borde a borde del recuadro // dos visores de 265: 40 + 185 (la onda) + 40 cada uno; a la derecha, hasta el borde (el teclado de 40)
+        // el recuadro negro: a 10 de los costados y de abajo (los botones siguen a 20)
+        waveArea = juce::Rectangle<int> (kMargin - 10, 100, getWidth() - 2 * kMargin + 20, getHeight() - 100 - 10);
+        // el visor arma dos carriles de 265 (40 + 185 + 40); los 20 de más arriba no se ven (el
+        // componente sobresale 20 por arriba del recuadro: recorta y no recibe clics ahí); abajo
+        // sobran 10 dentro del recuadro
+        wave.setBounds (waveArea.getX(), waveArea.getY() - WaveformView::kHiddenPad, waveArea.getWidth(), 530);
+        wave.visibleBottom = waveArea.getBottom() - wave.getY(); // de borde a borde del recuadro // dos visores de 265: 40 + 185 (la onda) + 40 cada uno; a la derecha, hasta el borde (el teclado de 40)
     }
 
     bool keyPressed (const juce::KeyPress& k) override

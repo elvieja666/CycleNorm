@@ -262,7 +262,12 @@ public:
     void resized() override { dirty = true; }
     // lo que se ve: sin los 20 vacíos de arriba (Original) y de abajo (Processed)
     static constexpr int kHiddenPad = 20;
-    juce::Rectangle<int> visibleBounds() const { return getLocalBounds().reduced (0, kHiddenPad); }
+    int visibleBottom = -1; // dónde termina el recuadro (desde arriba del componente; -1 = 20 antes del final)
+    juce::Rectangle<int> visibleBounds() const
+    {
+        auto b = getLocalBounds().withTrimmedTop (kHiddenPad);
+        return b.withBottom (visibleBottom > 0 ? visibleBottom : getHeight() - kHiddenPad);
+    }
     bool hitTest (int x, int y) override { return visibleBounds().contains (x, y); }
 
     void mouseMove (const juce::MouseEvent& e) override
