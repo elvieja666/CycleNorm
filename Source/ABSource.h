@@ -33,9 +33,10 @@ public:
     void setFadeLength (int samples) { fadeStep = 1.0f / (float) juce::jmax (1, samples); }
     void setPlayProcessed (bool shouldPlayProcessed) { useB = shouldPlayProcessed; }
     // dónde termina la reproducción (la línea de Fin); 0 = hasta el final del archivo
-    void setEndSample (juce::int64 e) { endSample = e; }
+    // (si se mueve mientras suena, los saltos que provoca llevan fundido: así no hace ruido)
+    void setEndSample (juce::int64 e) { if (endSample.exchange (e) != e) edgeMoved = true; }
     // dónde empieza (la línea de Start): lo de antes no suena; el loop de escucha vuelve acá
-    void setStartSample (juce::int64 s) { startSample = s; }
+    void setStartSample (juce::int64 s) { if (startSample.exchange (s) != s) edgeMoved = true; }
     // zona de loop del sample (con Loop activado se repite esta zona; 0/0 = el archivo entero)
     // Si el loop se mueve o cambia de tamaño mientras suena, el cursor se mueve con él y queda en el mismo
     // lugar dentro del loop (así no se escapa del loop al arrastrarlo). Lo aplica el hilo de audio.
@@ -67,7 +68,9 @@ public:
         const juce::int64 e = endSample.load();
         const int len = (e > 0 && e < full) ? (int) e : full;
         const int srcCh = src->getNumChannels();
+        lastBlockMs = juce::Time::getMillisecondCounter();
         juce::int64 p = pos.load();
+        if (jumpPending.exchange (false) && jumpFrom.load() != p) { jumpOld = jumpFrom.load(); jumpFade = 0.0f; } // (se movió el cursor mientras sonaba)
         const juce::int64 ls = loopStart.load(), le = loopEnd.load();
         const bool region = regionLoop && useB && le > ls && le <= len; // el loop de sección (como en el sampler): sólo en el procesado
         if (remapPending.exchange (false) && region)
@@ -85,8 +88,13 @@ public:
             loopMovedRecently = 13230; // (unos 0,3 s: mientras se arrastra el loop, cada vuelta lleva fundido)
         }
         if (region) { appliedLs = ls; appliedLe = le; } else { appliedLs = appliedLe = 0; }
+        if (edgeMoved.exchange (false)) edgeMovedRecently = 13230; // (unos 0,3 s: Start o End se están arrastrando)
         const juce::int64 st = juce::jlimit ((juce::int64) 0, (juce::int64) juce::jmax (0, len - 1), startSample.load());
-        if (p < st) p = st; // antes de Start no suena nada: arranca desde Start
+        if (p < st) // antes de Start no suena nada: arranca desde Start
+        {
+            if (edgeMovedRecently > 0) { jumpOld = p; jumpFade = 0.0f; } // (Start pasó al cursor mientras sonaba: con fundido)
+            p = st;
+        }
         int done = 0;
         while (done < info.numSamples)
         {
@@ -99,7 +107,31 @@ public:
             }
             if (p >= len)
             {
-                if (! region && ! looping) break; // al final: el loop de sección, el de escucha (desde el principio) o parar
+                if (! region && ! looping) // al final: parar
+                {
+                    // si End se acaba de mover (pasó al cursor), no se corta de golpe: lo que seguía se
+                    // apaga en lo que queda del bloque (hasta 10 ms)
+                    if (edgeMovedRecently > 0)
+                    {
+                        const int tail = juce::jmin (info.numSamples - done, juce::roundToInt (1.0f / fadeStep));
+                        const int outCh = info.buffer->getNumChannels();
+                        for (int k = 0; k < tail; ++k)
+                        {
+                            const float gTail = 1.0f - (float) (k + 1) / (float) tail;
+                            const int at = (int) p + k;
+                            for (int c = 0; c < outCh; ++c)
+                            {
+                                float v = 0.0f;
+                                if (at < src->getNumSamples()) v = src->getSample (juce::jmin (c, srcCh - 1), at);
+                                info.buffer->setSample (c, info.startSample + done + k, v * gTail);
+                            }
+                        }
+                        edgeMovedRecently = 0;
+                    }
+                    break;
+                }
+                // el loop de sección o el de escucha (desde el principio); si End se movió, con fundido
+                if (edgeMovedRecently > 0 && ! region) { jumpOld = p; jumpFade = 0.0f; }
                 p = region ? ls : st;
             }
             juce::int64 stop = len;
@@ -147,11 +179,21 @@ public:
             p += n;
             done += n;
             if (loopMovedRecently > 0) loopMovedRecently = juce::jmax (0, loopMovedRecently - n);
+            if (edgeMovedRecently > 0) edgeMovedRecently = juce::jmax (0, edgeMovedRecently - n);
         }
         pos = p;
     }
 
-    void setNextReadPosition (juce::int64 newPosition) override { pos = newPosition; }
+    // si está sonando (llegó un bloque hace poco), el salto lleva fundido: lo aplica el hilo de audio
+    void setNextReadPosition (juce::int64 newPosition) override
+    {
+        if (juce::Time::getMillisecondCounter() - lastBlockMs.load() < 60u)
+        {
+            jumpFrom = pos.load();
+            jumpPending = true;
+        }
+        pos = newPosition;
+    }
     juce::int64 getNextReadPosition() const override { return pos.load(); }
     juce::int64 getTotalLength() const override
     {
@@ -176,5 +218,9 @@ private:
     std::atomic<bool> remapPending { false };
     std::atomic<bool> useB { true }, looping { false }, regionLoop { false };
     int loopMovedRecently = 0; // (sólo el hilo de audio)
+    std::atomic<bool> edgeMoved { false }, jumpPending { false };
+    std::atomic<juce::int64> jumpFrom { 0 };
+    std::atomic<juce::uint32> lastBlockMs { 0 };
+    int edgeMovedRecently = 0; // (sólo el hilo de audio)
     juce::int64 appliedLs = 0, appliedLe = 0; // el loop con el que sonó el último bloque (sólo el hilo de audio)
 };
