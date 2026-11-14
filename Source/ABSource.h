@@ -28,10 +28,24 @@ public:
         prevB = b;             // el que venía sonando, para fundirlo con el nuevo
         b = std::move (processed);
         swapFade = prevB != nullptr ? 0.0f : 1.0f;
+        if (! isRunning()) { prevB = nullptr; swapFade = 1.0f; } // parado: no hay nada que fundir
     }
     // largo de los fundidos, en muestras del archivo (se llama al elegir un archivo: 10 ms)
     void setFadeLength (int samples) { fadeStep = 1.0f / (float) juce::jmax (1, samples); }
-    void setPlayProcessed (bool shouldPlayProcessed) { useB = shouldPlayProcessed; }
+    // sonando: original <-> procesado con fundido. Parado: el cambio es inmediato (si no, el fundido
+    // quedaba pendiente y el próximo play arrancaba con 10 ms de lo otro: un click de entrada)
+    void setPlayProcessed (bool shouldPlayProcessed)
+    {
+        useB = shouldPlayProcessed;
+        if (! isRunning())
+        {
+            const juce::SpinLock::ScopedLockType sl (lock);
+            mix = shouldPlayProcessed ? 1.0f : 0.0f;
+            jumpFade = 1.0f;
+        }
+    }
+    // si llegó un bloque de audio hace poco (está sonando)
+    bool isRunning() const { return juce::Time::getMillisecondCounter() - lastBlockMs.load() < 60u; }
     // dónde termina la reproducción (la línea de Fin); 0 = hasta el final del archivo
     // (si se mueve mientras suena, los saltos que provoca llevan fundido: así no hace ruido)
     void setEndSample (juce::int64 e) { if (endSample.exchange (e) != e) edgeMoved = true; }
@@ -66,6 +80,10 @@ public:
         const juce::int64 e = endSample.load();
         const int len = (e > 0 && e < full) ? (int) e : full;
         const int srcCh = src->getNumChannels();
+        if (! isRunning()) // arranca de nuevo (venía parado): nada pendiente de fundir de antes
+        {
+            mix = target; swapFade = 1.0f; jumpFade = 1.0f; jumpPending = false;
+        }
         lastBlockMs = juce::Time::getMillisecondCounter();
         juce::int64 p = pos.load();
         if (jumpPending.exchange (false) && jumpFrom.load() != p) { jumpOld = jumpFrom.load(); jumpFade = 0.0f; } // (se movió el cursor mientras sonaba)
@@ -185,7 +203,7 @@ public:
     // si está sonando (llegó un bloque hace poco), el salto lleva fundido: lo aplica el hilo de audio
     void setNextReadPosition (juce::int64 newPosition) override
     {
-        if (juce::Time::getMillisecondCounter() - lastBlockMs.load() < 60u)
+        if (isRunning())
         {
             jumpFrom = pos.load();
             jumpPending = true;
