@@ -1254,9 +1254,13 @@ private:
             // zona de loop (verde) con sus dos puntas arrastrables (manijas abajo)
             if (showSkipLine && hasLoop())
             {
+                juce::Graphics::ScopedSaveState loopClip (g); // todo lo del loop: sólo dentro de la onda
+                g.reduceClipRegion (juce::Rectangle<int> (r.getX() + plotLeft(), r.getY(), plotSpan(), r.getHeight()));
                 const float x0 = (float) r.getX() + (float) sampleToX ((double) loopStart);
                 const float x1 = (float) r.getX() + (float) sampleToX ((double) loopEnd);
-                const float a0 = juce::jmax ((float) r.getX(), x0), a1 = juce::jmin ((float) r.getRight(), x1);
+                // (sólo dentro de la onda: no entra en el margen de la izquierda ni en el teclado)
+                const float pl = (float) (r.getX() + plotLeft()), pr = (float) (r.getX() + plotWidth());
+                const float a0 = juce::jmax (pl, x0), a1 = juce::jmin (pr, x1);
                 if (a1 > a0)
                 {
                     g.setColour (juce::Colour (movingLoop ? 0x48e0782f : 0x2ae0782f));
