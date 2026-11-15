@@ -81,6 +81,33 @@ namespace Theme
         return juce::Font (juce::FontOptions (typeface (weight)).withHeight (height * textScale).withKerningFactor (kerning));
     }
 
+    // La letra de los botones (todos, también Drag to DAW)
+    inline juce::Font buttonFont() { return font (13.0f, 400); }
+    // El aire de los botones: del borde a lo dibujado (letras o ícono), a cada lado
+    constexpr float kButtonPad = 15.0f;
+
+    // Lo que ocupa lo dibujado de un texto (sin los márgenes de la letra), con la base en y = 0
+    inline juce::Rectangle<float> inkBounds (const juce::Font& f, const juce::String& t)
+    {
+        juce::GlyphArrangement ga;
+        ga.addLineOfText (f, t, 0.0f, 0.0f);
+        juce::Path p;
+        ga.createPath (p);
+        return p.getBounds();
+    }
+    // Un texto con lo dibujado justo en el centro de r (a lo ancho por las letras, a lo alto por las
+    // mayúsculas). Si inkLeft >= 0, en vez de centrarlo, lo dibujado arranca en esa x.
+    inline void drawInkText (juce::Graphics& g, const juce::Font& f, const juce::String& t, juce::Rectangle<float> r, float inkLeft = -1.0f)
+    {
+        const auto ib = inkBounds (f, t);
+        const float capH = inkBounds (f, "H").getHeight();
+        const float x = inkLeft >= 0.0f ? inkLeft - ib.getX() : r.getCentreX() - ib.getCentreX();
+        const float base = std::round (r.getCentreY() + capH * 0.5f);
+        juce::GlyphArrangement ga;
+        ga.addLineOfText (f, t, x, base);
+        ga.draw (g);
+    }
+
     // Recuadro (barras): plano, fondo claro y borde fino
     inline void drawWell (juce::Graphics& g, juce::Rectangle<float> r, float)
     {

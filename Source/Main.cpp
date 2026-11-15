@@ -110,6 +110,7 @@ public:
     }
 
     // zona visible del botón en relieve (deja lugar para la sombra)
+    static constexpr float kSpeakerH = 14.0f, kSpeakerW = kSpeakerH * 0.95f, kSpeakerGap = 7.0f; // el parlante de Processed
     static juce::Rectangle<float> raisedShape (juce::Rectangle<float> b) { return b.reduced (4.0f, 2.0f).withTrimmedBottom (4.0f); }
     // transporte pegado (Play | Stop | Loop): cada parte llega hasta el borde de la de al lado;
     // sólo las puntas de afuera dejan lugar para la sombra
@@ -125,7 +126,7 @@ public:
     // la misma curvatura en todas las píldoras: la del transporte (33 de alto -> radio ≈ 8)
     static float pillCorner (float) { return 0.0f; } // (sin curvas: todo con esquinas rectas)
 
-    juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::font (13.0f, 400); } // como Measure / Bypass / Scope
+    juce::Font getTextButtonFont (juce::TextButton&, int) override { return Theme::buttonFont(); } // como Measure / Bypass / Scope
 
     void drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down) override
     {
@@ -204,17 +205,16 @@ public:
         if (b.getProperties().contains ("speaker")) // Hearing: parlante + texto, centrados juntos
         {
             const auto font = getTextButtonFont (b, b.getHeight());
-            const float textW = juce::GlyphArrangement::getStringWidth (font, b.getButtonText());
-            const float iconH = 14.0f, iconW = iconH * 0.95f, gap = 7.0f;
+            const float inkW = Theme::inkBounds (font, b.getButtonText()).getWidth();
             const auto rf = r.toFloat();
-            const float x0 = rf.getCentreX() - (iconW + gap + textW) * 0.5f;
-            Theme::drawSpeaker (g, { x0, rf.getCentreY() - iconH * 0.5f, iconW, iconH }, colour);
+            // parlante + texto, centrados juntos por lo dibujado (el parlante empieza 1 adentro de su caja)
+            const float x0 = rf.getCentreX() - (kSpeakerW - 1.0f + kSpeakerGap + inkW) * 0.5f - 1.0f;
+            Theme::drawSpeaker (g, { x0, rf.getCentreY() - kSpeakerH * 0.5f, kSpeakerW, kSpeakerH }, colour);
             g.setColour (colour);
-            g.drawText (b.getButtonText(), juce::Rectangle<float> (x0 + iconW + gap, rf.getY(), textW + 4.0f, rf.getHeight()),
-                        juce::Justification::centredLeft, false);
+            Theme::drawInkText (g, font, b.getButtonText(), rf, x0 + kSpeakerW + kSpeakerGap);
             return;
         }
-        g.drawFittedText (b.getButtonText(), r, juce::Justification::centred, 1);
+        Theme::drawInkText (g, getTextButtonFont (b, b.getHeight()), b.getButtonText(), r.toFloat()); // lo dibujado, justo en el centro
     }
 
     // selector (Format): pastilla gris con flechita
@@ -391,8 +391,7 @@ public:
             g.fillRect (r);
         }
         g.setColour (text);
-        g.setFont (Theme::font (14.0f, 400));
-        g.drawText ("Drag to DAW", r.toNearestInt(), juce::Justification::centred);
+        Theme::drawInkText (g, Theme::buttonFont(), "Drag to DAW", r.toFloat());
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
@@ -731,7 +730,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (918, 570); // (diseño base: 918 x 570, al 100 %)
+        setSize (882, 570); // (diseño base: 882 x 570, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -850,10 +849,11 @@ public:
         // (4 a los costados, 2 arriba, 6 abajo), así lo visible mide kButtonH de alto
         auto row = r.removeFromTop (kButtonH + 8);
         row.setLeft (row.getX() - 4); // lo visible del primer botón (el transporte) arranca a 20, justo debajo del título
-        const auto bf = Theme::font (14.0f, 400);
-        auto widthFor = [&] (juce::Button& b, float extra) {
-            return (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, b.getButtonText()) + 2.0f * 14.0f + extra) + 8;
-        };
+        const auto bf = Theme::buttonFont();
+        // el ancho de un botón: lo dibujado + el mismo aire a cada lado (+ 8: la sombra, 4 a cada lado)
+        auto inkW = [&] (const juce::String& t) { return Theme::inkBounds (bf, t).getWidth(); };
+        auto widthForText = [&] (const juce::String& t) { return (int) std::ceil (inkW (t) + 2.0f * Theme::kButtonPad) + 8; };
+        auto widthFor = [&] (juce::Button& b, float extra) { return widthForText (b.getButtonText()) + (int) extra; };
         auto place = [&] (juce::Button& b, float extra) { b.setBounds (row.removeFromLeft (widthFor (b, extra))); };
         // transporte pegado: cada parte de 50 de ancho visible; las puntas de afuera llevan 4 más (la sombra)
         auto placeIcon = [&] (juce::Button& b) {
@@ -868,14 +868,14 @@ public:
         divider();
         // 2) qué se escucha
         {
-            const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Processed") + 2.0f * 14.0f + 24.0f) + 8;
+            const int w = (int) std::ceil (CycleNormLookAndFeel::kSpeakerW - 1.0f + CycleNormLookAndFeel::kSpeakerGap + inkW ("Processed") + 2.0f * Theme::kButtonPad) + 8;
             abButton.setBounds (row.removeFromLeft (w)); // con el parlante (mismo ancho con Processed u Original)
         }
         row.removeFromLeft (2); // Processed y Normalize: a 10 (sin rayita)
         pitchInfoX = row.getX() - 1; // (la info del pitch arranca entre Processed y Normalize)
         // 5) a la derecha de todo: Drag to DAW
         {
-            const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
+            const int w = (int) std::ceil (inkW ("Drag to DAW") + 2.0f * Theme::kButtonPad) + 2; // (+2: lo que el botón se come de borde)
             dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (1).withHeight (kButtonH + 2).translated (1, 0)); // (el borde visible a 20 del de la ventana, como el título)
         }
         // 3) el proceso: Normalize y Ramp
@@ -896,7 +896,11 @@ public:
         row.removeFromLeft (9); groupDividers.push_back (row.getX()); row.removeFromLeft (1 + 6);
         // 4) al lado de Ramp, el loop de sección (el que se exporta): prenderlo, buscarlo, el siguiente, borrarlo
         {
-            const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Option 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
+            // fijo (no salta al cambiar el número): medido con el número de ancho intermedio
+            std::vector<float> ws;
+            for (int k = 1; k <= 5; ++k) ws.push_back (inkW ("Option " + juce::String (k)));
+            std::sort (ws.begin(), ws.end());
+            const int wNum = (int) std::ceil (ws[2] + 2.0f * Theme::kButtonPad) + 8;
             auto wOf = [&] (juce::Button& b) { return &b == &otherLoopButton ? wNum : widthFor (b, 0); };
             loopButton.setBounds (row.removeFromLeft (wOf (loopButton)));
             row.removeFromLeft (2); // Loop y Option N: a 10
@@ -2331,7 +2335,7 @@ private:
         {
             setUsingNativeTitleBar (true);
             content = new MainComponent();
-            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "918").getIntValue();
+            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "882").getIntValue();
             content->setSize (w, 570);
             setContentOwned (content, true);
             setResizable (false, false);
