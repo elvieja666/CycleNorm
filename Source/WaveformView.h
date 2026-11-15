@@ -943,16 +943,22 @@ private:
             };
             if (spp < 1.0)
             {
+                // cada mitad por su lado, sin una línea que las una: lo de Loop end sigue su recorrido
+                // hasta la unión (la muestra de Loop end, que ya no suena, sin puntito) y lo de Loop arranca ahí
                 juce::Path p, dots;
-                bool started = false;
-                for (long long v = v0; v <= v1; ++v)
-                {
-                    const long long sIdx = smp (v);
-                    if (sIdx < 0 || sIdx >= n) { started = false; continue; }
-                    const float px = c + (float) ((double) v / spp), py = yOf (val (sIdx));
-                    if (! started) { p.startNewSubPath (px, py); started = true; } else p.lineTo (px, py);
-                    dots.addEllipse (px - 1.8f, py - 1.8f, 3.6f, 3.6f);
-                }
+                auto halfPath = [&] (long long a, long long b, long long base, bool dotLast) {
+                    bool started = false;
+                    for (long long v = a; v <= b; ++v)
+                    {
+                        const long long sIdx = base + v;
+                        if (sIdx < 0 || sIdx >= n) { started = false; continue; }
+                        const float px = c + (float) ((double) v / spp), py = yOf (val (sIdx));
+                        if (! started) { p.startNewSubPath (px, py); started = true; } else p.lineTo (px, py);
+                        if (v < b || dotLast) dots.addEllipse (px - 1.8f, py - 1.8f, 3.6f, 3.6f);
+                    }
+                };
+                halfPath (v0, 0, (long long) loopEnd, false);   // hasta la unión
+                halfPath (0, v1, (long long) loopStart, true);  // desde la unión
                 inHalves ([&] { g.strokePath (p, juce::PathStrokeType (1.3f)); if (sampleDotsVisible()) g.fillPath (dots); });
             }
             else
