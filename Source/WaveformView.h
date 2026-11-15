@@ -20,6 +20,9 @@ public:
     std::function<void (size_t)> onStartDragged;  // arrastrando la línea de Start: nueva muestra inicial
     std::function<void (int)> onFadeDragged;      // arrastrando la manija del fade in: cuántos semiciclos dura
     std::function<void (int)> onFadeOutDragged;   // arrastrando la manija del fade out: cuántos semiciclos dura
+    // muy de cerca (con los puntitos): las manijas de los fades van de muestra en muestra
+    std::function<void (size_t)> onFadeEndSample;      // dónde termina el fade in (muestra)
+    std::function<void (size_t)> onFadeOutStartSample; // dónde empieza el fade out (muestra)
     std::function<void (size_t, size_t)> onLoopDragged; // arrastrando una punta del loop: nuevo inicio y fin
     std::function<void (size_t)> onXfadeDragged;  // arrastrando la manija del crossfade: dónde empieza el fundido
     int maxSkip = 64;
@@ -65,7 +68,13 @@ public:
     // dónde empieza (la línea de Start); 0 = desde el principio del archivo
     void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; dirty = true; repaint(); } }
     // fade in desde Start: cuántos semiciclos dura (0 = sin fade)
+    // muy de cerca: cada muestra a kSampleDotPx px o más (se ven los puntitos y todo va de muestra en muestra)
+    static constexpr double kSampleDotPx = 6.0;
+    bool sampleDotsVisible() const { return viewLen > 0.0 && (double) plotSpan() / viewLen >= kSampleDotPx; }
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
+    // (de muestra en muestra: si no es 0, manda sobre los semiciclos)
+    void setFadeInEndSample (size_t s) { if (s != fadeInEndS) { fadeInEndS = s; repaint(); } }
+    void setFadeOutStartSample (size_t s) { if (s != fadeOutStartS) { fadeOutStartS = s; repaint(); } }
     // el renglón del pitch medido: va en el visor Original, en la mitad de arriba de los 40 de abajo
     // y, con loop, el del loop en la mitad de abajo
     void setPitchInfo (const juce::String& t, juce::Colour c, const juce::String& t2 = {}, juce::Colour c2 = {})
@@ -741,14 +750,19 @@ private:
 
     bool hasLoop() const { return loopEnd > loopStart && onLoopDragged != nullptr; }
     // muy de cerca: cada muestra a kSampleDotPx px o más (se ven los puntitos y el loop va de muestra en muestra)
-    static constexpr double kSampleDotPx = 6.0;
-    bool sampleDotsVisible() const { return viewLen > 0.0 && (double) plotSpan() / viewLen >= kSampleDotPx; }
+
     // las puntas del loop saltan de onda entera en onda entera (cruces ascendentes de la fundamental)
     void dragLoopTo (float x)
     {
         if (draggingLoop == 5) // manija del crossfade: se engancha en las ondas enteras adentro del loop
         {
             const double target = xToSample (x);
+            if (sampleDotsVisible()) // muy de cerca: de muestra en muestra
+            {
+                const double lo = juce::jmax ((double) loopStart, 2.0 * (double) loopStart - (double) loopEnd); // (no más largo que el loop ni que lo de antes)
+                if (onXfadeDragged) onXfadeDragged ((size_t) std::llround (juce::jlimit (lo, (double) loopEnd, target)));
+                return;
+            }
             size_t best = loopEnd; double bestD = std::abs ((double) loopEnd - target);
             for (size_t v : loopBounds)
             {
@@ -887,11 +901,21 @@ private:
     }
     // fade in: la manija va arriba (debajo de "Start"), donde termina el fade
     size_t fadeLimit() const { return hasLoop() ? loopStart : endOrLen(); }
-    size_t fadeEndSample() const { return fadeEndOf (bounds, startSample, fadeHalves, fadeLimit()); }
+    size_t fadeEndSample() const
+    {
+        if (fadeInEndS > startSample) return std::min (fadeInEndS, fadeLimit());
+        return fadeEndOf (bounds, startSample, fadeHalves, fadeLimit());
+    }
+    size_t fadeInEndS = 0, fadeOutStartS = 0;
     bool hasFadeHandle() const { return totalLen() > 0 && onFadeDragged != nullptr; }
     void dragFadeTo (float x)
     {
         const double target = xToSample (x);
+        if (sampleDotsVisible() && onFadeEndSample) // muy de cerca: de muestra en muestra
+        {
+            onFadeEndSample ((size_t) std::llround (juce::jlimit ((double) startSample, (double) fadeLimit(), target)));
+            return;
+        }
         int best = 0; double bestD = std::abs (target - (double) startSample);
         int k = 0;
         const size_t limit = fadeLimit();
@@ -907,12 +931,21 @@ private:
     }
     // fade out: termina en End; la manija va arriba, donde empieza. Con loop no hay (se corta en el loop)
     size_t fadeOutLower() const { return std::max (fadeEndSample(), startSample); }
-    size_t fadeOutStartSample() const { return fadeOutStartOf (bounds, endOrLen(), fadeOutHalves, fadeOutLower()); }
+    size_t fadeOutStartSample() const
+    {
+        if (fadeOutStartS > 0 && fadeOutStartS < endOrLen()) return std::max (fadeOutStartS, fadeOutLower());
+        return fadeOutStartOf (bounds, endOrLen(), fadeOutHalves, fadeOutLower());
+    }
     bool hasFadeOutHandle() const { return totalLen() > 0 && onFadeOutDragged != nullptr && ! hasLoop(); }
     void dragFadeOutTo (float x)
     {
         const double target = xToSample (x);
         const size_t end = endOrLen(), lower = fadeOutLower();
+        if (sampleDotsVisible() && onFadeOutStartSample) // muy de cerca: de muestra en muestra
+        {
+            onFadeOutStartSample ((size_t) std::llround (juce::jlimit ((double) lower, (double) end, target)));
+            return;
+        }
         int best = 0; double bestD = std::abs (target - (double) end);
         int k = 0;
         for (auto it = bounds.rbegin(); it != bounds.rend(); ++it)
@@ -935,6 +968,11 @@ private:
     {
         const double target = xToSample (x);
         const size_t limit = hasLoop() ? loopStart : endOrLen(); // antes del loop y de Fin
+        if (sampleDotsVisible() && limit > 0) // muy de cerca: de muestra en muestra
+        {
+            if (onStartDragged) onStartDragged ((size_t) std::llround (juce::jlimit (0.0, (double) limit - 1.0, target)));
+            return;
+        }
         size_t best = 0; double bestD = std::abs (target);
         for (size_t v : bounds)
         {
@@ -948,6 +986,11 @@ private:
     void dragEndTo (float x)
     {
         const double target = xToSample (x);
+        if (sampleDotsVisible()) // muy de cerca: de muestra en muestra
+        {
+            if (onEndDragged) onEndDragged ((size_t) std::llround (juce::jlimit ((double) skipEnd + 1.0, (double) totalLen(), target)));
+            return;
+        }
         size_t best = (size_t) totalLen(); double bestD = std::abs ((double) totalLen() - target);
         for (size_t v : bounds)
         {

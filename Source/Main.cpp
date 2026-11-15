@@ -348,6 +348,8 @@ struct Item
     size_t loopStart = 0, loopEnd = 0; // zona de loop (0/0 = sin loop): de un cruce ascendente a otro
     double loopQuality = 0;
     int xfadeCycles = 0; // crossfade del loop, en ondas enteras (0 = Off; como máximo, las ondas del loop)
+    // muy de cerca se mueven de muestra en muestra: si no son 0, mandan sobre los semiciclos / ondas
+    size_t fadeInEndS = 0, fadeOutStartS = 0, xfadeLenS = 0;
     std::vector<cyclenorm::LoopResult> loopCands; // los mejores loops que encontró la búsqueda
     int loopCandIdx = -1;                        // cuál de ellos está puesto (-1 = uno movido a mano)
     int skipOverride = -1;                       // (para el dibujo sin re-afinar: el Skip contado en su audio)
@@ -642,7 +644,7 @@ public:
             it.endSample = e >= full ? 0 : e;
             source.setEndSample ((juce::int64) it.endSample);
             wave.setEndSample (it.endSample);
-            if (it.fadeOutHalves > 0) settingsChanged(); // el fade out termina en End: se corre con ella
+            if (it.fadeOutHalves > 0 || it.fadeOutStartS > 0) settingsChanged(); // el fade out termina en End: se corre con ella
             updateInfo();
         };
         // la línea de Start: si pasa la de Skip, la empuja (Skip nunca queda antes de Start)
@@ -656,7 +658,7 @@ public:
             it.startSample = s;
             source.setStartSample ((juce::int64) s);
             wave.setStartSample (s);
-            if (it.fadeHalves > 0) settingsChanged(); // el fade in arranca en Start: se corre con ella
+            if (it.fadeHalves > 0 || it.fadeInEndS > 0) settingsChanged(); // el fade in arranca en Start: se corre con ella
             // (Skip no depende de Start: puede quedar a la izquierda)
             // el cursor: si estaba antes de Start, o pegado a Start, sigue a Start (para los dos lados)
             const double posS = transport.getCurrentPosition() * it.sampleRate;
@@ -670,19 +672,40 @@ public:
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
             auto& it = *items[(size_t) current];
             n = juce::jmax (0, n);
-            if (n == it.fadeHalves) return;
-            it.fadeHalves = n;
-            wave.setFadeHalves (n);
+            if (n == it.fadeHalves && it.fadeInEndS == 0) return;
+            it.fadeHalves = n; it.fadeInEndS = 0;
+            wave.setFadeHalves (n); wave.setFadeInEndSample (0);
             settingsChanged(); // reprocesa (al toque, como Ramp)
+        };
+        wave.onFadeEndSample = [this] (size_t e) // muy de cerca: de muestra en muestra
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            if (e <= it.startSample) { it.fadeInEndS = 0; it.fadeHalves = 0; }
+            else if (e == it.fadeInEndS) return;
+            else it.fadeInEndS = e;
+            wave.setFadeHalves (it.fadeHalves); wave.setFadeInEndSample (it.fadeInEndS);
+            settingsChanged();
         };
         wave.onFadeOutDragged = [this] (int n)
         {
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
             auto& it = *items[(size_t) current];
             n = juce::jmax (0, n);
-            if (n == it.fadeOutHalves) return;
-            it.fadeOutHalves = n;
-            wave.setFadeOutHalves (n);
+            if (n == it.fadeOutHalves && it.fadeOutStartS == 0) return;
+            it.fadeOutHalves = n; it.fadeOutStartS = 0;
+            wave.setFadeOutHalves (n); wave.setFadeOutStartSample (0);
+            settingsChanged();
+        };
+        wave.onFadeOutStartSample = [this] (size_t s0) // muy de cerca: de muestra en muestra
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            const size_t end = (size_t) it.lengthToWrite();
+            if (s0 >= end) { it.fadeOutStartS = 0; it.fadeOutHalves = 0; }
+            else if (s0 == it.fadeOutStartS) return;
+            else it.fadeOutStartS = s0;
+            wave.setFadeOutHalves (it.fadeOutHalves); wave.setFadeOutStartSample (it.fadeOutStartS);
             settingsChanged();
         };
         wave.onLoopDragged = [this] (size_t s0, size_t s1) { setLoopForCurrent (s0, s1); };
@@ -692,11 +715,20 @@ public:
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
             auto& it = *items[(size_t) current];
             if (! it.hasLoop()) return;
+            if (wave.sampleDotsVisible()) // muy de cerca: de muestra en muestra
+            {
+                const size_t len = it.loopEnd > xfStart ? it.loopEnd - xfStart : 0;
+                if (len == it.xfadeLenS) return;
+                it.xfadeLenS = len; it.xfadeCycles = 0;
+                updateXfadeView();
+                processCurrent();
+                return;
+            }
             const auto& B = it.analysis.bounds;
             const size_t j = nearestBound (B, it.loopEnd), k = nearestBound (B, xfStart);
             const int n = juce::jlimit (0, maxXfadeCycles (it), j > k ? (int) (j - k) : 0);
-            if (n == it.xfadeCycles) return;
-            it.xfadeCycles = n;
+            if (n == it.xfadeCycles && it.xfadeLenS == 0) return;
+            it.xfadeCycles = n; it.xfadeLenS = 0;
             updateXfadeView();
             processCurrent();
         };
@@ -1040,13 +1072,14 @@ private:
         Item* item = nullptr;
         double amount = 0, ramp = 0, pitch = 0;
         int skip = 0, xfade = 0, candIdx = -1, fade = 0, fadeOut = 0;
-        size_t endS = 0, startS = 0, l0 = 0, l1 = 0;
+        size_t endS = 0, startS = 0, l0 = 0, l1 = 0, fadeInS = 0, fadeOutS = 0, xfadeS = 0;
         std::vector<cyclenorm::LoopResult> cands;
         bool same (const EditState& o) const
         {
             return item == o.item && std::abs (amount - o.amount) < 1e-9 && std::abs (ramp - o.ramp) < 1e-9 && std::abs (pitch - o.pitch) < 1e-9
                 && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS && startS == o.startS && fade == o.fade && fadeOut == o.fadeOut
-                && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size();
+                && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size()
+                && fadeInS == o.fadeInS && fadeOutS == o.fadeOutS && xfadeS == o.xfadeS;
         }
     };
     std::vector<EditState> undoStack, redoStack;
@@ -1365,11 +1398,12 @@ private:
             peak = juce::jmax (peak, pk);
         }
         // fade in: desde Start, lineal, hasta n semiciclos después (siempre termina en un cruce)
-        if (it.fadeHalves > 0)
+        if (it.fadeHalves > 0 || it.fadeInEndS > it.startSample)
         {
             const size_t limit = loopActive (it) ? it.loopStart : (size_t) it.lengthToWrite();
             const size_t f0 = it.startSample;
-            const size_t f1 = WaveformView::fadeEndOf (cyclenorm::segmentBounds (it.analysis, s), f0, it.fadeHalves, limit);
+            const size_t f1 = it.fadeInEndS > f0 ? juce::jmin (it.fadeInEndS, limit)
+                                                 : WaveformView::fadeEndOf (cyclenorm::segmentBounds (it.analysis, s), f0, it.fadeHalves, limit);
             if (f1 > f0)
                 for (int ch = 0; ch < out->getNumChannels(); ++ch)
                 {
@@ -1380,13 +1414,15 @@ private:
                 }
         }
         // fade out: hasta End, lineal, desde n semiciclos antes (con loop no: se corta en el fin del loop)
-        if (it.fadeOutHalves > 0 && ! loopActive (it))
+        if ((it.fadeOutHalves > 0 || (it.fadeOutStartS > 0 && it.fadeOutStartS < (size_t) it.lengthToWrite())) && ! loopActive (it))
         {
             const auto& B = cyclenorm::segmentBounds (it.analysis, s);
             size_t lower = it.startSample;
-            if (it.fadeHalves > 0) lower = WaveformView::fadeEndOf (B, it.startSample, it.fadeHalves, (size_t) it.lengthToWrite());
+            if (it.fadeInEndS > it.startSample) lower = juce::jmin (it.fadeInEndS, (size_t) it.lengthToWrite());
+            else if (it.fadeHalves > 0) lower = WaveformView::fadeEndOf (B, it.startSample, it.fadeHalves, (size_t) it.lengthToWrite());
             const size_t f1 = (size_t) it.lengthToWrite();
-            const size_t f0 = WaveformView::fadeOutStartOf (B, f1, it.fadeOutHalves, lower);
+            const size_t f0 = it.fadeOutStartS > 0 && it.fadeOutStartS < f1 ? juce::jmax (it.fadeOutStartS, lower)
+                                                                         : WaveformView::fadeOutStartOf (B, f1, it.fadeOutHalves, lower);
             if (f1 > f0)
                 for (int ch = 0; ch < out->getNumChannels(); ++ch)
                 {
@@ -1431,6 +1467,7 @@ private:
         // al re-afinar, y el fade o el Skip quedaban corridos en el dibujo.)
         const double speed = std::pow (2.0, it.tuneSemis / 12.0);
         auto toLoaded = [&] (size_t v) { return (size_t) std::llround ((double) v * speed); };
+        d.fadeInEndS = toLoaded (it.fadeInEndS); d.fadeOutStartS = toLoaded (it.fadeOutStartS); d.xfadeLenS = toLoaded (it.xfadeLenS);
         const auto& LH = it.loadedAnalysis.halfBounds;
         const auto& LB = it.loadedAnalysis.bounds;
         auto mapHalf = [&] (size_t v) { return (v == 0 || LH.empty()) ? (size_t) 0 : LH[nearestBound (LH, toLoaded (v))]; };
@@ -1476,6 +1513,8 @@ private:
     // largo del crossfade en muestras (ondas enteras antes del fin del loop, en sus cruces por cero)
     static size_t xfadeSamples (const Item& it)
     {
+        if (it.xfadeLenS > 0 && it.hasLoop()) // (de muestra en muestra)
+            return juce::jmin (it.xfadeLenS, it.loopEnd - it.loopStart, it.loopStart);
         const int n = juce::jmin (it.xfadeCycles, maxXfadeCycles (it));
         if (n <= 0) return 0;
         const auto& B = it.analysis.bounds;
@@ -1625,6 +1664,7 @@ private:
             st.pitch = (double) it.tuneSt * 100.0 + it.tuneCents; // el aplicado
             st.endS = it.endSample; st.startS = it.startSample; st.fade = it.fadeHalves; st.fadeOut = it.fadeOutHalves; st.l0 = it.loopStart; st.l1 = it.loopEnd;
             st.xfade = it.xfadeCycles; st.cands = it.loopCands; st.candIdx = it.loopCandIdx;
+            st.fadeInS = it.fadeInEndS; st.fadeOutS = it.fadeOutStartS; st.xfadeS = it.xfadeLenS;
         }
         return st;
     }
@@ -1686,11 +1726,14 @@ private:
             retuneCurrent (0, st.pitch);
             it.endSample = st.endS; it.startSample = st.startS; it.fadeHalves = st.fade; it.fadeOutHalves = st.fadeOut; it.loopStart = st.l0; it.loopEnd = st.l1;
             it.xfadeCycles = st.xfade; it.loopCands = st.cands; it.loopCandIdx = st.candIdx;
+            it.fadeInEndS = st.fadeInS; it.fadeOutStartS = st.fadeOutS; it.xfadeLenS = st.xfadeS;
             source.setEndSample ((juce::int64) it.endSample);
             source.setStartSample ((juce::int64) it.startSample);
             wave.setStartSample (it.startSample);
             wave.setFadeHalves (it.fadeHalves);
             wave.setFadeOutHalves (it.fadeOutHalves);
+            wave.setFadeInEndSample (it.fadeInEndS); wave.setFadeOutStartSample (it.fadeOutStartS);
+            updateXfadeView();
             source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
             wave.setEndSample (it.endSample);
             showLoopInView (it);
@@ -1747,6 +1790,7 @@ private:
         wave.setStartSample (it.startSample);
         wave.setFadeHalves (it.fadeHalves);
         wave.setFadeOutHalves (it.fadeOutHalves);
+        wave.setFadeInEndSample (it.fadeInEndS); wave.setFadeOutStartSample (it.fadeOutStartS);
         wave.setLoopBounds (it.analysis.bounds);
         wave.setPitchCurve (pitchCurveOf (it), it.tuneSemis);
         showLoopInView (it);
@@ -1867,7 +1911,8 @@ private:
             const auto& B = it.analysis.bounds;
             const auto nCyc = std::distance (std::lower_bound (B.begin(), B.end(), it.loopStart), std::lower_bound (B.begin(), B.end(), it.loopEnd));
             loopInfoVals = { juce::String (it.loopQuality * 100.0, 1), juce::String ((int) nCyc),
-                             it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) : juce::String ("Off") };
+                             it.xfadeLenS > 0 ? juce::String (xfadeSamples (it)) + " smp"
+                             : it.xfadeCycles > 0 ? juce::String (juce::jmin (it.xfadeCycles, maxXfadeCycles (it))) : juce::String ("Off") };
         }
         repaint (info.getBounds());
         if (it.outPeak > 1.0001f && ! exportsFloat (it)) // (el ataque salteado con Skip puede venir pasado de 0 dB)
@@ -1937,6 +1982,10 @@ private:
         it.loopCandIdx = -1;
         it.endSample = hadEnd ? snapTo (HB2, oldEnd) : 0;
         it.startSample = hadStart ? snapTo (HB2, oldStart) : 0;
+        // lo puesto de muestra en muestra: por tiempo, sin pegar a un cruce
+        it.fadeInEndS = it.fadeInEndS > 0 ? scaled (it.fadeInEndS) : 0;
+        it.fadeOutStartS = it.fadeOutStartS > 0 ? scaled (it.fadeOutStartS) : 0;
+        it.xfadeLenS = it.xfadeLenS > 0 ? scaled (it.xfadeLenS) : 0;
         // Skip: el mismo lugar (por tiempo), contado de nuevo en semiciclos del audio afinado
         auto skipFor = [&] (int n, size_t oldE) {
             if (n < 1 || HB2.empty()) return n;
