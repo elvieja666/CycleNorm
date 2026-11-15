@@ -776,7 +776,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (882, 570); // (diseño base: 882 x 570, al 100 %)
+        setSize (892, 570); // (diseño base: 892 x 570, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -929,7 +929,7 @@ public:
         {
             const auto lf = Theme::font (12.5f, 300);
             const int textW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp"));
-            row.removeFromLeft (6); // "Ramp" a 10 del borde visible de Normalize
+            row.removeFromLeft (16); // "Ramp" a 20 del borde visible de Normalize
             const int cy = row.getY() + 2 + kButtonH / 2;
             rampLabel.setBorderSize ({});
             rampLabel.setBounds (juce::Rectangle<int> (row.getX(), cy - kPillH / 2, textW + 2, kPillH));
@@ -2421,7 +2421,7 @@ private:
         {
             setUsingNativeTitleBar (true);
             content = new MainComponent();
-            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "882").getIntValue();
+            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "892").getIntValue();
             content->setSize (w, 570);
             setContentOwned (content, true);
             setResizable (false, false);
