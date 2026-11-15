@@ -73,6 +73,9 @@ public:
     // muy de cerca: cada muestra a kSampleDotPx px o más (se ven los puntitos y todo va de muestra en muestra)
     static constexpr double kSampleDotPx = 6.0;
     bool sampleDotsVisible() const { return viewLen > 0.0 && (double) plotSpan() / viewLen >= kSampleDotPx; }
+    // las líneas van de muestra en muestra (sin engancharse en los cruces por cero): muy de cerca, o con ⌘ apretado
+    bool sampleSnap() const { return freeDrag || sampleDotsVisible(); }
+    bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
     // (de muestra en muestra: si no es 0, manda sobre los semiciclos)
     void setFadeInEndSample (size_t s) { if (s != fadeInEndS) { fadeInEndS = s; repaint(); } }
@@ -296,6 +299,7 @@ public:
     }
     void mouseDown (const juce::MouseEvent& e) override
     {
+        freeDrag = e.mods.isCommandDown();
         pitchDragArmed = pitchDragging = false;
         if (showAllArea.contains (e.position)) { showAll(); showAllClicked = true; return; } // "Show all"
         showAllClicked = false;
@@ -398,6 +402,7 @@ public:
     }
     void mouseDrag (const juce::MouseEvent& e) override
     {
+        freeDrag = e.mods.isCommandDown(); // (se puede apretar o soltar ⌘ en el medio del arrastre)
         if (showAllClicked) return;
         if (pitchDragArmed)
         {
@@ -421,6 +426,7 @@ public:
     }
     void mouseUp (const juce::MouseEvent& e) override
     {
+        freeDrag = false;
         if (showAllClicked) { showAllClicked = false; mouseMove (e); return; }
         if (pendingLoopMove && ! movingLoop && totalLen() > 0 && onSeek) // clic sin arrastrar: mover el cursor
             onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
@@ -763,7 +769,7 @@ private:
         if (draggingLoop == 5) // manija del crossfade: se engancha en las ondas enteras adentro del loop
         {
             const double target = xToSample (x);
-            if (sampleDotsVisible()) // muy de cerca: de muestra en muestra
+            if (sampleSnap()) // muy de cerca: de muestra en muestra
             {
                 const double lo = juce::jmax ((double) loopStart, 2.0 * (double) loopStart - (double) loopEnd); // (no más largo que el loop ni que lo de antes)
                 if (onXfadeDragged) onXfadeDragged ((size_t) std::llround (juce::jlimit (lo, (double) loopEnd, target)));
@@ -781,7 +787,7 @@ private:
         }
         const double target = xToSample (x);
         const bool isStart = draggingLoop == 3;
-        if (sampleDotsVisible()) // muy de cerca: de muestra en muestra (no de onda en onda)
+        if (sampleSnap()) // muy de cerca: de muestra en muestra (no de onda en onda)
         {
             const double lo = isStart ? (double) skipEnd : (double) loopStart + 2.0;
             const double hi = isStart ? (double) loopEnd - 2.0 : (double) endOrLen();
@@ -917,7 +923,7 @@ private:
     void dragFadeTo (float x)
     {
         const double target = xToSample (x);
-        if (sampleDotsVisible() && onFadeEndSample) // muy de cerca: de muestra en muestra
+        if (sampleSnap() && onFadeEndSample) // muy de cerca: de muestra en muestra
         {
             onFadeEndSample ((size_t) std::llround (juce::jlimit ((double) startSample, (double) fadeLimit(), target)));
             return;
@@ -947,7 +953,7 @@ private:
     {
         const double target = xToSample (x);
         const size_t end = endOrLen(), lower = fadeOutLower();
-        if (sampleDotsVisible() && onFadeOutStartSample) // muy de cerca: de muestra en muestra
+        if (sampleSnap() && onFadeOutStartSample) // muy de cerca: de muestra en muestra
         {
             onFadeOutStartSample ((size_t) std::llround (juce::jlimit ((double) lower, (double) end, target)));
             return;
@@ -974,7 +980,7 @@ private:
     {
         const double target = xToSample (x);
         const size_t limit = hasLoop() ? loopStart : endOrLen(); // antes del loop y de Fin
-        if (sampleDotsVisible() && limit > 0) // muy de cerca: de muestra en muestra
+        if (sampleSnap() && limit > 0) // muy de cerca: de muestra en muestra
         {
             if (onStartDragged) onStartDragged ((size_t) std::llround (juce::jlimit (0.0, (double) limit - 1.0, target)));
             return;
@@ -992,7 +998,7 @@ private:
     void dragEndTo (float x)
     {
         const double target = xToSample (x);
-        if (sampleDotsVisible()) // muy de cerca: de muestra en muestra
+        if (sampleSnap()) // muy de cerca: de muestra en muestra
         {
             if (onEndDragged) onEndDragged ((size_t) std::llround (juce::jlimit ((double) skipEnd + 1.0, (double) totalLen(), target)));
             return;
@@ -1015,7 +1021,7 @@ private:
         // salta de corte en corte: 0 = el principio del archivo, N = el corte número N (bounds[N-1]).
         // Así puede pararse en todos los cortes, incluido el primero.
         const double target = xToSample (x);
-        if (sampleDotsVisible() && onSkipSampleDragged) // muy de cerca: de muestra en muestra
+        if (sampleSnap() && onSkipSampleDragged) // muy de cerca: de muestra en muestra
         {
             onSkipSampleDragged ((size_t) std::llround (juce::jlimit (0.0, (double) endOrLen() - 1.0, target)));
             return;

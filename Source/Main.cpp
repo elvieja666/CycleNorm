@@ -717,7 +717,7 @@ public:
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
             auto& it = *items[(size_t) current];
             if (! it.hasLoop()) return;
-            if (wave.sampleDotsVisible()) // muy de cerca: de muestra en muestra
+            if (wave.sampleSnap()) // muy de cerca (o con ⌘): de muestra en muestra
             {
                 const size_t len = it.loopEnd > xfStart ? it.loopEnd - xfStart : 0;
                 if (len == it.xfadeLenS) return;
