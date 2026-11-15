@@ -998,7 +998,11 @@ public:
             row.removeFromLeft (16); // "Ramp" a 20 del borde visible de Normalize
             const int cy = row.getY() + 2 + kButtonH / 2;
             rampLabel.setBorderSize ({});
-            rampLabel.setBounds (juce::Rectangle<int> (row.getX(), cy - kPillH / 2, textW + 2, kPillH));
+            // (la "R" dibujada, no la caja del texto, a 20 de Normalize y a 10 de la rayita: se le resta el aire de la letra)
+            juce::GlyphArrangement rg;
+            rg.addLineOfText (lf, "RAMP", 0.0f, 0.0f);
+            const int bearing = juce::jmax (1, (int) std::ceil (rg.getBoundingBox (0, 1, true).getX())); // (medio píxel de aire de la "R": 1)
+            rampLabel.setBounds (juce::Rectangle<int> (row.getX() - bearing, cy - kPillH / 2, textW + 2, kPillH));
             row.removeFromLeft (textW + 8); // la barra a 10 de la palabra "Ramp"
             ramp.setBounds (row.removeFromLeft (125).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
             // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
