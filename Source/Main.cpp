@@ -184,6 +184,19 @@ public:
             {
                 g.fillRect (juce::Rectangle<float> (s * 0.95f, s * 0.95f).withCentre (c));
             }
+            else if (icon == "seam") // el empalme: una onda que se une en el medio, con la rayita de la unión
+            {
+                juce::Path w;
+                const float wx = s * 1.25f, wy = s * 0.6f;
+                for (int k = 0; k <= 24; ++k)
+                {
+                    const float t = (float) k / 24.0f;
+                    const float px = c.x - wx + 2.0f * wx * t, py = c.y - wy * std::sin (juce::MathConstants<float>::twoPi * t);
+                    if (k == 0) w.startNewSubPath (px, py); else w.lineTo (px, py);
+                }
+                g.strokePath (w, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+                g.fillRect (juce::Rectangle<float> (std::round (c.x) - 0.5f, c.y - s * 1.05f, 1.0f, s * 2.1f));
+            }
             else // loop de escucha: flecha en círculo
             {
                 const float rr = s * 0.55f;
@@ -511,6 +524,11 @@ public:
         setupButton (otherLoopButton, "Option 1"); // "Option N": la opción de loop que está puesta; cada clic pasa a la siguiente
         otherLoopButton.setTooltip ("Next loop option");
         otherLoopButton.onClick = [this] { nextLoopCandidate(); };
+        setupButton (seamButton, "");
+        seamButton.getProperties().set ("icon", "seam");
+        seamButton.setClickingTogglesState (true);
+        seamButton.setTooltip ("Loop seam: loop end and loop start side by side");
+        seamButton.onClick = [this] { wave.setSeamMode (seamButton.getToggleState()); };
         addChildComponent (progressBar);
         progressBar.setTextToDisplay (" "); // el texto va en una etiqueta encima (el de la barra no se leía)
         progressLabel.setColour (juce::Label::textColourId, Theme::inkStrong);
@@ -962,7 +980,7 @@ public:
             rampLabel.setBorderSize ({});
             rampLabel.setBounds (juce::Rectangle<int> (row.getX(), cy - kPillH / 2, textW + 2, kPillH));
             row.removeFromLeft (textW + 8); // la barra a 10 de la palabra "Ramp"
-            ramp.setBounds (row.removeFromLeft (125).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
+            ramp.setBounds (row.removeFromLeft (125 - (kButtonH + 10)).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
             // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
             // (el slider queda oculto, guarda el valor)
         }
@@ -979,11 +997,13 @@ public:
             loopButton.setBounds (row.removeFromLeft (wOf (loopButton)));
             row.removeFromLeft (2); // Loop y Option N: a 10
             otherLoopButton.setBounds (row.removeFromLeft (wOf (otherLoopButton)));
+            row.removeFromLeft (2); // Option N y el empalme: a 10
+            seamButton.setBounds (row.removeFromLeft (kButtonH + 8)); // cuadrado (25 visibles)
             findLoopButton.setVisible (false);  // (quedan para el menú y los atajos: Loop ya busca solo)
             clearLoopButton.setVisible (false);
         }
         // de Option N a Drag to DAW: 20 visibles, la rayita a 9
-        groupDividersRight = otherLoopButton.getRight() - 4 + 9;
+        groupDividersRight = seamButton.getRight() - 4 + 9;
         loopInfoX = loopButton.getX() + 4; // la info del loop arranca en el borde izquierdo (visible) de Loop section
         buttonRowY = playButton.getY() + 4; buttonRowH = kButtonH - 6;
         layoutTitleRow();
@@ -1095,7 +1115,8 @@ private:
 
     juce::TextButton normButton, stopButton, repeatButton;
     juce::TextButton openButton, removeButton, playButton, loopButton, abButton, exportButton, exportAllButton,
-                     findLoopButton, otherLoopButton, clearLoopButton;
+                     findLoopButton, otherLoopButton, clearLoopButton,
+                     seamButton; // el empalme del loop (Loop end | Loop), en el visor Processed
     double progressValue = 0.0;
     juce::ProgressBar progressBar { progressValue };
     juce::Label progressLabel;
@@ -1375,6 +1396,8 @@ private:
         skipHalves = 0; skipSample = 0; // Skip: desde el principio
         loopButton.setToggleState (false, juce::dontSendNotification);
         source.setRegionLooping (false);
+        seamButton.setToggleState (false, juce::dontSendNotification);
+        wave.setSeamMode (false);
         saveSettings();
     }
 
@@ -1912,6 +1935,11 @@ private:
             otherLoopButton.setButtonText ("Option " + juce::String (any ? items[(size_t) current]->loopCandIdx + 1 : 1));
         }
         clearLoopButton.setEnabled (has && items[(size_t) current]->hasLoop());
+        {   // el empalme: sólo con loop (sin loop se apaga)
+            const bool can = has && loopButton.getToggleState() && items[(size_t) current]->hasLoop();
+            if (! can && seamButton.getToggleState()) { seamButton.setToggleState (false, juce::dontSendNotification); wave.setSeamMode (false); }
+            seamButton.setEnabled (can);
+        }
         dragOut.setEnabled (has);
         dragOut.repaint();
         commandManager.commandStatusChanged(); // el menú habilita / deshabilita lo mismo

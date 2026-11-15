@@ -89,6 +89,10 @@ public:
         return juce::jlimit (lo, hi, cents);
     }
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
+    // vista del empalme del loop (como Kontakt), en el visor Processed: a la izquierda lo que termina en
+    // Loop end, a la derecha lo que arranca en Loop, pegados en el medio
+    void setSeamMode (bool on) { if (on != seamMode) { seamMode = on; seamDrag = 0; repaint(); } }
+    bool seamActive() const { return seamMode && hasLoop() && proc != nullptr && proc->getNumSamples() > 0; }
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
     // (de muestra en muestra: si no es 0, manda sobre los semiciclos)
     void setFadeInEndSample (size_t s) { if (s != fadeInEndS) { fadeInEndS = s; repaint(); } }
@@ -185,6 +189,7 @@ public:
                       hasPitch ? std::function<void()> ([] {}) : std::function<void()>(), 1);
             drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
             drawTabs (g);
+            if (seamActive()) drawSeam (g); // (tapa el Processed normal, sus pestañas y sus líneas)
             if (hasPitch) drawPitchCurve (g, topLaneRect(), 2); // la pildorita de los cents: sigue a End, encima de lo oscurecido
         }
 
@@ -201,6 +206,7 @@ public:
                 const bool procPlaying = isPlayingProcessed ? isPlayingProcessed() : true;
                 for (auto lr : { procPlaying ? procLaneRect() : topLaneRect() })
                 {
+                    if (procPlaying && seamActive()) continue; // (en el empalme no hay cursor)
                     const float mid = (float) lr.getCentreY(), half = (float) (lr.getHeight() - 80) / 2.0f;
                     const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
                     g.fillRect ((float) std::round (x), vTop, 1.0f, vBot - vTop); // finita, como en UNISON
@@ -300,6 +306,7 @@ public:
         if (tabAt (hoverPoint) != oldTab) repaint(); // la pestaña bajo el mouse se ilumina
         if (wasHot != showAllArea.contains (hoverPoint)) repaint (showAllArea.getSmallestIntegerContainer().expanded (2));
         if (showAllArea.contains (e.position)) setMouseCursor (juce::MouseCursor::PointingHandCursor);
+        else if (seamActive() && e.position.y >= (float) procLaneRect().getY() && e.position.x < (float) plotWidth()) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         else if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
         else if (nearPitchCurve (e.position) || pitchTagArea.expanded (2.0f).contains (e.position)) setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         else if (insideLoop (e.position)) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
@@ -329,6 +336,16 @@ public:
                 cents = clampTuneCents (std::round (cents * 10.0) / 10.0);
                 onPitchDragged (cents);
             }
+            return;
+        }
+        seamDrag = 0;
+        if (seamActive() && e.position.y >= (float) procLaneRect().getY() && e.position.x < (float) plotWidth())
+        {   // el empalme: se agarra una de las dos mitades y la onda sigue al mouse (⌥ + clic: el loop de la Option)
+            const bool left = e.position.x < seamCentreX();
+            if (e.mods.isAltDown()) { if (onAltReset) onAltReset (left ? 4 : 3); return; }
+            seamDrag = left ? 4 : 3;
+            seamDownX = e.position.x;
+            seamRef = (double) (left ? loopEnd : loopStart);
             return;
         }
         const int line = whichLine (e.position);
@@ -417,6 +434,12 @@ public:
     {
         freeDrag = e.mods.isCommandDown(); // (se puede apretar o soltar ⌘ en el medio del arrastre)
         if (showAllClicked) return;
+        if (seamDrag != 0)
+        {
+            const double spp = viewLen / juce::jmax (1, plotSpan());
+            moveLoopPointTo (seamDrag == 3, seamRef - (double) (e.position.x - seamDownX) * spp);
+            return;
+        }
         if (pitchDragArmed)
         {
             if (! pitchDragging && std::abs (e.position.y - pitchDownY) >= 2.0f) pitchDragging = true;
@@ -447,6 +470,7 @@ public:
             onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
         pitchDragArmed = pitchDragging = false;
         pendingLoopMove = movingLoop = false;
+        seamDrag = 0;
         draggingSkip = draggingEnd = draggingStart = draggingFade = draggingFadeOut = false;
         draggingLoop = 0;
         dirty = true; repaint();
@@ -508,6 +532,9 @@ public:
 
 private:
     BufferPtr orig, proc, showOrig, showProc;
+    bool seamMode = false;
+    int seamDrag = 0;                 // 4: arrastrando la mitad de Loop end; 3: la de Loop
+    float seamDownX = 0.0f; double seamRef = 0.0;
     const juce::AudioBuffer<float>* origToDraw() const { return showOrig ? showOrig.get() : orig.get(); }
     const juce::AudioBuffer<float>* procToDraw() const { return showProc ? showProc.get() : proc.get(); }
     std::vector<size_t> bounds;
@@ -798,8 +825,12 @@ private:
             if (onXfadeDragged) onXfadeDragged (best);
             return;
         }
-        const double target = xToSample (x);
-        const bool isStart = draggingLoop == 3;
+        moveLoopPointTo (draggingLoop == 3, xToSample (x));
+    }
+    // lleva el Loop (isStart) o el Loop end hasta cerca de esta muestra: de onda entera en onda entera,
+    // o de muestra en muestra (muy de cerca o con ⌘)
+    void moveLoopPointTo (bool isStart, double target)
+    {
         if (sampleSnap()) // muy de cerca: de muestra en muestra (no de onda en onda)
         {
             const double lo = isStart ? (double) skipEnd : (double) loopStart + 2.0;
@@ -820,6 +851,94 @@ private:
             if (d < bestD) { bestD = d; best = v; }
         }
         if (onLoopDragged) onLoopDragged (isStart ? best : loopStart, isStart ? loopEnd : best);
+    }
+
+    float seamCentreX() const { return (float) plotLeft() + (float) plotSpan() * 0.5f; }
+    // el empalme del loop: muestra "virtual" v (0 = Loop): v < 0 es lo de antes de Loop end, v >= 0 lo de
+    // Loop en adelante. Así se ve justo lo que suena cuando el loop vuelve a empezar.
+    void drawSeam (juce::Graphics& g)
+    {
+        const auto r = procLaneRect();
+        juce::Graphics::ScopedSaveState save (g);
+        g.reduceClipRegion (juce::Rectangle<int> (r.getX(), r.getY() + 20, plotWidth() - r.getX(), r.getHeight() - 20));
+        const float mid = (float) r.getCentreY(), half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f);
+        const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
+        const float L = (float) (r.getX() + plotLeft()), W = (float) plotSpan(), c = seamCentreX();
+        g.setColour (juce::Colour (0xff1e1e20));
+        g.fillRect (r);
+        g.setColour (juce::Colour (0xff28282a));
+        g.fillRect (juce::Rectangle<float> (L, vTop, W, vBot - vTop));
+        g.setColour (juce::Colour (0xff323235));
+        g.drawHorizontalLine ((int) (mid - half * 0.5f), L, L + W);
+        g.drawHorizontalLine ((int) (mid + half * 0.5f), L, L + W);
+        g.setColour (juce::Colour (0xff3c3c40));
+        g.drawHorizontalLine ((int) mid, L, L + W);
+        g.setColour (juce::Colour (0x59ffffff)); // el marco de la franja, como en la vista normal
+        g.drawVerticalLine ((int) L, vTop, vBot);
+        g.drawVerticalLine ((int) (L + W) - 1, vTop, vBot);
+
+        const auto* buf = proc.get();
+        const int n = buf->getNumSamples(), nCh = buf->getNumChannels();
+        const double spp = viewLen / juce::jmax (1.0f, W);
+        auto smp = [&] (long long v) -> long long { return v < 0 ? (long long) loopEnd + v : (long long) loopStart + v; };
+        auto val = [&] (long long s) {
+            float v = 0;
+            for (int ch = 0; ch < nCh; ++ch) { const float x = buf->getSample (ch, (int) s); if (std::abs (x) > std::abs (v)) v = x; }
+            return v;
+        };
+        const float az = ampZoom();
+        auto yOf = [&] (float v) { return mid - juce::jlimit (-40.0f, 40.0f, v * az) * half; };
+        {
+            juce::Graphics::ScopedSaveState clip (g);
+            g.reduceClipRegion (juce::Rectangle<float> (L, az > 1.0f ? vTop : (float) r.getY(), W, az > 1.0f ? vBot - vTop : (float) r.getHeight()).getSmallestIntegerContainer());
+            const long long v0 = (long long) std::floor (-(c - L) * spp) - 1, v1 = (long long) std::ceil ((L + W - c) * spp) + 1;
+            g.setColour (juce::Colour (0xff4fb3ff));
+            if (spp < 1.0)
+            {
+                juce::Path p, dots;
+                bool started = false;
+                for (long long v = v0; v <= v1; ++v)
+                {
+                    const long long sIdx = smp (v);
+                    if (sIdx < 0 || sIdx >= n) { started = false; continue; }
+                    const float px = c + (float) ((double) v / spp), py = yOf (val (sIdx));
+                    if (! started) { p.startNewSubPath (px, py); started = true; } else p.lineTo (px, py);
+                    dots.addEllipse (px - 1.8f, py - 1.8f, 3.6f, 3.6f);
+                }
+                g.strokePath (p, juce::PathStrokeType (1.3f));
+                if (sampleDotsVisible()) g.fillPath (dots);
+            }
+            else
+            {
+                juce::RectangleList<float> peaks;
+                float lastV = 0.0f; bool hasLast = false;
+                for (int x = 0; x < (int) W; ++x)
+                {
+                    const double a = ((double) (L + (float) x) - c) * spp, b = a + spp;
+                    float lo = 1e9f, hi = -1e9f;
+                    for (long long v = (long long) std::floor (a); v < (long long) std::ceil (b); ++v)
+                    {
+                        const long long sIdx = smp (v);
+                        if (sIdx < 0 || sIdx >= n) continue;
+                        const float y = val (sIdx);
+                        lo = juce::jmin (lo, y); hi = juce::jmax (hi, y);
+                    }
+                    if (lo > hi) { hasLast = false; continue; }
+                    if (hasLast) { lo = juce::jmin (lo, lastV); hi = juce::jmax (hi, lastV); } // (sin cortes en las subidas)
+                    lastV = 0.5f * (lo + hi); hasLast = true;
+                    const float y0 = yOf (hi), y1 = yOf (lo);
+                    peaks.addWithoutMerging ({ L + (float) x, y0, 1.0f, juce::jmax (1.0f, y1 - y0) });
+                }
+                g.fillRectList (peaks);
+            }
+        }
+        // la unión, y qué es cada mitad
+        g.setColour (juce::Colours::white.withAlpha (0.85f));
+        g.fillRect (juce::Rectangle<float> (std::round (c), vTop, 1.0f, vBot - vTop));
+        g.setFont (uiFont (11.0f));
+        g.setColour (juce::Colour (0xff8a919c));
+        g.drawText ("Loop end", juce::Rectangle<float> (c - 106.0f, vTop - 19.0f, 100.0f, 16.0f), juce::Justification::centredRight);
+        g.drawText ("Loop", juce::Rectangle<float> (c + 6.0f, vTop - 19.0f, 100.0f, 16.0f), juce::Justification::centredLeft);
     }
 
     size_t endOrLen() const { return (endSample > 0 && endSample < (size_t) totalLen()) ? endSample : (size_t) totalLen(); }
