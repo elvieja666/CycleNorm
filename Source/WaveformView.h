@@ -1419,6 +1419,10 @@ private:
             const float x0 = (float) (r.getX() + plotLeft()); // no entra en los 40 de la izquierda
             g.drawHorizontalLine ((int) (mid - half), x0, x1);
             g.drawHorizontalLine ((int) (mid + half), x0, x1);
+            // y a los costados, la misma línea: la franja de la onda queda siempre enmarcada (también con
+            // Start / End corridos)
+            g.drawVerticalLine ((int) x0, (float) (int) (mid - half), (float) (int) (mid + half) + 1.0f);
+            g.drawVerticalLine ((int) x1 - 1, (float) (int) (mid - half), (float) (int) (mid + half) + 1.0f);
         }
 
         if (pass == 0) return;
