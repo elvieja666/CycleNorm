@@ -263,10 +263,11 @@ public:
         if (style == juce::Slider::LinearHorizontal) // línea fina con un cuadradito (Ramp)
         {
             const float cy = (float) y + (float) h * 0.5f;
+            const float x0 = (float) x - (float) kThumbInset, x1 = (float) (x + w + kThumbInset); // (la línea, de punta a punta)
             g.setColour (Theme::track);
-            g.fillRect (juce::Rectangle<float> ((float) x, std::round (cy) - 0.5f, (float) w, 1.0f));
+            g.fillRect (juce::Rectangle<float> (x0, std::round (cy) - 0.5f, x1 - x0, 1.0f));
             g.setColour (juce::Colour (0xff8a8a8a)); // lo recorrido, más claro
-            g.fillRect (juce::Rectangle<float> ((float) x, std::round (cy) - 0.5f, pos - (float) x, 1.0f));
+            g.fillRect (juce::Rectangle<float> (x0, std::round (cy) - 0.5f, pos - x0, 1.0f));
             g.setColour (s.isEnabled() ? Theme::inkStrong : Theme::inkFaint);
             g.fillRect (juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ std::round (pos), std::round (cy) }));
             return;
@@ -287,6 +288,20 @@ public:
             g.fillRect (juce::Rectangle<float> (a, r.getY(), b - a, r.getHeight()).reduced (0.0f, 1.0f)); // plano
         }
     }
+    // la barra de Ramp: el valor a la derecha, del ancho justo de "100 %" (pegado al borde), y la línea a 10 de él;
+    // el cuadradito no se sale de la línea (el recorrido va metido medio cuadradito de cada punta)
+    static constexpr int kThumbInset = 3;
+    static int valueBoxW() { return (int) std::ceil (juce::GlyphArrangement::getStringWidth (Theme::font (10.0f, 400, 0.06f), "100 %")) + 1; }
+    juce::Slider::SliderLayout getSliderLayout (juce::Slider& s) override
+    {
+        if (s.getSliderStyle() != juce::Slider::LinearHorizontal) return LookAndFeel_V4::getSliderLayout (s);
+        juce::Slider::SliderLayout l;
+        auto b = s.getLocalBounds();
+        l.textBoxBounds = b.removeFromRight (valueBoxW());
+        b.removeFromRight (10);
+        l.sliderBounds = b.reduced (kThumbInset, 0);
+        return l;
+    }
     juce::Label* createSliderTextBox (juce::Slider& s) override
     {
         auto* base = LookAndFeel_V4::createSliderTextBox (s);
@@ -295,7 +310,7 @@ public:
         l->setEditable (base->isEditableOnSingleClick(), base->isEditableOnDoubleClick(), base->doesLossOfFocusDiscardChanges());
         delete base;
         l->setFont (Theme::font (10.0f, 400, 0.06f)); // el valor, chico (mono)
-        if (s.getSliderStyle() == juce::Slider::LinearHorizontal) l->setJustificationType (juce::Justification::centred);
+        if (s.getSliderStyle() == juce::Slider::LinearHorizontal) { l->setJustificationType (juce::Justification::centredRight); l->setBorderSize ({}); }
         l->setColour (juce::Label::textColourId, Theme::inkStrong);
         l->setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
         l->setColour (juce::Label::outlineColourId, juce::Colours::transparentBlack);
@@ -1001,10 +1016,16 @@ public:
             // (la "R" dibujada, no la caja del texto, a 20 de Normalize y a 10 de la rayita: se le resta el aire de la letra)
             juce::GlyphArrangement rg;
             rg.addLineOfText (lf, "RAMP", 0.0f, 0.0f);
-            const int bearing = juce::jmax (1, (int) std::ceil (rg.getBoundingBox (0, 1, true).getX())); // (medio píxel de aire de la "R": 1)
+            juce::Path rp;
+            rg.createPath (rp);
+            const auto rInk = rp.getBounds(); // lo dibujado (no las cajas de las letras)
+            const int bearing = juce::jmax (1, (int) std::ceil (rInk.getX())); // (medio píxel de aire de la "R": 1)
             rampLabel.setBounds (juce::Rectangle<int> (row.getX() - bearing, cy - kPillH / 2, textW + 2, kPillH));
-            row.removeFromLeft (textW + 8); // la barra a 10 de la palabra "Ramp"
-            ramp.setBounds (row.removeFromLeft (125).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
+            // la línea de Ramp a 10 de la "P" dibujada; la barra termina donde siempre (el "%" a 10 de la rayita)
+            const int inkEnd = juce::roundToInt ((float) rampLabel.getX() + rInk.getRight());
+            const int barRight = row.getX() + textW + 8 + 125;
+            row.removeFromLeft (inkEnd + 10 - row.getX());
+            ramp.setBounds (row.removeFromLeft (barRight - row.getX()).withHeight (kPillH).withY (cy - kPillH / 2));
             // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
             // (el slider queda oculto, guarda el valor)
         }
