@@ -739,6 +739,9 @@ private:
     }
 
     bool hasLoop() const { return loopEnd > loopStart && onLoopDragged != nullptr; }
+    // muy de cerca: cada muestra a kSampleDotPx px o más (se ven los puntitos y el loop va de muestra en muestra)
+    static constexpr double kSampleDotPx = 6.0;
+    bool sampleDotsVisible() const { return viewLen > 0.0 && (double) plotSpan() / viewLen >= kSampleDotPx; }
     // las puntas del loop saltan de onda entera en onda entera (cruces ascendentes de la fundamental)
     void dragLoopTo (float x)
     {
@@ -757,6 +760,17 @@ private:
         }
         const double target = xToSample (x);
         const bool isStart = draggingLoop == 3;
+        if (sampleDotsVisible()) // muy de cerca: de muestra en muestra (no de onda en onda)
+        {
+            const double lo = isStart ? (double) skipEnd : (double) loopStart + 2.0;
+            const double hi = isStart ? (double) loopEnd - 2.0 : (double) endOrLen();
+            if (hi >= lo)
+            {
+                const size_t best = (size_t) std::llround (juce::jlimit (lo, hi, target));
+                if (onLoopDragged) onLoopDragged (isStart ? best : loopStart, isStart ? loopEnd : best);
+            }
+            return;
+        }
         size_t best = isStart ? loopStart : loopEnd; double bestD = 1e300;
         for (size_t v : loopBounds)
         {
@@ -1026,7 +1040,7 @@ private:
     void zoomAround (float x, double factor)
     {
         const double anchor = xToSample (x);
-        const double minLen = juce::jmin ((double) totalLen(), juce::jmax (32.0, (double) plotSpan() / 8.0));
+        const double minLen = juce::jmin ((double) totalLen(), juce::jmax (8.0, (double) plotSpan() / 40.0)); // (hasta 40 px por muestra)
         viewLen = juce::jlimit (minLen, (double) totalLen(), viewLen * factor);
         viewStart = anchor - ((x - plotLeft()) / plotSpan()) * viewLen;
     }
@@ -1144,6 +1158,30 @@ private:
                 strokeIn (L, darkBefore, kDark);
                 strokeIn (darkBefore, g0, kLight);
                 strokeIn (g0, R, waveColour);
+                // muy de cerca (cada muestra a kSampleDotPx o más): un puntito en cada muestra, como los de
+                // la línea del pitch (ahí el loop salta de muestra en muestra)
+                if (sampleDotsVisible())
+                {
+                    juce::Path dots;
+                    for (int s = s0; s <= s1; ++s)
+                    {
+                        float v = 0;
+                        for (int c = 0; c < nCh; ++c) { const float x = buf->getSample (c, s); if (std::abs (x) > std::abs (v)) v = x; }
+                        const float px = (float) sampleToX (s / k) + (float) r.getX(), py = mid - juce::jlimit (-1.2f, 1.2f, v) * half;
+                        dots.addEllipse (px - 1.8f, py - 1.8f, 3.6f, 3.6f);
+                    }
+                    auto fillIn = [&] (float x0, float x1, juce::Colour c) {
+                        x0 = juce::jmax (x0, L); x1 = juce::jmin (x1, R);
+                        if (x1 <= x0) return;
+                        juce::Graphics::ScopedSaveState ss (g);
+                        g.reduceClipRegion (juce::Rectangle<float> (x0, T, x1 - x0, H).getSmallestIntegerContainer());
+                        g.setColour (c);
+                        g.fillPath (dots);
+                    };
+                    fillIn (L, darkBefore, kDark);
+                    fillIn (darkBefore, g0, kLight);
+                    fillIn (g0, R, waveColour);
+                }
             }
             else
             {
