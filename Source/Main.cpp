@@ -731,7 +731,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (928, 572); // (diseño base: 928 x 572, al 100 %)
+        setSize (918, 570); // (diseño base: 918 x 570, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -769,7 +769,7 @@ public:
             ga.createPath (text);
             first.createPath (t);
             const auto tb = t.getBounds();                       // la "T" marca el alto de las mayúsculas
-            const float capTop = (40.0f - tb.getHeight()) * 0.5f; // = 13 (como UNISON)
+            const float capTop = 10.0f; // las mayúsculas: de 10 a 25
             g.fillPath (text, juce::AffineTransform::translation ((float) kMargin - tb.getX(), capTop - tb.getY()));
         }
         // la info del loop: "Loop 99.1 % · 60 cycles · crossfade Off", cada número en un lugar fijo
@@ -829,15 +829,15 @@ public:
     // márgenes de 20, fila del título de 38 (título de 14 de alto de mayúsculas), botones de 33 de
     // alto visible con letra de 14, barras de 24 de alto (las pastillas de UNISON), visor con margen de 7.
     static constexpr int kMargin = 10, kButtonH = 25, kPillH = 25;
-    static constexpr float kTitleCap = 14.0f;
+    static constexpr float kTitleCap = 15.0f;
 
     void resized() override
     {
-        // altos (diseño de 572): barra de arriba 72 · recuadro del visor 490 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
+        // altos (diseño de 570): título de 10 a 25 · botones de 35 a 60 · recuadro del visor 490 desde 70 (Original 20 + 185 + 40 · Processed 40 + 185 + 20) · 10 abajo
         auto r = getLocalBounds();
         r.removeFromLeft (kMargin); r.removeFromRight (kMargin);
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
-        r.removeFromTop (35);          // los botones: lo visible de 37 a 62 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
+        r.removeFromTop (33);          // los botones: lo visible de 35 a 60 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
         {
             // fila del título: TOOLKIT · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
@@ -871,8 +871,8 @@ public:
             const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Processed") + 2.0f * 14.0f + 24.0f) + 8;
             abButton.setBounds (row.removeFromLeft (w)); // con el parlante (mismo ancho con Processed u Original)
         }
-        divider();
-        pitchInfoX = groupDividers.back(); // la info del pitch arranca en esta línea (entre Processed y Normalize)
+        row.removeFromLeft (2); // Processed y Normalize: a 10 (sin rayita)
+        pitchInfoX = row.getX() - 1; // (la info del pitch arranca entre Processed y Normalize)
         // 5) a la derecha de todo: Drag to DAW
         {
             const int w = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Drag to DAW") + 2.0f * 20.0f);
@@ -887,7 +887,7 @@ public:
             const int cy = row.getY() + 2 + kButtonH / 2;
             rampLabel.setBorderSize ({});
             rampLabel.setBounds (juce::Rectangle<int> (row.getX(), cy - kPillH / 2, textW + 2, kPillH));
-            row.removeFromLeft (textW + 10);
+            row.removeFromLeft (textW + 8); // la barra a 10 de la palabra "Ramp"
             ramp.setBounds (row.removeFromLeft (125).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
             // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
             // (el slider queda oculto, guarda el valor)
@@ -898,8 +898,9 @@ public:
         {
             const int wNum = (int) std::ceil (juce::GlyphArrangement::getStringWidth (bf, "Option 5") + 2.0f * 14.0f) + 8; // fijo: no salta al cambiar el número
             auto wOf = [&] (juce::Button& b) { return &b == &otherLoopButton ? wNum : widthFor (b, 0); };
-            for (auto* b : { (juce::Button*) &loopButton, (juce::Button*) &otherLoopButton })
-                b->setBounds (row.removeFromLeft (wOf (*b)));
+            loopButton.setBounds (row.removeFromLeft (wOf (loopButton)));
+            row.removeFromLeft (2); // Loop y Option N: a 10
+            otherLoopButton.setBounds (row.removeFromLeft (wOf (otherLoopButton)));
             findLoopButton.setVisible (false);  // (quedan para el menú y los atajos: Loop ya busca solo)
             clearLoopButton.setVisible (false);
         }
@@ -910,7 +911,7 @@ public:
         layoutTitleRow();
         // el visor: el recuadro negro de 100 a 630 (530), a 20 de los costados; abajo quedan 20 libres
         // el recuadro negro: a 10 de los costados y de abajo (como todo lo de arriba)
-        waveArea = juce::Rectangle<int> (kMargin, 37 + kButtonH + 10, getWidth() - 2 * kMargin, getHeight() - (37 + kButtonH + 10) - kMargin); // (a la misma línea que los botones y el título)
+        waveArea = juce::Rectangle<int> (kMargin, 35 + kButtonH + 10, getWidth() - 2 * kMargin, getHeight() - (35 + kButtonH + 10) - kMargin); // (a la misma línea que los botones y el título)
         // el visor arma dos carriles de 265 (40 + 185 + 40); los 20 de más arriba no se ven (el
         // componente sobresale 20 por arriba del recuadro: recorta y no recibe clics ahí); abajo
         // sobran 10 dentro del recuadro
@@ -1056,7 +1057,7 @@ private:
     int pitchInfoX = 0, loopInfoX = 0;
     // los textos de la fila del título, apoyados en el mismo renglón que TOOLKIT: la base de las
     // letras en y = 27, a 20 del borde de arriba (visible) de los botones
-    static constexpr float kTitleBaseline = 27.0f;
+    static constexpr float kTitleBaseline = 25.0f;
     static juce::Rectangle<float> baselineRow (const juce::Font& f)
     {
         return { 0.0f, kTitleBaseline - f.getAscent(), 0.0f, f.getHeight() };
@@ -2330,8 +2331,8 @@ private:
         {
             setUsingNativeTitleBar (true);
             content = new MainComponent();
-            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "928").getIntValue();
-            content->setSize (w, 572);
+            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "918").getIntValue();
+            content->setSize (w, 570);
             setContentOwned (content, true);
             setResizable (false, false);
             centreWithSize (getWidth(), getHeight());
