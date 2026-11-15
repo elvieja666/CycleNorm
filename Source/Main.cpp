@@ -929,8 +929,8 @@ public:
         g.fillRect (waveArea); // esquinas rectas
         g.setColour (juce::Colour (0xff262626)); // con un marco fino
         g.drawRect (waveArea, 1);
-        // divisores finos entre los grupos de botones
-        g.setColour (juce::Colour (0xff262626));
+        // divisores finos entre los grupos de botones (un gris un poco más claro que el marco del visor)
+        g.setColour (juce::Colour (0xff3a3a3a));
         for (int x : groupDividers) g.fillRect ((float) x, (float) buttonRowY, 1.0f, (float) buttonRowH);
         if (groupDividersRight > 0 && groupDividersRight < dragOut.getX()) g.fillRect ((float) groupDividersRight, (float) buttonRowY, 1.0f, (float) buttonRowH);
     }
@@ -994,6 +994,7 @@ public:
         {
             const auto lf = Theme::labelFont();
             const int textW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "RAMP"));
+            groupDividers.push_back (row.getX() + 5); // la rayita entre Normalize y Ramp (a 9 del borde visible, como las otras)
             row.removeFromLeft (16); // "Ramp" a 20 del borde visible de Normalize
             const int cy = row.getY() + 2 + kButtonH / 2;
             rampLabel.setBorderSize ({});
