@@ -628,7 +628,7 @@ public:
         wave.getPitchReference = [this] {
             if (! juce::isPositiveAndBelow (current, (int) items.size())) return 0.0;
             const auto& it = *items[(size_t) current];
-            const auto p = cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite());
+            const auto p = pitchOnLoaded (it, it.startSample, (size_t) it.lengthToWrite(), true);
             return p.valid ? p.midi + (pitchShift.getValue() / 100.0 - it.tuneSemis) : 0.0;
         };
         wave.maxSkip = kMaxSkip;
@@ -2013,6 +2013,19 @@ private:
         juce::ignoreUnused (st);
         return cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite());
     }
+    // el pitch medido sobre el audio tal como se cargó (sin re-afinar) y corrido lo que se re-afinó: así
+    // es exacto (re-afinar no cambia lo que se mide: tocar una tecla del piano deja justo 0 cents)
+    static cyclenorm::PitchInfo pitchOnLoaded (const Item& it, size_t from, size_t to, bool sustain)
+    {
+        const bool hasLoaded = it.loadedAnalysis.numSamples > 0;
+        const auto& a = hasLoaded ? it.loadedAnalysis : it.analysis;
+        const double speed = hasLoaded ? std::pow (2.0, it.tuneSemis / 12.0) : 1.0;
+        const size_t f = (size_t) std::llround ((double) from * speed), t = (size_t) std::llround ((double) to * speed);
+        auto p = sustain ? cyclenorm::measureSustainPitch (a, f, t) : cyclenorm::measurePitch (a, f, t);
+        if (hasLoaded && p.valid) { p.midi += it.tuneSemis; p.hz *= speed; }
+        return p;
+    }
+
     void updatePitch (const Item& it, double previewSemis = 0.0)
     {
         // dos renglones en el visor Original: el del sustain (gris) y el del loop (azul; sin loop, "--")
@@ -2030,10 +2043,10 @@ private:
                  + "\t" + juce::String (p.hz, 3) + " Hz" + "\ttuned " + sgn (tuned * 100.0, 1) + " cents"
                  + "\tdrift " + (p.cycles >= 4 ? sgn (p.driftCents, 1) + " cents" : juce::String ("--"));
         };
-        const auto sus = line (cyclenorm::measureSustainPitch (it.analysis, it.startSample, (size_t) it.lengthToWrite()), false);
+        const auto sus = line (pitchOnLoaded (it, it.startSample, (size_t) it.lengthToWrite(), true), false);
         const bool inLoop = loopActive (it);
         // (con Loop apagado, el renglón se ve igual, sin medida: "Pitch (loop) : --")
-        const auto lp = inLoop ? line (cyclenorm::measurePitch (it.analysis, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8), true)
+        const auto lp = inLoop ? line (pitchOnLoaded (it, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8, false), true)
                                : juce::String ("Pitch (loop)\t--");
         wave.setPitchInfo (sus, juce::Colour (0xff8b9096), lp, kAccent); // (se muestran en el visor Original)
         layoutTitleRow();
