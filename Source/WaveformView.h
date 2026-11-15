@@ -685,8 +685,7 @@ private:
                                 isBlack (m) ? juce::Justification::centredLeft : juce::Justification::centredRight);
                 }
             }
-            g.setColour (juce::Colour (0x66000000));
-            g.fillRect (juce::Rectangle<float> (kbX, kb.getY(), 1.0f, kb.getHeight()));
+            // (el borde de la izquierda del teclado es la línea del marco de la onda)
         }
         {
             // la curva (recortada antes de la columna de los nombres)
@@ -1288,7 +1287,8 @@ private:
                 // (en 0 queda pegada al borde izquierdo; se corre 1 píxel para que se vea entera)
                 const float rawX = (float) r.getX() + (float) sampleToX (skipLineSample());
                 const float lx = juce::jmax ((float) r.getX() + (float) plotLeft(), rawX);
-                if (rawX >= (float) r.getX() - 1.0f && lx <= (float) r.getRight())
+                // (en 0, sobre el borde del marco: no se dibuja, salvo mientras se arrastra)
+                if (rawX >= (float) r.getX() - 1.0f && lx <= (float) r.getRight() && (skipLineSample() > 0.0 || draggingSkip))
                 {
                     g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingSkip ? 1.0f : 0.85f));
                     const float dashes[] = { 4.0f, 3.0f };
@@ -1334,7 +1334,17 @@ private:
                     g.drawLine (std::round (x0) + 0.5f, vTop, std::round (x0) + 0.5f, vBot, 1.0f);
                 }
             }
-            // lo que queda después de la línea de Fin: oscurecido (no se exporta ni suena)
+            // en Original, lo de antes de Start también oscurecido (en Processed ya va en gris oscuro)
+            if (! showSkipLine && startSample > 0)
+            {
+                const float sx = juce::jmin ((float) (r.getX() + plotWidth()), (float) r.getX() + (float) sampleToX ((double) startSample));
+                const float px0 = (float) (r.getX() + plotLeft());
+                if (sx > px0)
+                {
+                    g.setColour (juce::Colour (0xcc1c1c1e));
+                    g.fillRect (juce::Rectangle<float> (px0, vTop, sx - px0, vBot - vTop));
+                }
+            }
             // lo que queda después de la línea de End: oscurecido encima (no se exporta ni suena)
             if (endSample > 0 && endSample < (size_t) totalLen())
             {
