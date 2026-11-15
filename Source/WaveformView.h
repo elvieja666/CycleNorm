@@ -1045,7 +1045,7 @@ private:
                       case 5: return "XFADE"; case 6: return "START"; case 7: return "FADE IN"; case 8: return "FADE OUT"; }
         return {};
     }
-    juce::Rectangle<float> tabRect (int id) const
+    juce::Rectangle<float> tabRect (int id, bool avoid = true) const
     {
         if (totalLen() == 0) return {};
         const auto lane = procLaneRect().toFloat();
@@ -1078,7 +1078,20 @@ private:
         // que no se salga del gráfico (pegada al borde, se da vuelta)
         if (rr.getRight() > (float) plotWidth()) rr.setX (xl);
         if (rr.getX() < 0.0f) rr.setX (xr);
-        if (id == 3 || id == 8) // Loop y Fade out comparten fila con Fade in: si se pisan, se corren a la derecha de esa
+        if (! avoid) return rr;
+        // Loop y Fade out comparten fila con Fade in: si se chocan, se corre la que está quieta.
+        // Arrastrando Fade out (o Loop), Fade in se corre a su izquierda; si no, la otra a la derecha de Fade in.
+        if (id == 7)
+        {
+            for (int other : { 8, 3 })
+            {
+                if (! ((other == 8 && draggingFadeOut) || (other == 3 && draggingLoop == 3))) continue;
+                const auto o = tabRect (other, false);
+                if (! o.isEmpty() && rr.getRight() > o.getX() - 2.0f && (other == 8 || rr.getX() < o.getRight() + 2.0f))
+                    rr.setX (o.getX() - 2.0f - rr.getWidth());
+            }
+        }
+        if (id == 3 || id == 8)
         {
             const auto fi = tabRect (7);
             // (Fade out va a la izquierda de su línea: si queda encima o del otro lado de Fade in, también se corre)
