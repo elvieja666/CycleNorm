@@ -212,7 +212,7 @@ public:
             return juce::String (juce::jlimit (1, 100, juce::roundToInt (100.0 * std::log (f) / std::log (fmax))));
         };
         const double hf = total / juce::jmax (1.0, viewLen);
-        const double hmax = total / juce::jmin (total, juce::jmax (32.0, (double) plotSpan() / 8.0)); // (el mismo tope que zoomAround)
+        const double hmax = total / juce::jmax (1.0, minViewLen()); // (el mismo tope que zoomAround: 100 = el máximo de verdad)
         const double vf = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         const double vmax = autoSpan / 0.005;                                                         // (el mismo tope que zoomPitch)
         const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
@@ -431,8 +431,9 @@ public:
     {
         if (totalLen() == 0) return;
         const bool overPitch = e.position.y < getHeight() / 2.0f && pitchPts.size() >= 2 && pitchAreaH > 1.0f;
-        // ⌥ Option + rueda (o dos dedos) sobre el carril de arriba: zoom vertical del pitch
-        if (e.mods.isAltDown() && overPitch)
+        // ⌥ Option + rueda (o dos dedos), sobre cualquiera de los dos visores: zoom vertical (el pitch del
+        // Original y las ondas de los dos)
+        if (e.mods.isAltDown() && pitchPts.size() >= 2 && pitchAreaH > 1.0f)
         {
             const float d = std::abs (w.deltaY) > std::abs (w.deltaX) ? w.deltaY : w.deltaX;
             zoomPitch (e.position.x, std::pow (2.0, d * 3.0));
@@ -1037,10 +1038,15 @@ private:
         dirty = true; repaint();
     }
 
+    // lo más cerca que se puede ver: 40 px por muestra
+    double minViewLen() const { return juce::jmin ((double) totalLen(), juce::jmax (8.0, (double) plotSpan() / 40.0)); }
+    // el zoom vertical (Y) también agranda las ondas de los dos visores
+    // (más suave que el del pitch: la raíz del factor, así a Y 100 queda ×37 y a Y 30, ×3)
+    float ampZoom() const { return zoomSpan > 0.0 ? (float) juce::jlimit (1.0, 40.0, std::sqrt (autoSpan / zoomSpan)) : 1.0f; }
     void zoomAround (float x, double factor)
     {
         const double anchor = xToSample (x);
-        const double minLen = juce::jmin ((double) totalLen(), juce::jmax (8.0, (double) plotSpan() / 40.0)); // (hasta 40 px por muestra)
+        const double minLen = minViewLen();
         viewLen = juce::jlimit (minLen, (double) totalLen(), viewLen * factor);
         viewStart = anchor - ((x - plotLeft()) / plotSpan()) * viewLen;
     }
@@ -1132,6 +1138,9 @@ private:
             // así el dibujo no cambia con el pitch
             const double k = totalLen() > 0 ? (double) n / (double) totalLen() : 1.0;
             const double vs = viewStart * k, vl = viewLen * k;
+            const float az = ampZoom(); // zoom vertical: la onda más alta (lo que se pasa de la franja se corta)
+            juce::Graphics::ScopedSaveState waveClip (g);
+            if (az > 1.0f) g.reduceClipRegion (juce::Rectangle<float> ((float) r.getX(), vTop, (float) r.getWidth(), vBot - vTop).getSmallestIntegerContainer());
             g.setColour (waveColour);
             if (spp < 1.0)
             {
@@ -1141,7 +1150,7 @@ private:
                 {
                     float v = 0; // el canal con mayor valor absoluto
                     for (int c = 0; c < nCh; ++c) { const float x = buf->getSample (c, s); if (std::abs (x) > std::abs (v)) v = x; }
-                    const float px = (float) sampleToX (s / k) + (float) r.getX(), py = mid - juce::jlimit (-1.2f, 1.2f, v) * half;
+                    const float px = (float) sampleToX (s / k) + (float) r.getX(), py = mid - juce::jlimit (-40.0f, 40.0f, v * az) * half;
                     if (s == s0) p.startNewSubPath (px, py); else p.lineTo (px, py);
                 }
                 // de cerca: la misma línea, recortada por zonas de color
@@ -1167,7 +1176,7 @@ private:
                     {
                         float v = 0;
                         for (int c = 0; c < nCh; ++c) { const float x = buf->getSample (c, s); if (std::abs (x) > std::abs (v)) v = x; }
-                        const float px = (float) sampleToX (s / k) + (float) r.getX(), py = mid - juce::jlimit (-1.2f, 1.2f, v) * half;
+                        const float px = (float) sampleToX (s / k) + (float) r.getX(), py = mid - juce::jlimit (-40.0f, 40.0f, v * az) * half;
                         dots.addEllipse (px - 1.8f, py - 1.8f, 3.6f, 3.6f);
                     }
                     auto fillIn = [&] (float x0, float x1, juce::Colour c) {
@@ -1207,7 +1216,7 @@ private:
                     float lo = 1e9f, hi = -1e9f;
                     for (int s = juce::jmax (0, s0 - 1); s < s1; ++s) { const float v = valueAt (s); lo = juce::jmin (lo, v); hi = juce::jmax (hi, v); }
                     if (hi < lo) continue;
-                    const float y0 = mid - juce::jlimit (-1.2f, 1.2f, hi) * half, y1 = mid - juce::jlimit (-1.2f, 1.2f, lo) * half;
+                    const float y0 = mid - juce::jlimit (-40.0f, 40.0f, hi * az) * half, y1 = mid - juce::jlimit (-40.0f, 40.0f, lo * az) * half;
                     const juce::Rectangle<float> cr { (float) r.getX() + (float) plotLeft() + (float) x * colW, y0, colW, juce::jmax (0.6f, y1 - y0) };
                     const float cx = cr.getX() + colW * 0.5f;
                     (cx < darkBefore ? darkPeaks : (cx < greyBefore ? greyPeaks : peaks)).addWithoutMerging (cr);
