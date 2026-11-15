@@ -21,19 +21,19 @@ jobs:
           clang++ -O2 -std=c++17 -ISource Tests/EngineTest.cpp -o engine_test
           ./engine_test
 
-      - name: Armar Toolkit.zip (todo en la misma carpeta)
+      - name: Armar Toolie.zip (todo en la misma carpeta)
         run: |
           mkdir pkg
-          cp -R build/Toolkit_artefacts/Release/Toolkit.app pkg/
+          cp -R build/Toolie_artefacts/Release/Toolie.app pkg/
           cp Instalador/Install.command Instalador/Uninstall.command pkg/
           chmod +x pkg/Install.command pkg/Uninstall.command
-          codesign --force --deep --sign - pkg/Toolkit.app
-          lipo -info pkg/Toolkit.app/Contents/MacOS/Toolkit
-          (cd pkg && zip -ry ../Toolkit.zip .)
-          unzip -l Toolkit.zip | head -20
+          codesign --force --deep --sign - pkg/Toolie.app
+          lipo -info pkg/Toolie.app/Contents/MacOS/Toolie
+          (cd pkg && zip -ry ../Toolie.zip .)
+          unzip -l Toolie.zip | head -20
 
-      - name: Subir Toolkit.zip
+      - name: Subir Toolie.zip
         uses: actions/upload-artifact@v7
         with:
-          path: Toolkit.zip
+          path: Toolie.zip
           archive: false
