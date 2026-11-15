@@ -822,7 +822,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (892, 570); // (diseño base: 892 x 570, al 100 %)
+        setSize (927, 570); // (diseño base: 927 x 570, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -980,7 +980,7 @@ public:
             rampLabel.setBorderSize ({});
             rampLabel.setBounds (juce::Rectangle<int> (row.getX(), cy - kPillH / 2, textW + 2, kPillH));
             row.removeFromLeft (textW + 8); // la barra a 10 de la palabra "Ramp"
-            ramp.setBounds (row.removeFromLeft (125 - (kButtonH + 10)).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
+            ramp.setBounds (row.removeFromLeft (125).withHeight (kPillH).withY (cy - kPillH / 2)); // la barra de Ramp: del mismo largo que antes
             // Pitch ya no tiene barra: se cambia solo arrastrando la línea en el visor
             // (el slider queda oculto, guarda el valor)
         }
@@ -2510,7 +2510,7 @@ private:
         {
             setUsingNativeTitleBar (true);
             content = new MainComponent();
-            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "892").getIntValue();
+            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "927").getIntValue();
             content->setSize (w, 570);
             setContentOwned (content, true);
             setResizable (false, false);
