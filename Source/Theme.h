@@ -54,7 +54,7 @@ namespace Theme
     }
 
     // Letra del título: la misma Inter del resto (en semibold)
-    inline juce::Typeface::Ptr titleTypeface() { return typeface (600); }
+    inline juce::Typeface::Ptr titleTypeface() { return typeface (400); } // (como el resto: regular, no negrita)
 
     // La letra del título con mayúsculas de capHeight px (se mide la "B": cada sistema
     // calcula el alto de la letra un poco distinto).
@@ -70,7 +70,8 @@ namespace Theme
             const float h = p.getBounds().getHeight();
             return h > 1.0f ? h / 100.0f : 0.67f;
         }();
-        return juce::Font (juce::FontOptions (titleTypeface()).withHeight (capHeight / capPerHeight));
+        // con el mismo espaciado entre letras que las etiquetas (mayúsculas espaciadas)
+        return juce::Font (juce::FontOptions (titleTypeface()).withHeight (capHeight / capPerHeight).withKerningFactor (0.14f));
     }
 
     // Todos los textos un 22% más grandes que el diseño base (igual que UNISON).
