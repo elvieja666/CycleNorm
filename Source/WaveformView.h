@@ -1476,6 +1476,10 @@ private:
                 g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
                 g.drawLine (juce::Line<float> (std::round (sx) + 0.5f, vTop, std::round (sx) + 0.5f, vBot), draggingStart ? 1.5f : 1.0f); // entera
             }
+            // los fades: sólo adentro del gráfico (con zoom, lo que cae afuera no se dibuja en el margen)
+            {
+            juce::Graphics::ScopedSaveState fadeClip (g);
+            g.reduceClipRegion (juce::Rectangle<int> (r.getX() + plotLeft(), r.getY(), plotSpan(), r.getHeight()));
             // fade in: la rampa (de Start, abajo, hasta donde termina, arriba) y su manija
             if (showSkipLine && hasFadeHandle())
             {
@@ -1507,6 +1511,7 @@ private:
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (std::round (x0) + 0.5f, vTop, std::round (x0) + 0.5f, vBot, 1.0f);
                 }
+            }
             }
             // en Original, lo de antes de Start también oscurecido (en Processed ya va en gris oscuro)
             if (! showSkipLine && startSample > 0)
