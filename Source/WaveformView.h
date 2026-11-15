@@ -258,15 +258,7 @@ public:
         if (totalLen() == 0) return;
         const auto b = visibleBounds().toFloat();
         const double total = (double) totalLen();
-        if (viewStart > 0.5 || viewLen < total - 0.5)
-        {
-            const auto track = juce::Rectangle<float> (b.getX() + 6.0f, b.getBottom() - 4.0f, b.getWidth() - 12.0f, 3.0f);
-            g.setColour (juce::Colours::white.withAlpha (0.08f));
-            g.fillRect (track);
-            g.setColour (juce::Colours::white.withAlpha (0.45f));
-            g.fillRect (track.withX (track.getX() + (float) (viewStart / total) * track.getWidth())
-                                         .withWidth (juce::jmax (4.0f, (float) (viewLen / total) * track.getWidth())));
-        }
+        // (sin la barrita de abajo: con zoom, se mueve con la rueda o el trackpad)
         // arriba a la derecha del visor Original (en la franja del título): siempre "Zoom X n · Y n"
         // (sin zoom: 0); con zoom, además "Show all", que se clickea y vuelve a mostrar todo
         // el número va de 0 (sin zoom) a 100 (el máximo), en escala logarítmica
