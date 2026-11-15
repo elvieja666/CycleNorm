@@ -1218,18 +1218,12 @@ private:
         const float y = pitchAreaBottom - (float) ((m - pitchLo) / juce::jmax (1e-9, pitchHi - pitchLo)) * pitchAreaH;
         return std::abs (p.y - y) <= 7.0f;
     }
-    // arrastre de la línea: Shift = fino (10 veces más lento) y sin imán.
-    // Sin Shift, el punto agarrado se pega a la línea de la nota cuando pasa a menos de 5 píxeles.
+    // arrastre de la línea: Shift = fino (10 veces más lento). Sin imán.
     void dragPitchTo (float y, bool fine)
     {
         pitchDragAccum += (double) (pitchDragLastY - y) * pitchSemisPerPx * (fine ? 0.1 : 1.0);
         pitchDragLastY = y;
-        double target = pitchDragRef + pitchDragAccum; // el pitch medido, movido por el arrastre
-        if (! fine)
-        {
-            const double note = std::round (target);
-            if (std::abs (target - note) / juce::jmax (1e-9, pitchSemisPerPx) <= 5.0) target = note;
-        }
+        const double target = pitchDragRef + pitchDragAccum; // el pitch medido, movido por el arrastre (sin imán: para clavar la nota, clic en el piano)
         double cents = pitchDragStartCents + (target - pitchDragRef) * 100.0;
         cents = clampTuneCents (std::round (cents * 10.0) / 10.0);
         onPitchDragged (cents);
