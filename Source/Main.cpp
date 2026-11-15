@@ -581,9 +581,9 @@ public:
         normButton.setToggleState (amount.getValue() >= 50.0, juce::dontSendNotification);
         amount.setVisible (false);
         amountLabel.setVisible (false);
-        // Re-pitch a mano, en cents: de -600 a +600 (6 semitonos para cada lado). Doble clic = 0.
+        // Re-pitch a mano, en cents: de -650 a +650 (6 semitonos para cada lado + medio semitono, así cualquier nota a 6 semitonos queda clavada en 0 cents). Doble clic = 0.
         // Se aplica un instante después de moverla.
-        setupSlider (pitchShift, pitchShiftLabel, "Pitch", -600, 600, 0.1, "", 0.0);
+        setupSlider (pitchShift, pitchShiftLabel, "Pitch", -WaveformView::kMaxTuneCents, WaveformView::kMaxTuneCents, 0.1, "", 0.0);
         pitchShift.textFromValueFunction = [] (double v) {
             return juce::String (v, 1) + " cents  (" + (v > 0.0 ? "+" : "") + juce::String (v / 100.0, 2) + " st)";
         };
