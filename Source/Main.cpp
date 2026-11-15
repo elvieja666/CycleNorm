@@ -352,7 +352,8 @@ struct Item
     size_t fadeInEndS = 0, fadeOutStartS = 0, xfadeLenS = 0;
     std::vector<cyclenorm::LoopResult> loopCands; // los mejores loops que encontró la búsqueda
     int loopCandIdx = -1;                        // cuál de ellos está puesto (-1 = uno movido a mano)
-    int skipOverride = -1;                       // (para el dibujo sin re-afinar: el Skip contado en su audio)
+    int skipOverride = -1;
+    size_t skipSampleOverride = SIZE_MAX;        // (ídem, con Skip en una muestra)                       // (para el dibujo sin re-afinar: el Skip contado en su audio)
     bool hasLoop() const { return loopEnd > loopStart; }
 
     int lengthToWrite() const
@@ -734,7 +735,7 @@ public:
         };
         wave.onSkipDragged = [this] (int n)
         {
-            if (skipHalves == n) { wave.refresh(); return; }
+            if (skipHalves == n && skipSample == 0) { wave.refresh(); return; }
             if (juce::isPositiveAndBelow (current, (int) items.size()))
             {   // Skip no puede pasar la línea de Fin
                 auto& it = *items[(size_t) current];
@@ -742,9 +743,22 @@ public:
                 if (it.endSample > 0 && cyclenorm::skipEndSample (it.analysis, st) >= it.endSample) return;
                 if (loopActive (it) && cyclenorm::skipEndSample (it.analysis, st) > it.loopStart) return; // ni el loop
             }
-            skipHalves = n;
+            skipHalves = n; skipSample = 0;
             settingsChanged();  // reprocesa
             updateSkipView();   // la línea sigue al mouse enseguida
+        };
+        wave.onSkipSampleDragged = [this] (size_t smp) // muy de cerca: de muestra en muestra
+        {
+            if (smp == skipSample) return;
+            if (juce::isPositiveAndBelow (current, (int) items.size()))
+            {   // (Skip no puede pasar la línea de Fin ni el loop)
+                auto& it = *items[(size_t) current];
+                if (it.endSample > 0 && smp >= it.endSample) return;
+                if (loopActive (it) && smp > it.loopStart) return;
+            }
+            skipSample = smp;
+            settingsChanged();
+            updateSkipView();
         };
         addAndMakeVisible (wave);
 
@@ -1065,6 +1079,7 @@ private:
     StepSlider pitchShift;
     static constexpr int kMaxSkip = 512; // semiciclos
     int skipHalves = 0;
+    size_t skipSample = 0; // muy de cerca: Skip en una muestra (0 = por semiciclos)
 
     // deshacer / rehacer: fotos del estado editable (por archivo + los controles globales)
     struct EditState
@@ -1072,14 +1087,14 @@ private:
         Item* item = nullptr;
         double amount = 0, ramp = 0, pitch = 0;
         int skip = 0, xfade = 0, candIdx = -1, fade = 0, fadeOut = 0;
-        size_t endS = 0, startS = 0, l0 = 0, l1 = 0, fadeInS = 0, fadeOutS = 0, xfadeS = 0;
+        size_t endS = 0, startS = 0, l0 = 0, l1 = 0, fadeInS = 0, fadeOutS = 0, xfadeS = 0, skipS = 0;
         std::vector<cyclenorm::LoopResult> cands;
         bool same (const EditState& o) const
         {
             return item == o.item && std::abs (amount - o.amount) < 1e-9 && std::abs (ramp - o.ramp) < 1e-9 && std::abs (pitch - o.pitch) < 1e-9
                 && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS && startS == o.startS && fade == o.fade && fadeOut == o.fadeOut
                 && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size()
-                && fadeInS == o.fadeInS && fadeOutS == o.fadeOutS && xfadeS == o.xfadeS;
+                && fadeInS == o.fadeInS && fadeOutS == o.fadeOutS && xfadeS == o.xfadeS && skipS == o.skipS;
         }
     };
     std::vector<EditState> undoStack, redoStack;
@@ -1155,6 +1170,7 @@ private:
         s.autoTarget = false;
         s.targetDb = 0.0; // el objetivo es siempre 0 dBFS
         s.skipHalves = skipHalves;
+        s.skipSample = skipSample;
         s.thresholdDb = -200.0; // sin umbral: se normaliza todo, también la cola y el ruido
         return s;
     }
@@ -1320,7 +1336,7 @@ private:
         amount.setValue (100.0, juce::dontSendNotification);
         normButton.setToggleState (true, juce::dontSendNotification);
         ramp.setValue (0.0, juce::dontSendNotification);
-        skipHalves = 0; // Skip: desde el principio
+        skipHalves = 0; skipSample = 0; // Skip: desde el principio
         loopButton.setToggleState (false, juce::dontSendNotification);
         source.setRegionLooping (false);
         saveSettings();
@@ -1375,6 +1391,7 @@ private:
     {
         auto s = readSettings();
         if (it.skipOverride >= 0) s.skipHalves = it.skipOverride;
+        if (it.skipSampleOverride != SIZE_MAX) s.skipSample = it.skipSampleOverride;
         auto curve = cyclenorm::gainCurve (it.analysis, s, &it.targetUsedDb);
         const auto& src = *it.original;
         cyclenorm::limitCurve (curve, cyclenorm::skipEndSample (it.analysis, s), it.targetUsedDb, [&] (size_t i) {
@@ -1467,6 +1484,7 @@ private:
         // al re-afinar, y el fade o el Skip quedaban corridos en el dibujo.)
         const double speed = std::pow (2.0, it.tuneSemis / 12.0);
         auto toLoaded = [&] (size_t v) { return (size_t) std::llround ((double) v * speed); };
+        d.skipSampleOverride = skipSample > 0 ? toLoaded (skipSample) : 0;
         d.fadeInEndS = toLoaded (it.fadeInEndS); d.fadeOutStartS = toLoaded (it.fadeOutStartS); d.xfadeLenS = toLoaded (it.xfadeLenS);
         const auto& LH = it.loadedAnalysis.halfBounds;
         const auto& LB = it.loadedAnalysis.bounds;
@@ -1656,7 +1674,7 @@ private:
     EditState captureState() const
     {
         EditState st;
-        st.amount = amount.getValue(); st.ramp = ramp.getValue(); st.skip = skipHalves;
+        st.amount = amount.getValue(); st.ramp = ramp.getValue(); st.skip = skipHalves; st.skipS = skipSample;
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
             const auto& it = *items[(size_t) current];
@@ -1715,7 +1733,7 @@ private:
         amount.setValue (st.amount, juce::dontSendNotification);
         normButton.setToggleState (st.amount >= 50.0, juce::dontSendNotification);
         ramp.setValue (st.ramp, juce::dontSendNotification);
-        skipHalves = st.skip;
+        skipHalves = st.skip; skipSample = st.skipS;
         saveSettings();
         pendingReprocess = false;
         if (row >= 0)
@@ -1986,6 +2004,7 @@ private:
         it.fadeInEndS = it.fadeInEndS > 0 ? scaled (it.fadeInEndS) : 0;
         it.fadeOutStartS = it.fadeOutStartS > 0 ? scaled (it.fadeOutStartS) : 0;
         it.xfadeLenS = it.xfadeLenS > 0 ? scaled (it.xfadeLenS) : 0;
+        skipSample = skipSample > 0 ? scaled (skipSample) : 0;
         // Skip: el mismo lugar (por tiempo), contado de nuevo en semiciclos del audio afinado
         auto skipFor = [&] (int n, size_t oldE) {
             if (n < 1 || HB2.empty()) return n;

@@ -27,6 +27,8 @@ struct Settings
     int    skipHalves  = -1;     // si es 0 o más: pedazos que no se tocan, contando el pedacito antes del primer
                                  // cruce como el primero (1 = solo ese pedacito, 2 = ese y el 1er semiciclo...).
                                  // Manda sobre skipCycles. Es lo que maneja la línea de Skip.
+    size_t skipSample  = 0;      // si no es 0: lo salteado termina justo en esta muestra (manda sobre skipHalves;
+                                 // es la línea de Skip movida de muestra en muestra, con mucho zoom)
     double thresholdDb = -200.0; // ondas con pico por debajo de esto mantienen la ganancia anterior (-200 = apagado)
     double maxBoostDb  = 60.0;   // límite de subida, para no llevar el silencio digital a 0 dB
     double ramp        = 0.0;    // 0 = rampa mínima en cada cambio de ganancia (1 ms como mucho, o el 6% del tramo)
@@ -733,6 +735,17 @@ inline std::vector<double> cycleGainsDb (const Analysis& a, const Settings& s, d
 inline std::vector<float> gainCurve (const Analysis& a, const Settings& s, double* targetUsedDb = nullptr)
 {
     using namespace detail;
+    if (s.skipSample > 0 && s.halfCycles)
+    {   // Skip en una muestra: se normaliza como con los semiciclos enteros de antes, y lo anterior
+        // a esa muestra queda sin tocar
+        const auto& HB = a.halfBounds;
+        Settings s2 = s;
+        s2.skipSample = 0;
+        s2.skipHalves = (int) (std::upper_bound (HB.begin(), HB.end(), s.skipSample) - HB.begin());
+        auto curve = gainCurve (a, s2, targetUsedDb);
+        for (size_t i = 0; i < std::min (curve.size(), s.skipSample); ++i) curve[i] = 1.0f;
+        return curve;
+    }
     const size_t n = a.numSamples;
     std::vector<float> curve (n, 1.0f);
     const auto& b = segmentBounds (a, s);
@@ -939,6 +952,7 @@ inline std::string noteName (double midi) // nota más cercana, notación cient�
 // Dónde termina lo salteado con Skip (de ahí en adelante se normaliza).
 inline size_t skipEndSample (const Analysis& a, const Settings& s)
 {
+    if (s.skipSample > 0) return std::min (s.skipSample, a.numSamples);
     if (! skipsPreRoll (s)) return 0;
     const size_t idx = skipSegments (s);
     const auto& B = segmentBounds (a, s);

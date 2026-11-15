@@ -16,6 +16,7 @@ public:
     std::function<bool()> isPlaying;
     std::function<void (double)> onSeek;          // clic: mover a esta posición (segundos)
     std::function<void (int)> onSkipDragged;      // arrastrando la línea de Skip: nueva cantidad de semiciclos
+    std::function<void (size_t)> onSkipSampleDragged; // muy de cerca: la línea de Skip en una muestra
     std::function<void (size_t)> onEndDragged;    // arrastrando la línea de Fin: nueva muestra final
     std::function<void (size_t)> onStartDragged;  // arrastrando la línea de Start: nueva muestra inicial
     std::function<void (int)> onFadeDragged;      // arrastrando la manija del fade in: cuántos semiciclos dura
@@ -1009,6 +1010,11 @@ private:
         // salta de corte en corte: 0 = el principio del archivo, N = el corte número N (bounds[N-1]).
         // Así puede pararse en todos los cortes, incluido el primero.
         const double target = xToSample (x);
+        if (sampleDotsVisible() && onSkipSampleDragged) // muy de cerca: de muestra en muestra
+        {
+            onSkipSampleDragged ((size_t) std::llround (juce::jlimit (0.0, (double) endOrLen() - 1.0, target)));
+            return;
+        }
         int best = 0; double bestD = std::abs (target);
         for (int k = 1; k <= maxSkip && (size_t) (k - 1) < bounds.size(); ++k)
         {
