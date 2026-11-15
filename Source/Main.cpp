@@ -581,7 +581,7 @@ public:
         normButton.setToggleState (amount.getValue() >= 50.0, juce::dontSendNotification);
         amount.setVisible (false);
         amountLabel.setVisible (false);
-        // Re-pitch a mano, en cents: de -650 a +650 (6 semitonos para cada lado + medio semitono, así cualquier nota a 6 semitonos queda clavada en 0 cents). Doble clic = 0.
+        // Re-pitch a mano, en cents: de -600 a +600 arrastrando; un clic en el piano llega hasta ±650 para clavar en 0 cents una nota a 6 semitonos. Doble clic = 0.
         // Se aplica un instante después de moverla.
         setupSlider (pitchShift, pitchShiftLabel, "Pitch", -WaveformView::kMaxTuneCents, WaveformView::kMaxTuneCents, 0.1, "", 0.0);
         pitchShift.textFromValueFunction = [] (double v) {

@@ -75,7 +75,8 @@ public:
     bool sampleDotsVisible() const { return viewLen > 0.0 && (double) plotSpan() / viewLen >= kSampleDotPx; }
     // las líneas van de muestra en muestra (sin engancharse en los cruces por cero): muy de cerca, o con ⌘ apretado
     bool sampleSnap() const { return freeDrag || sampleDotsVisible(); }
-    static constexpr double kMaxTuneCents = 650.0; // re-pitch: 6 semitonos + lo que sobre de cents para clavar la nota
+    static constexpr double kDragTuneCents = 600.0; // re-pitch arrastrando la línea: 6 semitonos
+    static constexpr double kMaxTuneCents = 650.0;  // con un clic en el piano: + lo que haga falta para clavar la nota en 0 cents
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
     // (de muestra en muestra: si no es 0, manda sobre los semiciclos)
@@ -1070,7 +1071,9 @@ private:
             if (std::abs (target - note) / juce::jmax (1e-9, pitchSemisPerPx) <= 5.0) target = note;
         }
         double cents = pitchDragStartCents + (target - pitchDragRef) * 100.0;
-        cents = std::round (cents * 10.0) / 10.0;
+        // arrastrando, hasta ±600 (si ya estaba más allá por un clic en el piano, hasta ahí)
+        const double lim = juce::jmax (kDragTuneCents, std::abs (pitchDragStartCents));
+        cents = juce::jlimit (-lim, lim, std::round (cents * 10.0) / 10.0);
         onPitchDragged (cents);
     }
 
