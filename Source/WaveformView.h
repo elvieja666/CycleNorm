@@ -26,6 +26,7 @@ public:
     std::function<void (size_t)> onFadeOutStartSample; // dónde empieza el fade out (muestra)
     std::function<void (size_t, size_t)> onLoopDragged; // arrastrando una punta del loop: nuevo inicio y fin
     std::function<void (size_t)> onXfadeDragged;  // arrastrando la manija del crossfade: dónde empieza el fundido
+    std::function<void (int)> onAltReset;         // ⌥ + clic sobre End (2), Loop (3), Loop end (4) o Xfade (5)
     int maxSkip = 64;
     std::function<bool()> isPlayingProcessed;     // para resaltar el carril que suena
 
@@ -378,6 +379,11 @@ public:
         if (e.mods.isAltDown() && std::find (nearLines.begin(), nearLines.end(), 1) != nearLines.end() && onSkipDragged)
         {
             onSkipDragged (0);
+            return;
+        }
+        if (e.mods.isAltDown() && line >= 2 && line <= 5 && onAltReset)
+        {
+            onAltReset (line); // End: al final; Loop / Loop end: el loop de la Option; Xfade: Off
             return;
         }
         draggingSkip = line == 1;

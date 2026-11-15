@@ -352,6 +352,7 @@ struct Item
     size_t fadeInEndS = 0, fadeOutStartS = 0, xfadeLenS = 0;
     std::vector<cyclenorm::LoopResult> loopCands; // los mejores loops que encontró la búsqueda
     int loopCandIdx = -1;                        // cuál de ellos está puesto (-1 = uno movido a mano)
+    int optionIdx = 0;                           // la última Option elegida (aunque después se mueva a mano)
     int skipOverride = -1;
     size_t skipSampleOverride = SIZE_MAX;        // (ídem, con Skip en una muestra)                       // (para el dibujo sin re-afinar: el Skip contado en su audio)
     bool hasLoop() const { return loopEnd > loopStart; }
@@ -733,6 +734,33 @@ public:
             updateXfadeView();
             processCurrent();
         };
+        // ⌥ + clic: End vuelve al final del archivo, Loop / Loop end al loop de la Option, Xfade a Off
+        wave.onAltReset = [this] (int line)
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            if (line == 2) { if (wave.onEndDragged) wave.onEndDragged (std::numeric_limits<size_t>::max()); return; }
+            if (line == 5)
+            {
+                if (it.xfadeCycles == 0 && it.xfadeLenS == 0) return;
+                it.xfadeCycles = 0; it.xfadeLenS = 0;
+                updateXfadeView();
+                processCurrent();
+                return;
+            }
+            if (it.loopCands.empty()) return;
+            const int idx = juce::jlimit (0, (int) it.loopCands.size() - 1, it.optionIdx);
+            const auto& c = it.loopCands[(size_t) idx];
+            if (it.loopCandIdx == idx && it.loopStart == c.start && it.loopEnd == c.end) return;
+            const int xf = it.xfadeCycles; const size_t xfS = it.xfadeLenS; // el crossfade se queda como estaba
+            applyLoopCandidate (idx);
+            if (xf > 0 || xfS > 0)
+            {
+                it.xfadeCycles = juce::jmin (xf, maxXfadeCycles (it)); it.xfadeLenS = xfS;
+                updateXfadeView();
+                processCurrent();
+            }
+        };
         wave.onSkipDragged = [this] (int n)
         {
             if (skipHalves == n && skipSample == 0) { wave.refresh(); return; }
@@ -1086,13 +1114,13 @@ private:
     {
         Item* item = nullptr;
         double amount = 0, ramp = 0, pitch = 0;
-        int skip = 0, xfade = 0, candIdx = -1, fade = 0, fadeOut = 0;
+        int skip = 0, xfade = 0, candIdx = -1, optionIdx = 0, fade = 0, fadeOut = 0;
         size_t endS = 0, startS = 0, l0 = 0, l1 = 0, fadeInS = 0, fadeOutS = 0, xfadeS = 0, skipS = 0;
         std::vector<cyclenorm::LoopResult> cands;
         bool same (const EditState& o) const
         {
             return item == o.item && std::abs (amount - o.amount) < 1e-9 && std::abs (ramp - o.ramp) < 1e-9 && std::abs (pitch - o.pitch) < 1e-9
-                && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && endS == o.endS && startS == o.startS && fade == o.fade && fadeOut == o.fadeOut
+                && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && optionIdx == o.optionIdx && endS == o.endS && startS == o.startS && fade == o.fade && fadeOut == o.fadeOut
                 && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size()
                 && fadeInS == o.fadeInS && fadeOutS == o.fadeOutS && xfadeS == o.xfadeS && skipS == o.skipS;
         }
@@ -1572,7 +1600,7 @@ private:
         {
             const size_t from = cyclenorm::skipEndSample (it.analysis, readSettings());
             if (it.loopStart >= juce::jmax (from, it.startSample) && (int) it.loopEnd <= it.lengthToWrite()) return;
-            it.loopStart = it.loopEnd = 0; it.loopCands.clear(); it.loopCandIdx = -1;
+            it.loopStart = it.loopEnd = 0; it.loopCands.clear(); it.loopCandIdx = -1; it.optionIdx = 0;
         }
         silentLoopSearch = silent;
         findLoopForCurrent();
@@ -1637,7 +1665,7 @@ private:
             return;
         }
         it.loopCands = job->results;
-        if (items[(size_t) current].get() != &it) { it.loopCandIdx = 0; it.loopStart = it.loopCands[0].start; it.loopEnd = it.loopCands[0].end; return; }
+        if (items[(size_t) current].get() != &it) { it.loopCandIdx = 0; it.optionIdx = 0; it.loopStart = it.loopCands[0].start; it.loopEnd = it.loopCands[0].end; return; }
         applyLoopCandidate (0);
         if (! loopButton.getToggleState()) { loopButton.setToggleState (true, juce::sendNotification); }
     }
@@ -1648,9 +1676,9 @@ private:
         auto& it = *items[(size_t) current];
         if (! juce::isPositiveAndBelow (idx, (int) it.loopCands.size())) return;
         const auto& c = it.loopCands[(size_t) idx];
-        it.xfadeCycles = 0; // cada opción (Next loop o una búsqueda nueva) arranca sin crossfade
+        it.xfadeCycles = 0; it.xfadeLenS = 0; // cada opción (Next loop o una búsqueda nueva) arranca sin crossfade
         setLoopForCurrent (c.start, c.end);
-        it.loopCandIdx = idx;
+        it.loopCandIdx = idx; it.optionIdx = idx;
         updateInfo();
         updateButtons();
     }
@@ -1691,7 +1719,7 @@ private:
             st.item = items[(size_t) current].get();
             st.pitch = (double) it.tuneSt * 100.0 + it.tuneCents; // el aplicado
             st.endS = it.endSample; st.startS = it.startSample; st.fade = it.fadeHalves; st.fadeOut = it.fadeOutHalves; st.l0 = it.loopStart; st.l1 = it.loopEnd;
-            st.xfade = it.xfadeCycles; st.cands = it.loopCands; st.candIdx = it.loopCandIdx;
+            st.xfade = it.xfadeCycles; st.cands = it.loopCands; st.candIdx = it.loopCandIdx; st.optionIdx = it.optionIdx;
             st.fadeInS = it.fadeInEndS; st.fadeOutS = it.fadeOutStartS; st.xfadeS = it.xfadeLenS;
         }
         return st;
@@ -1753,7 +1781,7 @@ private:
             pendingRetune = false;
             retuneCurrent (0, st.pitch);
             it.endSample = st.endS; it.startSample = st.startS; it.fadeHalves = st.fade; it.fadeOutHalves = st.fadeOut; it.loopStart = st.l0; it.loopEnd = st.l1;
-            it.xfadeCycles = st.xfade; it.loopCands = st.cands; it.loopCandIdx = st.candIdx;
+            it.xfadeCycles = st.xfade; it.loopCands = st.cands; it.loopCandIdx = st.candIdx; it.optionIdx = st.optionIdx;
             it.fadeInEndS = st.fadeInS; it.fadeOutStartS = st.fadeOutS; it.xfadeLenS = st.xfadeS;
             source.setEndSample ((juce::int64) it.endSample);
             source.setStartSample ((juce::int64) it.startSample);
@@ -2007,7 +2035,7 @@ private:
         }
         else { it.loopStart = it.loopEnd = 0; }
         it.loopCands.clear();
-        it.loopCandIdx = -1;
+        it.loopCandIdx = -1; it.optionIdx = 0;
         it.endSample = hadEnd ? snapTo (HB2, oldEnd) : 0;
         it.startSample = hadStart ? snapTo (HB2, oldStart) : 0;
         // lo puesto de muestra en muestra: por tiempo, sin pegar a un cruce
