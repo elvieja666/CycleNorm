@@ -91,6 +91,7 @@ public:
         return juce::jlimit (lo, hi, cents);
     }
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
+    float zoomDotAlignX = -1.0f; // dónde va el centro del último punto del renglón del zoom (o -1: pegado a la derecha)
     // vista del empalme del loop (como Kontakt), en el visor Processed: a la izquierda lo que termina en
     // Loop end, a la derecha lo que arranca en Loop, pegados en el medio
     void setSeamMode (bool on)
@@ -283,6 +284,16 @@ public:
         float rowW = 0.0f;
         for (int k = 0; k < 5; ++k) rowW += (k == 1 || k == 3) ? numW : wOf (pieces[k]);
         float x = right - sw - rowW;
+        float showAllX = right - sw;
+        if (zoomDotAlignX > 0.0f) // el punto antes de "Show all", justo debajo de la línea divisoria de la fila de botones
+        {
+            juce::GlyphArrangement ga;
+            ga.addLineOfText (font, dot, 0.0f, 0.0f);
+            const float dotC = ga.getBoundingBox (0, -1, true).getCentreX();
+            const float dotX = zoomDotAlignX - dotC;
+            x = dotX - (rowW - wOf (dot));
+            showAllX = dotX + wOf (dot);
+        }
         g.setColour (juce::Colour (0xff6c6c6c));
         for (int k = 0; k < 5; ++k)
         {
@@ -291,7 +302,7 @@ public:
             x += pw;
         }
         {   // "Show all" siempre: azul (y se clickea) con zoom; gris sin zoom
-            const auto textArea = juce::Rectangle<float> (right - sw, top, sw + 2.0f, 18.0f);
+            const auto textArea = juce::Rectangle<float> (showAllX, top, sw + 2.0f, 18.0f);
             if (! isZoomed())
             {
                 g.setColour (juce::Colour (0xff6c6c6c).withAlpha (0.6f));

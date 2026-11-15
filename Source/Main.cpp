@@ -894,6 +894,12 @@ public:
                 const float w = juce::jmax (wOf (tmpl[k]), wOf (cols[k]));
                 g.drawSingleLineText (cols[k], juce::roundToInt (x), (int) kTitleBaseline);
                 x += w;
+                if (k == 1 && groupDividersRight > 0) // el punto antes de Xfade: justo arriba de la línea divisoria
+                {
+                    juce::GlyphArrangement ga;
+                    ga.addLineOfText (f, dot, 0.0f, 0.0f);
+                    x = (float) groupDividersRight + 0.5f - ga.getBoundingBox (0, -1, true).getCentreX();
+                }
                 if (k < 2) { g.drawSingleLineText (dot, juce::roundToInt (x), (int) kTitleBaseline); x += wOf (dot); }
             }
         }
@@ -1027,6 +1033,7 @@ public:
         // componente sobresale 20 por arriba del recuadro: recorta y no recibe clics ahí); abajo
         // sobran 10 dentro del recuadro
         wave.setBounds (waveArea.getX(), waveArea.getY() - WaveformView::kHiddenPad, waveArea.getWidth(), 530);
+        wave.zoomDotAlignX = (float) (groupDividersRight - wave.getX()) + 0.5f; // (el punto del zoom, bajo la línea divisoria)
         wave.visibleBottom = waveArea.getBottom() - wave.getY(); // de borde a borde del recuadro // dos visores de 265: 40 + 185 (la onda) + 40 cada uno; a la derecha, hasta el borde (el teclado de 40)
     }
 
