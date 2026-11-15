@@ -2154,11 +2154,34 @@ private:
                  + "\t" + juce::String (p.hz, 3) + " Hz" + "\ttuned " + sgn (tuned * 100.0, 1) + " cents"
                  + "\tdrift " + (p.cycles >= 4 ? sgn (p.driftCents, 1) + " cents" : juce::String ("--"));
         };
-        const auto sus = line (pitchOnLoaded (it, it.startSample, (size_t) it.lengthToWrite(), true), false);
+        const auto susP = pitchOnLoaded (it, it.startSample, (size_t) it.lengthToWrite(), true);
+        const auto sus = line (susP, false);
         const bool inLoop = loopActive (it);
         // (con Loop apagado, el renglón se ve igual, sin medida: "Pitch (loop) : --")
-        const auto lp = inLoop ? line (pitchOnLoaded (it, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8, false), true)
-                               : juce::String ("Pitch (loop)\t--");
+        juce::String lp ("Pitch (loop)\t--");
+        if (inLoop)
+        {
+            auto p = pitchOnLoaded (it, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8, false);
+            // un loop de una sola onda (o movido con ⌘ fuera de los cruces): no hay 2 ondas para promediar.
+            // Lo que suena es el largo del loop repetido: n ondas en (loopEnd - loopStart) muestras, exacto.
+            if (! p.valid || p.cycles < 2)
+            {
+                const double len = (double) (it.loopEnd - it.loopStart);
+                const auto near = pitchOnLoaded (it, it.loopStart > (size_t) len * 4 ? it.loopStart - (size_t) len * 4 : 0,
+                                                 it.loopEnd + (size_t) len * 4, false); // las ondas de alrededor: cuántas entran
+                const double approx = near.valid ? near.hz : susP.hz;
+                if (approx > 0.0 && len > 0.0 && it.sampleRate > 0.0)
+                {
+                    const double n = juce::jmax (1.0, std::round (len * approx / it.sampleRate));
+                    p = {};
+                    p.hz = n * it.sampleRate / len;
+                    p.midi = 69.0 + 12.0 * std::log2 (p.hz / 440.0);
+                    p.cycles = (int) n;
+                    p.valid = true;
+                }
+            }
+            lp = line (p, true);
+        }
         wave.setPitchInfo (sus, juce::Colour (0xff8b9096), lp, kAccent); // (se muestran en el visor Original)
         layoutTitleRow();
     }
