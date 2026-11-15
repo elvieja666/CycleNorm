@@ -91,7 +91,20 @@ public:
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
     // vista del empalme del loop (como Kontakt), en el visor Processed: a la izquierda lo que termina en
     // Loop end, a la derecha lo que arranca en Loop, pegados en el medio
-    void setSeamMode (bool on) { if (on != seamMode) { seamMode = on; seamDrag = 0; repaint(); } }
+    void setSeamMode (bool on)
+    {
+        if (on == seamMode) return;
+        seamMode = on; seamDrag = 0;
+        if (on && totalLen() > 0) // al prenderlo: zoom horizontal X 50 (la mitad del camino al máximo, en escala log)
+        {
+            const double total = (double) totalLen();
+            viewLen = std::sqrt (total * juce::jmax (1.0, minViewLen()));
+            viewStart = hasLoop() ? (double) loopEnd - viewLen * 0.5 : viewStart; // (el Original, centrado en el Loop end)
+            clampView();
+            dirty = true;
+        }
+        repaint();
+    }
     bool seamActive() const { return seamMode && hasLoop() && proc != nullptr && proc->getNumSamples() > 0; }
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
     // (de muestra en muestra: si no es 0, manda sobre los semiciclos)
