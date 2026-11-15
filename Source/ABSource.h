@@ -22,6 +22,24 @@ public:
         const auto len = b ? b->getNumSamples() : (a ? a->getNumSamples() : 0);
         if (pos.load() >= len) pos = 0;
     }
+    // cambiar los dos audios mientras suena (re-afinar): sigue desde newPos con un fundido corto
+    // (lo de antes, desde donde iba, se apaga mientras entra lo nuevo: no hace click)
+    void swapBuffers (BufferPtr original, BufferPtr processed, juce::int64 newPos)
+    {
+        const juce::SpinLock::ScopedLockType sl (lock);
+        if (isRunning() && (a != nullptr || b != nullptr))
+        {
+            oldA = a; oldB = b; oldPos = pos.load(); swapAllFade = 0.0f;
+        }
+        a = std::move (original);
+        b = std::move (processed);
+        prevB = nullptr; swapFade = 1.0f;
+        jumpPending = false; jumpFade = 1.0f;
+        const auto len = b ? b->getNumSamples() : (a ? a->getNumSamples() : 0);
+        pos = juce::jlimit ((juce::int64) 0, (juce::int64) juce::jmax (0, len - 1), newPos);
+        // (newPos ya está en el lugar justo del audio nuevo: el loop nuevo no lo vuelve a acomodar)
+        appliedLs = loopStart.load(); appliedLe = loopEnd.load(); remapPending = false;
+    }
     void setProcessed (BufferPtr processed)
     {
         const juce::SpinLock::ScopedLockType sl (lock);
@@ -82,7 +100,7 @@ public:
         const int srcCh = src->getNumChannels();
         if (! isRunning()) // arranca de nuevo (venía parado): nada pendiente de fundir de antes
         {
-            mix = target; swapFade = 1.0f; jumpFade = 1.0f; jumpPending = false;
+            mix = target; swapFade = 1.0f; jumpFade = 1.0f; jumpPending = false; swapAllFade = 1.0f;
         }
         lastBlockMs = juce::Time::getMillisecondCounter();
         juce::int64 p = pos.load();
@@ -153,7 +171,7 @@ public:
             juce::int64 stop = len;
             if (region && p < le) stop = le;
             const int n = (int) juce::jmin ((juce::int64) (info.numSamples - done), stop - p);
-            const bool steady = std::abs (mix - target) < 1e-6f && (swapFade >= 1.0f || ! useB) && jumpFade >= 1.0f;
+            const bool steady = std::abs (mix - target) < 1e-6f && (swapFade >= 1.0f || ! useB) && jumpFade >= 1.0f && swapAllFade >= 1.0f;
             if (steady)
             {
                 for (int c = 0; c < info.buffer->getNumChannels(); ++c)
@@ -172,6 +190,9 @@ public:
                     const float jf = jumpFade;
                     const int oldIdx = (int) jumpOld + k;
                     if (jumpFade < 1.0f) jumpFade = juce::jmin (1.0f, jumpFade + fadeStep);
+                    const float af = swapAllFade;
+                    const int oldAllIdx = (int) oldPos + k;
+                    if (swapAllFade < 1.0f) swapAllFade = juce::jmin (1.0f, swapAllFade + fadeStep);
                     for (int c = 0; c < outCh; ++c)
                     {
                         auto sampleAt = [&] (const BufferPtr& buf, int at) {
@@ -186,12 +207,19 @@ public:
                         };
                         float v = valueAt (idx);
                         if (jf < 1.0f) v = valueAt (oldIdx) * (1.0f - jf) + v * jf; // lo de antes del salto, fundiéndose
+                        if (af < 1.0f) // los audios de antes de re-afinar, desde donde iban, apagándose
+                        {
+                            const float vOld = sampleAt (oldA, oldAllIdx) * (1.0f - mix) + sampleAt (oldB, oldAllIdx) * mix;
+                            v = vOld * (1.0f - af) + v * af;
+                        }
                         info.buffer->setSample (c, info.startSample + done + k, v);
                     }
                 }
             }
             if (swapFade >= 1.0f) swapFade = 1.0f;
             jumpOld += n;
+            oldPos += n;
+            if (swapAllFade >= 1.0f && (oldA != nullptr || oldB != nullptr)) { oldA = nullptr; oldB = nullptr; }
             p += n;
             done += n;
             if (loopMovedRecently > 0) loopMovedRecently = juce::jmax (0, loopMovedRecently - n);
@@ -234,6 +262,9 @@ private:
     std::atomic<bool> useB { true }, looping { false }, regionLoop { false };
     int loopMovedRecently = 0; // (sólo el hilo de audio)
     std::atomic<bool> edgeMoved { false }, jumpPending { false };
+    BufferPtr oldA, oldB;            // los audios de antes de re-afinar (mientras se funden)
+    juce::int64 oldPos = 0;
+    float swapAllFade = 1.0f;
     std::atomic<juce::int64> jumpFrom { 0 };
     std::atomic<juce::uint32> lastBlockMs { 0 };
     int edgeMovedRecently = 0; // (sólo el hilo de audio)

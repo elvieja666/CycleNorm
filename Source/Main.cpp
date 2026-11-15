@@ -2016,11 +2016,16 @@ private:
         const double factor = oldSpeed / newSpeed; // cuánto se estiró el audio
         const double pos = transport.getCurrentPosition() * factor;
         processItem (it);
-        source.setBuffers (it.original, it.processed);
         source.setEndSample ((juce::int64) it.endSample);
         source.setStartSample ((juce::int64) it.startSample);
         source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
-        transport.setPosition (pos);
+        if (transport.isPlaying()) // sonando: cambia los audios con un fundido corto (no hace click)
+            source.swapBuffers (it.original, it.processed, (juce::int64) std::llround (pos * it.sampleRate));
+        else
+        {
+            source.setBuffers (it.original, it.processed);
+            transport.setPosition (pos);
+        }
         wave.setData (it.original, it.processed, cyclenorm::segmentBounds (it.analysis, readSettings()), it.sampleRate, false);
         showBuffersOf (it);
         wave.setEndSample (it.endSample);
