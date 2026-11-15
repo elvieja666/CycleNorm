@@ -1081,7 +1081,8 @@ private:
         if (id == 3 || id == 8) // Loop y Fade out comparten fila con Fade in: si se pisan, se corren a la derecha de esa
         {
             const auto fi = tabRect (7);
-            if (! fi.isEmpty() && rr.getX() < fi.getRight() + 2.0f && rr.getRight() > fi.getX() - 2.0f)
+            // (Fade out va a la izquierda de su línea: si queda encima o del otro lado de Fade in, también se corre)
+            if (! fi.isEmpty() && rr.getX() < fi.getRight() + 2.0f && (id == 8 || rr.getRight() > fi.getX() - 2.0f))
                 rr.setX (fi.getRight() + 2.0f); // (siempre a 2 de Fade in, nunca encima)
         }
         return rr;
