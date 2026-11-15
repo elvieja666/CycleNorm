@@ -611,7 +611,7 @@ private:
         {
             if (! hasRef) return;
             const double dev = (ref - (double) refNote) * 100.0;
-            const float y = juce::jlimit (area.getY() - 14.0f, area.getBottom() + 14.0f, yOf (ref));
+            const float y = juce::jlimit (area.getY() + 8.0f, area.getBottom() - 8.0f, yOf (ref)); // (adentro de los 185: no se sale del visor)
             const juce::String t = (dev >= 0.0 ? "+" : juce::String::fromUTF8 ("\xe2\x88\x92")) + juce::String (std::abs (dev), 1) + "c";
             g.setFont (uiFont (11.0f, juce::Font::bold));
             const float tw = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), t) + 10.0f;
