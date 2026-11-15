@@ -75,8 +75,19 @@ public:
     bool sampleDotsVisible() const { return viewLen > 0.0 && (double) plotSpan() / viewLen >= kSampleDotPx; }
     // las líneas van de muestra en muestra (sin engancharse en los cruces por cero): muy de cerca, o con ⌘ apretado
     bool sampleSnap() const { return freeDrag || sampleDotsVisible(); }
-    static constexpr double kDragTuneCents = 600.0; // re-pitch arrastrando la línea: 6 semitonos
-    static constexpr double kMaxTuneCents = 650.0;  // con un clic en el piano: + lo que haga falta para clavar la nota en 0 cents
+    static constexpr double kMaxTuneCents = 650.0; // re-pitch: 6 notas + lo que haga falta para clavarlas en 0 cents
+    // el tope del re-pitch (línea y piano): hasta 6 notas para cada lado de la nota del sample, clavadas
+    // en 0 cents (no ±600 fijos: si el sample está en C0 +6.8c, va de -593.2 a +606.8)
+    double clampTuneCents (double cents) const
+    {
+        if (! getPitchReference || ! getPitchCents) return juce::jlimit (-kMaxTuneCents, kMaxTuneCents, cents);
+        const double ref = getPitchReference();
+        if (ref <= 1.0) return juce::jlimit (-600.0, 600.0, cents);
+        const double orig = ref - getPitchCents() / 100.0; // el pitch medido sin re-afinar
+        const double n0 = std::round (orig);
+        const double lo = std::round ((n0 - 6.0 - orig) * 1000.0) / 10.0, hi = std::round ((n0 + 6.0 - orig) * 1000.0) / 10.0;
+        return juce::jlimit (lo, hi, cents);
+    }
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
     // (de muestra en muestra: si no es 0, manda sobre los semiciclos)
@@ -315,7 +326,7 @@ public:
             if (ref > 1.0)
             {
                 double cents = getPitchCents() + (note - ref) * 100.0;
-                cents = juce::jlimit (-kMaxTuneCents, kMaxTuneCents, std::round (cents * 10.0) / 10.0);
+                cents = clampTuneCents (std::round (cents * 10.0) / 10.0);
                 onPitchDragged (cents);
             }
             return;
@@ -1071,9 +1082,7 @@ private:
             if (std::abs (target - note) / juce::jmax (1e-9, pitchSemisPerPx) <= 5.0) target = note;
         }
         double cents = pitchDragStartCents + (target - pitchDragRef) * 100.0;
-        // arrastrando, hasta ±600 (si ya estaba más allá por un clic en el piano, hasta ahí)
-        const double lim = juce::jmax (kDragTuneCents, std::abs (pitchDragStartCents));
-        cents = juce::jlimit (-lim, lim, std::round (cents * 10.0) / 10.0);
+        cents = clampTuneCents (std::round (cents * 10.0) / 10.0);
         onPitchDragged (cents);
     }
 
