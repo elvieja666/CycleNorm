@@ -918,7 +918,13 @@ private:
             return v;
         };
         const float az = ampZoom();
-        auto yOf = [&] (float v) { return mid - juce::jlimit (-40.0f, 40.0f, v * az) * half; };
+        // con zoom vertical, el centro de la vista va hacia la altura del empalme (si el loop no está
+        // cerca de 0, la unión no se va de la franja): sin zoom, centrado en 0; con mucho, en la unión
+        float seamV = 0.0f;
+        if (loopStart < (size_t) n && loopEnd > 0 && loopEnd <= (size_t) n)
+            seamV = 0.5f * (val ((long long) loopEnd - 1) + val ((long long) loopStart));
+        const float centreV = seamV * (1.0f - 1.0f / juce::jmax (1.0f, az));
+        auto yOf = [&] (float v) { return mid - juce::jlimit (-40.0f, 40.0f, (v - centreV) * az) * half; };
         {
             juce::Graphics::ScopedSaveState clip (g);
             g.reduceClipRegion (juce::Rectangle<float> (L, az > 1.0f ? vTop : (float) r.getY(), W, az > 1.0f ? vBot - vTop : (float) r.getHeight()).getSmallestIntegerContainer());
@@ -961,7 +967,10 @@ private:
                 float lastV = 0.0f; bool hasLast = false;
                 for (int x = 0; x < (int) W; ++x)
                 {
-                    const double a = ((double) (L + (float) x) - c) * spp, b = a + spp;
+                    const double a = ((double) (L + (float) x) - c) * spp;
+                    double b = a + spp;
+                    if (a < 0.0) b = juce::jmin (b, 0.0);       // (cada columna de un solo lado de la unión)
+                    else if (a - spp < 0.0) hasLast = false;    // la primera de Loop: sin unirse con la de Loop end
                     float lo = 1e9f, hi = -1e9f;
                     for (long long v = (long long) std::floor (a); v < (long long) std::ceil (b); ++v)
                     {
