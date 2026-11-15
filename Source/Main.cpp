@@ -1239,6 +1239,14 @@ private:
         {
             playButton.getProperties().set ("lit", transport.isPlaying());
             playButton.repaint();
+            // paró solo (llegó al final, sin loop): el cursor vuelve a Start, listo para el próximo play
+            if (! transport.isPlaying() && transport.getCurrentPosition() >= transport.getLengthInSeconds() - 0.001
+                && juce::isPositiveAndBelow (current, (int) items.size()))
+            {
+                transport.setPosition ((double) items[(size_t) current]->startSample / items[(size_t) current]->sampleRate);
+                wave.repaint();
+                commandManager.commandStatusChanged();
+            }
         }
         if (++outputCheckTicks >= 60) { outputCheckTicks = 0; followSystemOutput(); } // una vez por segundo
         // que espacio / A / flechas anden siempre (salvo mientras se escribe un valor)

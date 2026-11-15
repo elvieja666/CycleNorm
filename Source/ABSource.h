@@ -162,6 +162,7 @@ public:
                         }
                         edgeMovedRecently = 0;
                     }
+                    p = len + 2; // (pasado el final: así el transporte se da cuenta y para solo)
                     break;
                 }
                 // el loop de sección o el de escucha (desde el principio); si End se movió, con fundido
