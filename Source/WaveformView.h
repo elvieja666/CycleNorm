@@ -399,6 +399,7 @@ public:
         if (pendingLoopMove)
         {
             moveDownX = e.position.x;
+            moveOrigStart = loopStart; moveOrigEnd = loopEnd;
             moveStartIdx = indexOfLoopBound (loopStart);
             moveCycles = (int) indexOfLoopBound (loopEnd) - (int) moveStartIdx;
             return;
@@ -768,6 +769,7 @@ private:
     float moveDownX = 0;
     size_t moveStartIdx = 0;
     int moveCycles = 0;
+    size_t moveOrigStart = 0, moveOrigEnd = 0; // el loop cuando se agarró (para moverlo libre, con ⌘)
 
     bool insideLoop (juce::Point<float> p) const
     {
@@ -784,6 +786,16 @@ private:
     // enteras), entre la línea de Skip y la de Fin.
     void moveLoopBy (float dx)
     {
+        if (sampleSnap() && onLoopDragged && moveOrigEnd > moveOrigStart) // con ⌘ (o muy de cerca): libre, de muestra en muestra
+        {
+            const double len = (double) (moveOrigEnd - moveOrigStart);
+            const double lo = (double) skipEnd, hi = (double) endOrLen() - len;
+            if (hi < lo) return;
+            const double s0 = juce::jlimit (lo, hi, std::round ((double) moveOrigStart + (double) dx / plotSpan() * viewLen));
+            const size_t a = (size_t) s0, b = a + (moveOrigEnd - moveOrigStart);
+            if (a != loopStart || b != loopEnd) onLoopDragged (a, b);
+            return;
+        }
         if (moveCycles <= 0 || loopBounds.empty() || ! onLoopDragged) return;
         const double from = (double) loopBounds[std::min (moveStartIdx, loopBounds.size() - 1)];
         const double target = from + (double) dx / plotSpan() * viewLen;
