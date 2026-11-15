@@ -913,9 +913,6 @@ private:
         g.fillRect (juce::Rectangle<float> (L, vTop, W, vBot - vTop));
         g.setColour (juce::Colour (0xff3c3c40));
         g.drawHorizontalLine ((int) mid, L, L + W);
-        g.setColour (juce::Colour (0x59ffffff)); // el marco de la franja, como en la vista normal
-        g.drawVerticalLine ((int) L, vTop, vBot);
-        g.drawVerticalLine ((int) (L + W) - 1, vTop, vBot);
 
         const auto* buf = proc.get();
         const int n = buf->getNumSamples(), nCh = buf->getNumChannels();
@@ -982,6 +979,12 @@ private:
                 inHalves ([&] { g.fillRectList (peaks); });
             }
         }
+        // el marco de la franja (0 dBFS arriba y abajo, y los costados), encima de la onda como en la vista normal
+        g.setColour (juce::Colour (0x59ffffff));
+        g.drawHorizontalLine ((int) (mid - half), L, L + W);
+        g.drawHorizontalLine ((int) (mid + half), L, L + W);
+        g.drawVerticalLine ((int) L, vTop, vBot);
+        g.drawVerticalLine ((int) (L + W) - 1, vTop, vBot);
         // la unión, y qué es cada mitad
         g.setColour (juce::Colours::white.withAlpha (0.85f));
         g.fillRect (juce::Rectangle<float> (std::round (c), vTop, 1.0f, vBot - vTop));
