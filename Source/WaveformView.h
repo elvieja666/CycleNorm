@@ -39,12 +39,14 @@ public:
         proc = std::move (processed);
         bounds = std::move (cycleBounds);
         sr = sampleRate;
+        if (resetView) { normalView = {}; seamView = {}; }
         if (resetView || viewLen <= 0 || oldTotal <= 0) { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; pitchPan = 0.0; }
         else
         {   // el audio cambió de largo (re-pitch): se ve la misma parte del sonido, del mismo ancho
             // (el gráfico no cambia: con la vista completa, sigue completa)
             const double k = (double) totalLen() / oldTotal;
             viewStart *= k; viewLen *= k;
+            for (auto* sv : { &normalView, &seamView }) { sv->start *= k; sv->len *= k; } // (el zoom guardado de la otra vista, igual)
         }
         clampView();
         dirty = true;
@@ -94,10 +96,21 @@ public:
     void setSeamMode (bool on)
     {
         if (on == seamMode) return;
+        // cada vista guarda su zoom: al entrar al empalme se guarda el normal (y vuelve el del empalme,
+        // o X 50 · Y 0 la primera vez); al salir, vuelve el normal tal como estaba
+        (seamMode ? seamView : normalView) = { viewStart, viewLen, zoomSpan, pitchCenter, pitchPan, true };
         seamMode = on; seamDrag = 0;
-        if (on) seamZoom();
+        const auto& back = on ? seamView : normalView;
+        if (back.valid && totalLen() > 0)
+        {
+            viewStart = back.start; viewLen = back.len; zoomSpan = back.span; pitchCenter = back.centre; pitchPan = back.pan;
+            clampView(); dirty = true;
+        }
+        else if (on) seamZoom();
         repaint();
     }
+    struct SavedView { double start = 0, len = 0, span = 0, centre = 0, pan = 0; bool valid = false; };
+    SavedView normalView, seamView;
     // el zoom del empalme: X 50 (la mitad del camino al máximo, en escala log) e Y 0
     void seamZoom()
     {
