@@ -95,15 +95,19 @@ public:
     {
         if (on == seamMode) return;
         seamMode = on; seamDrag = 0;
-        if (on && totalLen() > 0) // al prenderlo: zoom horizontal X 50 (la mitad del camino al máximo, en escala log)
-        {
-            const double total = (double) totalLen();
-            viewLen = std::sqrt (total * juce::jmax (1.0, minViewLen()));
-            viewStart = hasLoop() ? (double) loopEnd - viewLen * 0.5 : viewStart; // (el Original, centrado en el Loop end)
-            clampView();
-            dirty = true;
-        }
+        if (on) seamZoom();
         repaint();
+    }
+    // el zoom del empalme: X 50 (la mitad del camino al máximo, en escala log) e Y 0
+    void seamZoom()
+    {
+        if (totalLen() == 0) return;
+        const double total = (double) totalLen();
+        viewLen = std::sqrt (total * juce::jmax (1.0, minViewLen()));
+        viewStart = hasLoop() ? (double) loopEnd - viewLen * 0.5 : viewStart; // (el Original, centrado en el Loop end)
+        zoomSpan = 0.0; pitchPan = 0.0;
+        clampView();
+        dirty = true; repaint();
     }
     bool seamActive() const { return seamMode && hasLoop() && proc != nullptr && proc->getNumSamples() > 0; }
     void setFadeHalves (int n) { if (n != fadeHalves) { fadeHalves = n; repaint(); } }
@@ -353,9 +357,9 @@ public:
         }
         seamDrag = 0;
         if (seamActive() && e.position.y >= (float) procLaneRect().getY() && e.position.x < (float) plotWidth())
-        {   // el empalme: se agarra una de las dos mitades y la onda sigue al mouse (⌥ + clic: el loop de la Option)
+        {   // el empalme: se agarra una de las dos mitades y la onda sigue al mouse (⌥ + clic: el zoom del empalme)
             const bool left = e.position.x < seamCentreX();
-            if (e.mods.isAltDown()) { if (onAltReset) onAltReset (left ? 4 : 3); return; }
+            if (e.mods.isAltDown()) { seamZoom(); return; }
             seamDrag = left ? 4 : 3;
             seamDownX = e.position.x;
             seamRef = (double) (left ? loopEnd : loopStart);
@@ -388,6 +392,7 @@ public:
         // ⌥ + clic en un lugar vacío de cualquiera de los dos visores: los dos zooms (X e Y) a 0
         if (line == 0 && e.mods.isAltDown() && linesNear (e.position).empty())
         {
+            if (seamActive()) { seamZoom(); return; } // (con el empalme prendido: vuelve a X 50 · Y 0)
             viewStart = 0; viewLen = (double) totalLen();
             zoomSpan = 0.0; pitchPan = 0.0;
             dirty = true; repaint();
