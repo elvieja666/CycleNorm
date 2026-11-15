@@ -893,9 +893,6 @@ private:
         g.fillRect (r);
         g.setColour (juce::Colour (0xff28282a));
         g.fillRect (juce::Rectangle<float> (L, vTop, W, vBot - vTop));
-        g.setColour (juce::Colour (0xff323235));
-        g.drawHorizontalLine ((int) (mid - half * 0.5f), L, L + W);
-        g.drawHorizontalLine ((int) (mid + half * 0.5f), L, L + W);
         g.setColour (juce::Colour (0xff3c3c40));
         g.drawHorizontalLine ((int) mid, L, L + W);
         g.setColour (juce::Colour (0x59ffffff)); // el marco de la franja, como en la vista normal
@@ -1335,10 +1332,7 @@ private:
         else if (underlay) underlay(); // el carril de arriba: el fondo del piano roll (debajo de la onda)
         else
         {
-            // líneas de -6 dB y centro
-            g.setColour (juce::Colour (0xff323235));
-            g.drawHorizontalLine ((int) (mid - half * 0.5f), (float) r.getX(), (float) r.getRight());
-            g.drawHorizontalLine ((int) (mid + half * 0.5f), (float) r.getX(), (float) r.getRight());
+            // sólo la línea del centro (-inf dB)
             g.setColour (juce::Colour (0xff3c3c40));
             g.drawHorizontalLine ((int) mid, (float) r.getX(), (float) r.getRight());
         }
