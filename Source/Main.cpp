@@ -110,7 +110,7 @@ public:
     }
 
     // zona visible del botón en relieve (deja lugar para la sombra)
-    static constexpr float kSpeakerH = 14.0f, kSpeakerW = kSpeakerH * 0.95f, kSpeakerGap = 7.0f; // el parlante de Processed
+    static constexpr float kSpeakerH = 11.0f, kSpeakerW = kSpeakerH * 0.95f, kSpeakerGap = 6.0f; // el parlante de Processed
     static juce::Rectangle<float> raisedShape (juce::Rectangle<float> b) { return b.reduced (4.0f, 2.0f).withTrimmedBottom (4.0f); }
     // transporte pegado (Play | Stop | Loop): cada parte llega hasta el borde de la de al lado;
     // sólo las puntas de afuera dejan lugar para la sombra
@@ -141,12 +141,13 @@ public:
             p.addRoundedRectangle (shape.getX(), shape.getY(), shape.getWidth(), shape.getHeight(), rad, rad, L, R, L, R);
             // plano: fondo claro y borde oscuro (siempre igual); prendido (sonando / loop de escucha)
             // o apretado, sólo el ícono se pone azul
-            g.setColour (down ? Theme::raisedBot : over && b.isEnabled() ? Theme::raisedTop.brighter (0.08f) : Theme::raisedTop);
+            const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"];
+            g.setColour (lit ? Theme::inkStrong : down ? Theme::raisedBot : Theme::raisedTop); // prendido: blanco lleno
             g.fillPath (p);
             const auto edge = shape.reduced (0.5f);
             juce::Path outline;
             outline.addRoundedRectangle (edge.getX(), edge.getY(), edge.getWidth(), edge.getHeight(), rad, rad, L, R, L, R);
-            g.setColour (Theme::line); // borde fino, siempre igual (sólo el ícono se pone azul)
+            g.setColour (lit ? Theme::inkStrong : (over && b.isEnabled()) ? juce::Colour (0xff6a6a6a) : Theme::line); // borde fino
             g.strokePath (outline, juce::PathStrokeType (1.0f));
             return;
         }
@@ -154,10 +155,10 @@ public:
         // prendidos, además con borde y texto azul
         const auto shape = raisedShape (r);
         Theme::drawRaised (g, shape, pillCorner (shape.getHeight()), over && b.isEnabled(), down);
-        if (b.getClickingTogglesState() && b.getToggleState()) // prendido: borde y texto azul
+        if (b.getClickingTogglesState() && b.getToggleState()) // prendido: blanco lleno (el texto va en negro)
         {
-            g.setColour (Theme::accent);
-            g.drawRect (shape, 1.0f);
+            g.setColour (b.isEnabled() ? Theme::inkStrong : Theme::inkStrong.withAlpha (0.4f));
+            g.fillRect (shape);
         }
     }
 
@@ -166,8 +167,8 @@ public:
         if (b.getProperties().contains ("icon")) // ▶ ■ ⟲, en azul cuando está prendido (sonando / loop de escucha)
         {
             const auto icon = b.getProperties()["icon"].toString();
-            const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"] || b.isDown();
-            auto colour = lit ? Theme::accent : Theme::inkDim; // (apagado: el gris de "Ramp", como el borde)
+            const bool lit = b.getToggleState() || (bool) b.getProperties()["lit"];
+            auto colour = lit ? Theme::topLight : Theme::ink; // prendido: negro sobre blanco
             if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
             const auto box = segmentShape (b); // plano: el ícono no se mueve
             const float s = box.getHeight() * 0.36f;
@@ -210,7 +211,7 @@ public:
             }
             return;
         }
-        auto colour = (b.getClickingTogglesState() && b.getToggleState()) ? Theme::accent : Theme::ink;
+        auto colour = (b.getClickingTogglesState() && b.getToggleState()) ? Theme::topLight : Theme::ink; // prendido: negro sobre blanco
         if (! b.isEnabled()) colour = colour.withMultipliedAlpha (0.4f);
         auto r = raisedShape (b.getLocalBounds().toFloat()).toNearestInt(); // (plano: el texto no se mueve)
         g.setColour (colour);
@@ -218,16 +219,16 @@ public:
         if (b.getProperties().contains ("speaker")) // Hearing: parlante + texto, centrados juntos
         {
             const auto font = getTextButtonFont (b, b.getHeight());
-            const float inkW = Theme::inkBounds (font, b.getButtonText()).getWidth();
+            const float inkW = Theme::inkBounds (font, b.getButtonText().toUpperCase()).getWidth();
             const auto rf = r.toFloat();
             // parlante + texto, centrados juntos por lo dibujado (el parlante empieza 1 adentro de su caja)
             const float x0 = rf.getCentreX() - (kSpeakerW - 1.0f + kSpeakerGap + inkW) * 0.5f - 1.0f;
             Theme::drawSpeaker (g, { x0, rf.getCentreY() - kSpeakerH * 0.5f, kSpeakerW, kSpeakerH }, colour);
             g.setColour (colour);
-            Theme::drawInkText (g, font, b.getButtonText(), rf, x0 + kSpeakerW + kSpeakerGap);
+            Theme::drawInkText (g, font, b.getButtonText().toUpperCase(), rf, x0 + kSpeakerW + kSpeakerGap);
             return;
         }
-        Theme::drawInkText (g, getTextButtonFont (b, b.getHeight()), b.getButtonText(), r.toFloat()); // lo dibujado, justo en el centro
+        Theme::drawInkText (g, getTextButtonFont (b, b.getHeight()), b.getButtonText().toUpperCase(), r.toFloat()); // lo dibujado, justo en el centro (en mayúsculas)
     }
 
     // selector (Format): pastilla gris con flechita
@@ -259,6 +260,17 @@ public:
     void drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float,
                            juce::Slider::SliderStyle style, juce::Slider& s) override
     {
+        if (style == juce::Slider::LinearHorizontal) // línea fina con un cuadradito (Ramp)
+        {
+            const float cy = (float) y + (float) h * 0.5f;
+            g.setColour (Theme::track);
+            g.fillRect (juce::Rectangle<float> ((float) x, std::round (cy) - 0.5f, (float) w, 1.0f));
+            g.setColour (juce::Colour (0xff8a8a8a)); // lo recorrido, más claro
+            g.fillRect (juce::Rectangle<float> ((float) x, std::round (cy) - 0.5f, pos - (float) x, 1.0f));
+            g.setColour (s.isEnabled() ? Theme::inkStrong : Theme::inkFaint);
+            g.fillRect (juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ std::round (pos), std::round (cy) }));
+            return;
+        }
         if (style != juce::Slider::LinearBar) { LookAndFeel_V4::drawLinearSlider (g, x, y, w, h, pos, 0, 0, style, s); return; }
         const auto r = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h);
         const float radius = pillCorner (r.getHeight());
@@ -282,7 +294,8 @@ public:
         l->setMinimumHorizontalScale (base->getMinimumHorizontalScale());
         l->setEditable (base->isEditableOnSingleClick(), base->isEditableOnDoubleClick(), base->doesLossOfFocusDiscardChanges());
         delete base;
-        l->setFont (Theme::font (14.0f, 400)); // como el valor de Window (3000 ms)
+        l->setFont (Theme::font (10.0f, 400, 0.06f)); // el valor, chico (mono)
+        if (s.getSliderStyle() == juce::Slider::LinearHorizontal) l->setJustificationType (juce::Justification::centred);
         l->setColour (juce::Label::textColourId, Theme::inkStrong);
         l->setColour (juce::Label::backgroundColourId, juce::Colours::transparentBlack);
         l->setColour (juce::Label::outlineColourId, juce::Colours::transparentBlack);
@@ -396,19 +409,15 @@ public:
         auto r = getLocalBounds().toFloat().reduced (1.0f);
         const float radius = CycleNormLookAndFeel::pillCorner (r.getHeight());
         juce::Colour text = juce::Colours::white;
-        if (! isEnabled())
-        {
-            g.setColour (Theme::pill); g.fillRoundedRectangle (r, radius);
-            text = Theme::inkFaint;
-        }
-        else
-        {
-            // plano: azul lleno, apenas más claro con el mouse encima y más oscuro apretado
-            g.setColour (pressed ? Theme::accent.darker (0.12f) : hover ? Theme::accent.brighter (0.08f) : Theme::accent);
-            g.fillRect (r);
-        }
+        juce::ignoreUnused (radius);
+        // como los demás: sólo el borde fino (un poco más claro: es la salida); apretado, blanco lleno
+        if (! isEnabled()) text = Theme::inkFaint;
+        else text = pressed ? Theme::topLight : Theme::inkStrong;
+        if (pressed && isEnabled()) { g.setColour (Theme::inkStrong); g.fillRect (r); }
+        g.setColour (! isEnabled() ? Theme::line : hover ? juce::Colour (0xffa0a0a0) : juce::Colour (0xff6a6a6a));
+        g.drawRect (r, 1.0f);
         g.setColour (text);
-        Theme::drawInkText (g, Theme::buttonFont(), "Drag to DAW", r.toFloat());
+        Theme::drawInkText (g, Theme::buttonFont(), "DRAG TO DAW", r.toFloat());
     }
     void mouseEnter (const juce::MouseEvent&) override { hover = true; repaint(); }
     void mouseExit (const juce::MouseEvent&) override { hover = false; repaint(); }
@@ -594,6 +603,8 @@ public:
         skipHalves = 0; // (por defecto: desde el principio)
         setupSlider (ramp, rampLabel, "Ramp", 0, 100, 1, " %", 0.0); // (por defecto: 0 %)
         ramp.getProperties().set ("resetValue", 0.0);      // ⌥ + clic: 0 %
+        ramp.setSliderStyle (juce::Slider::LinearHorizontal); // línea fina con cuadradito, el valor a la derecha
+        ramp.setTextBoxStyle (juce::Slider::TextBoxRight, false, 40, kPillH);
         // Amount ya no está en la ventana: lo maneja el botón Normalize (100 % o 0 %)
         amount.setValue (100.0, juce::dontSendNotification); // (por defecto: Normalize prendido)
         normButton.setToggleState (amount.getValue() >= 50.0, juce::dontSendNotification);
@@ -809,7 +820,7 @@ public:
         addAndMakeVisible (wave);
 
         info.setColour (juce::Label::textColourId, Theme::inkDim);
-        info.setFont (Theme::font (12.0f, 400)); // como el estado de UNISON
+        info.setFont (Theme::labelFont()); // mayúsculas chicas, espaciadas
         info.setJustificationType (juce::Justification::centredLeft); // la info del loop, desde la línea de al lado de Loop section
         info.setBorderSize ({});
         addAndMakeVisible (info);
@@ -822,7 +833,7 @@ public:
         player.setSource (&transport);
 
         setWantsKeyboardFocus (true);
-        setSize (927, 570); // (diseño base: 927 x 570, al 100 %)
+        setSize (909, 570); // (diseño base: 909 x 570, al 100 %)
         updateButtons();
         startTimerHz (60);
     }
@@ -873,11 +884,11 @@ public:
             // como los renglones del pitch: "Loop:" y después columnas de ancho fijo (cada valor con su
             // unidad, alineado a la izquierda), separadas con " · "
             const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
-            const juce::String cols[] = { loopInfoVals[0] + " %", loopInfoVals[1] + " cycles", "crossfade " + loopInfoVals[2] };
-            const juce::String tmpl[] = { "100.0 %", "999 cycles", "crossfade Off" };
+            const juce::String cols[] = { loopInfoVals[0] + " %", loopInfoVals[1] + " CYCLES", "XFADE " + loopInfoVals[2].toUpperCase() };
+            const juce::String tmpl[] = { "100.0 %", "999 CYCLES", "XFADE OFF" };
             float x = (float) info.getX();
-            g.drawSingleLineText ("Loop:", juce::roundToInt (x), (int) kTitleBaseline);
-            x += wOf ("Loop:") + 5.0f;
+            g.drawSingleLineText ("LOOP:", juce::roundToInt (x), (int) kTitleBaseline);
+            x += wOf ("LOOP:") + 5.0f;
             for (int k = 0; k < 3; ++k)
             {
                 const float w = juce::jmax (wOf (tmpl[k]), wOf (cols[k]));
@@ -893,15 +904,15 @@ public:
             g.setFont (f);
             const float x = (float) rampLabel.getX();
             g.setColour (Theme::inkDim);
-            g.drawSingleLineText ("Noise:", juce::roundToInt (x), (int) kTitleBaseline);
-            const float x2 = x + juce::GlyphArrangement::getStringWidth (f, "Noise:") + 5.0f;
+            g.drawSingleLineText ("NOISE:", juce::roundToInt (x), (int) kTitleBaseline);
+            const float x2 = x + juce::GlyphArrangement::getStringWidth (f, "NOISE:") + 5.0f;
             g.drawSingleLineText (juce::String (noisePct, 2) + " %", juce::roundToInt (x2), (int) kTitleBaseline);
         }
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
             g.setColour (Theme::ink);
-            const auto f = Theme::font (14.0f, 400);
+            const auto f = Theme::font (10.5f, 400, 0.04f);
             g.setFont (f);
             const auto b = baselineRow (f);
             g.drawText (items[(size_t) current]->file.getFileName(), fileName.toFloat().withY (b.getY()).withHeight (b.getHeight()),
@@ -910,8 +921,10 @@ public:
         // el visor: panel negro con esquinas redondeadas (como el osciloscopio de UNISON)
         g.setColour (Theme::darkBg);
         g.fillRect (waveArea); // esquinas rectas
+        g.setColour (juce::Colour (0xff262626)); // con un marco fino
+        g.drawRect (waveArea, 1);
         // divisores finos entre los grupos de botones
-        g.setColour (juce::Colours::black.withAlpha (0.10f));
+        g.setColour (juce::Colour (0xff262626));
         for (int x : groupDividers) g.fillRect ((float) x, (float) buttonRowY, 1.0f, (float) buttonRowH);
         if (groupDividersRight > 0 && groupDividersRight < dragOut.getX()) g.fillRect ((float) groupDividersRight, (float) buttonRowY, 1.0f, (float) buttonRowH);
     }
@@ -943,7 +956,7 @@ public:
         row.setLeft (row.getX() - 4); // lo visible del primer botón (el transporte) arranca a 20, justo debajo del título
         const auto bf = Theme::buttonFont();
         // el ancho de un botón: lo dibujado + el mismo aire a cada lado (+ 8: la sombra, 4 a cada lado)
-        auto inkW = [&] (const juce::String& t) { return Theme::inkBounds (bf, t).getWidth(); };
+        auto inkW = [&] (const juce::String& t) { return Theme::inkBounds (bf, t.toUpperCase()).getWidth(); };
         auto widthForText = [&] (const juce::String& t) { return (int) std::ceil (inkW (t) + 2.0f * Theme::kButtonPad) + 8; };
         auto widthFor = [&] (juce::Button& b, float extra) { return widthForText (b.getButtonText()) + (int) extra; };
         auto place = [&] (juce::Button& b, float extra) { b.setBounds (row.removeFromLeft (widthFor (b, extra))); };
@@ -967,14 +980,14 @@ public:
         pitchInfoX = row.getX() - 1; // (la info del pitch arranca entre Processed y Normalize)
         // 5) a la derecha de todo: Drag to DAW
         {
-            const int w = (int) std::ceil (inkW ("Drag to DAW") + 2.0f * Theme::kButtonPad) + 2; // (+2: lo que el botón se come de borde)
+            const int w = (int) std::ceil (inkW ("DRAG TO DAW") + 2.0f * Theme::kButtonPad) + 2; // (+2: lo que el botón se come de borde)
             dragOut.setBounds (row.removeFromRight (w + 6).withTrimmedLeft (6).withTrimmedTop (1).withHeight (kButtonH + 2).translated (1, 0)); // (el borde visible a 20 del de la ventana, como el título)
         }
         // 3) el proceso: Normalize y Ramp
         place (normButton, 0);
         {
-            const auto lf = Theme::font (12.5f, 300);
-            const int textW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "Ramp"));
+            const auto lf = Theme::labelFont();
+            const int textW = (int) std::ceil (juce::GlyphArrangement::getStringWidth (lf, "RAMP"));
             row.removeFromLeft (16); // "Ramp" a 20 del borde visible de Normalize
             const int cy = row.getY() + 2 + kButtonH / 2;
             rampLabel.setBorderSize ({});
@@ -1205,7 +1218,8 @@ private:
         s.onValueChange = [this] { settingsChanged(); };
         addAndMakeVisible (s);
         l.setText (name, juce::dontSendNotification);
-        l.setFont (Theme::font (12.5f, 300)); // como los títulos de UNISON (Window, Latency, Listen)
+        l.setFont (Theme::labelFont());
+        l.setText (name.toUpperCase(), juce::dontSendNotification);
         l.setColour (juce::Label::textColourId, Theme::inkDim);
         addAndMakeVisible (l);
     }
@@ -2173,20 +2187,20 @@ private:
         auto line = [&] (cyclenorm::PitchInfo p, bool inLoop) -> juce::String {
             p.midi += previewSemis;                                  // vista previa de la barra Pitch
             p.hz *= std::pow (2.0, previewSemis / 12.0);
-            const juce::String label = juce::String ("Pitch (") + (inLoop ? "loop" : p.sustain ? "sustain" : p.gliding ? "gliding" : "Skip to End") + ")";
+            const juce::String label = juce::String ("PITCH (") + (inLoop ? "LOOP" : p.sustain ? "SUSTAIN" : p.gliding ? "GLIDING" : "SKIP TO END") + ")";
             if (! p.valid) return label + "\t--";
             auto sgn = [] (double v, int dec) { return (v >= 0 ? juce::String ("+") : juce::String (u8 ("−"))) + juce::String (std::abs (v), dec); };
             const double cents = (p.midi - std::round (p.midi)) * 100.0;
             const double tuned = it.tuneSemis + previewSemis;
-            return label + "\t" + juce::String (cyclenorm::noteName (p.midi)) + "\t" + sgn (cents, 1) + " cents"
-                 + "\t" + juce::String (p.hz, 3) + " Hz" + "\ttuned " + sgn (tuned * 100.0, 1) + " cents"
-                 + "\tdrift " + (p.cycles >= 4 ? sgn (p.driftCents, 1) + " cents" : juce::String ("--"));
+            return label + "\t" + juce::String (cyclenorm::noteName (p.midi)) + "\t" + sgn (cents, 1) + " CENTS"
+                 + "\t" + juce::String (p.hz, 3) + " HZ" + "\tTUNED " + sgn (tuned * 100.0, 1) + " CENTS"
+                 + "\tDRIFT " + (p.cycles >= 4 ? sgn (p.driftCents, 1) + " CENTS" : juce::String ("--"));
         };
         const auto susP = pitchOnLoaded (it, it.startSample, (size_t) it.lengthToWrite(), true);
         const auto sus = line (susP, false);
         const bool inLoop = loopActive (it);
         // (con Loop apagado, el renglón se ve igual, sin medida: "Pitch (loop) : --")
-        juce::String lp ("Pitch (loop)\t--");
+        juce::String lp ("PITCH (LOOP)\t--");
         if (inLoop)
         {
             auto p = pitchOnLoaded (it, it.loopStart > 8 ? it.loopStart - 8 : 0, it.loopEnd + 8, false);
@@ -2210,7 +2224,7 @@ private:
             }
             lp = line (p, true);
         }
-        wave.setPitchInfo (sus, juce::Colour (0xff8b9096), lp, kAccent); // (se muestran en el visor Original)
+        wave.setPitchInfo (sus, juce::Colour (0xff6c6c6c), lp, juce::Colour (0xffc8c8c8)); // (se muestran en el visor Original)
         layoutTitleRow();
     }
 
@@ -2510,7 +2524,7 @@ private:
         {
             setUsingNativeTitleBar (true);
             content = new MainComponent();
-            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "927").getIntValue();
+            const int w = juce::SystemStats::getEnvironmentVariable ("CYCLENORM_TEST_DESIGNW", "909").getIntValue();
             content->setSize (w, 570);
             setContentOwned (content, true);
             setResizable (false, false);

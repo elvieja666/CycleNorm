@@ -21,12 +21,12 @@ juce_add_gui_app(Toolkit
     DOCUMENT_EXTENSIONS wav aif aiff flac mp3 m4a caf
     VERSION ${PROJECT_VERSION})
 
-# letra: Inter (OFL), en todo (también el título)
+# letra: JetBrains Mono (OFL), en todo (también el título)
 juce_add_binary_data(CycleNormFonts SOURCES
-    Resources/Fonts/Inter-Light.otf
-    Resources/Fonts/Inter-Regular.otf
-    Resources/Fonts/Inter-Medium.otf
-    Resources/Fonts/Inter-SemiBold.otf)
+    Resources/Fonts/JetBrainsMonoNL-Light.ttf
+    Resources/Fonts/JetBrainsMonoNL-Regular.ttf
+    Resources/Fonts/JetBrainsMonoNL-Medium.ttf
+    Resources/Fonts/JetBrainsMonoNL-SemiBold.ttf)
 
 target_sources(Toolkit PRIVATE
     Source/Main.cpp

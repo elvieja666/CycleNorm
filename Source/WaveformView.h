@@ -143,7 +143,7 @@ public:
         juce::Path p; ga.createPath (p);
         return p.getBounds().getX();
     }
-    juce::String pitchInfo, pitchInfo2; juce::Colour pitchInfoColour { 0xff8b9096 }, pitchInfoColour2;
+    juce::String pitchInfo, pitchInfo2; juce::Colour pitchInfoColour { 0xff6c6c6c }, pitchInfoColour2;
     void setFadeOutHalves (int n) { if (n != fadeOutHalves) { fadeOutHalves = n; repaint(); } }
     // dónde empieza el fade out: n semiciclos antes de End (en los cortes), sin pasar 'lower'
     static size_t fadeOutStartOf (const std::vector<size_t>& B, size_t end, int halves, size_t lower)
@@ -215,9 +215,9 @@ public:
             g.reduceClipRegion (0, 0, plotWidth(), getHeight()); // sin pisar el teclado
             const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
             const bool hasPitch = pitchPts.size() >= 2;
-            drawLane (g, origToDraw(), topLaneRect(), juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
+            drawLane (g, origToDraw(), topLaneRect(), juce::Colour (0xff8a8a8a), "Original", ! playingProc, 0, false,
                       hasPitch ? std::function<void()> ([] {}) : std::function<void()>(), 1);
-            drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
+            drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xffbdbdbd), "Processed", playingProc, skipEnd, hasSkipLine(), {}, 1);
             drawTabs (g);
             if (seamActive()) drawSeam (g); // (tapa el Processed normal, sus pestañas y sus líneas)
             if (hasPitch) drawPitchCurve (g, topLaneRect(), 2); // la pildorita de los cents: sigue a End, encima de lo oscurecido
@@ -271,19 +271,19 @@ public:
         const double vf = zoomSpan > 0.0 ? autoSpan / zoomSpan : 1.0;
         const double vmax = autoSpan / 0.005;                                                         // (el mismo tope que zoomPitch)
         const juce::String dot = juce::String::fromUTF8 ("  \xc2\xb7  ");
-        g.setFont (uiFont (13.0f));
+        g.setFont (labelUiFont (9.0f));
         const auto font = g.getCurrentFont();
         auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (font, t); };
-        const juce::String showAll ("Show all");
+        const juce::String showAll ("SHOW ALL");
         const float sw = wOf (showAll);
         const float right = (float) plotWidth() - 5.0f, top = (float) kHiddenPad + 1.0f; // la mitad de abajo de los 40 (la de arriba no se ve)
         // cada número en un lugar del ancho de "100": al pasar de 0 a 100 no se mueve ningún texto
         const float numW = wOf ("100");
-        const juce::String pieces[] = { "Zoom  X ", pct (hf, hmax), dot + "Y ", pct (vf, vmax), dot };
+        const juce::String pieces[] = { "ZOOM  X ", pct (hf, hmax), dot + "Y ", pct (vf, vmax), dot };
         float rowW = 0.0f;
         for (int k = 0; k < 5; ++k) rowW += (k == 1 || k == 3) ? numW : wOf (pieces[k]);
         float x = right - sw - rowW;
-        g.setColour (juce::Colour (0xff8b9096));
+        g.setColour (juce::Colour (0xff6c6c6c));
         for (int k = 0; k < 5; ++k)
         {
             const float pw = (k == 1 || k == 3) ? numW : wOf (pieces[k]);
@@ -294,14 +294,14 @@ public:
             const auto textArea = juce::Rectangle<float> (right - sw, top, sw + 2.0f, 18.0f);
             if (! isZoomed())
             {
-                g.setColour (juce::Colour (0xff8b9096).withAlpha (0.6f));
+                g.setColour (juce::Colour (0xff6c6c6c).withAlpha (0.6f));
                 g.drawText (showAll, textArea, juce::Justification::centredLeft);
             }
             else
             {
                 showAllArea = textArea.expanded (4.0f, 3.0f);
                 const bool hot = showAllArea.contains (hoverPoint);
-                const juce::Colour accentBright (0xff5aa9ff);
+                const juce::Colour accentBright (0xffe8e8e8);
                 g.setColour (hot ? accentBright.brighter (0.4f) : accentBright);
                 g.drawText (showAll, textArea, juce::Justification::centredLeft);
                 if (hot) g.fillRect (textArea.getX(), textArea.getCentreY() + 7.0f, sw, 1.0f);
@@ -502,6 +502,8 @@ public:
     }
     // letras del visor con la misma escala que el resto (textScale de UNISON)
     static juce::FontOptions uiFont (float h, int style = juce::Font::plain) { return juce::FontOptions (h * 1.22f, style); }
+    // las etiquetas del visor (// ORIGINAL, ZOOM, pestañas): mono chica, en mayúsculas y espaciada
+    static juce::FontOptions labelUiFont (float h = 9.0f, int style = juce::Font::plain) { return uiFont (h, style).withKerningFactor (0.14f); }
 
     void showAll() { viewStart = 0; viewLen = (double) totalLen(); zoomSpan = 0.0; dirty = true; repaint(); }
     void mouseDoubleClick (const juce::MouseEvent&) override
@@ -672,7 +674,7 @@ private:
             right = juce::jmax ((float) r.getX() + tw + 2.0f, right);
             const auto tag = juce::Rectangle<float> (right - tw, y - 8.0f, tw, 16.0f);
             pitchTagArea = tag; // (también se agarra de acá para mover el pitch)
-            g.setColour (juce::Colour (0xff6fd6ff));
+            g.setColour (juce::Colour (0xfff4f4f4));
             g.fillRect (tag);
             g.setColour (juce::Colour (0xff0b0c0e));
             g.drawText (t, tag, juce::Justification::centred);
@@ -686,7 +688,7 @@ private:
             {
                 const float y0 = yOf (m + 0.5), y1 = yOf (m - 0.5);
                 const auto row = juce::Rectangle<float> ((float) r.getX(), y0, lineEnd - (float) r.getX(), y1 - y0);
-                if (m == refNote) { g.setColour (juce::Colour (0x226fd6ff)); g.fillRect (row); }
+                if (m == refNote) { g.setColour (juce::Colour (0x1affffff)); g.fillRect (row); }
                 else if (! isBlack (m)) { g.setColour (juce::Colour (0x0bffffff)); g.fillRect (row); }
                 g.setColour (juce::Colour (0x12ffffff));
                 g.fillRect (row.withHeight (1.0f)); // borde entre carriles
@@ -694,7 +696,7 @@ private:
                 const float yc = yOf ((double) m);
                 if (y1 - y0 >= 6.0f || isC)
                 {
-                    g.setColour (juce::Colour (m == refNote ? 0x806fd6ff : (isC ? 0x40ffffff : 0x1fffffff)));
+                    g.setColour (juce::Colour (m == refNote ? 0x80ffffff : (isC ? 0x40ffffff : 0x1fffffff)));
                     g.fillRect (juce::Rectangle<float> ((float) r.getX(), std::round (yc) - 0.5f, lineEnd - (float) r.getX(), 1.0f));
                 }
             }
@@ -720,7 +722,7 @@ private:
                 g.setColour (juce::Colour (0x2effffff));
                 const float dashes[] = { 3.0f, 4.0f };
                 g.drawDashedLine (juce::Line<float> ((float) r.getX(), std::round (y), lineEnd - 40.0f, std::round (y)), dashes, 2, 1.0f);
-                g.setColour (juce::Colour (0xff7c8188));
+                g.setColour (juce::Colour (0xff5c5c5c));
                 const int dec = stepC < 1.0 ? 1 : 0;
                 g.drawText ((dev > 0 ? "+" : "") + juce::String (dev, dec) + "c", juce::Rectangle<float> (lineEnd - 40.0f, y - 6.5f, 38.0f, 13.0f), juce::Justification::centredRight);
             }
@@ -732,30 +734,30 @@ private:
             const auto kb = juce::Rectangle<float> (kbX, kTop, kbW, kBot - kTop);
             juce::Graphics::ScopedSaveState ks (g);
             g.reduceClipRegion (kb.toNearestInt());
-            g.setColour (juce::Colour (0xffd9dce1));
+            g.setColour (juce::Colour (0xff2c2c2c)); // las blancas: gris oscuro (monocromo)
             g.fillRect (kb);
             for (int m = n0; m <= n1; ++m)
             {
                 const float y0 = yOf (m + 0.5), y1 = yOf (m - 0.5), yc = 0.5f * (y0 + y1);
                 const int pc = ((m % 12) + 12) % 12;
-                if (m == refNote && ! isBlack (m)) { g.setColour (juce::Colour (0xff6fd6ff)); g.fillRect (juce::Rectangle<float> (kbX, y0, kbW, y1 - y0)); }
+                if (m == refNote && ! isBlack (m)) { g.setColour (juce::Colour (0xfff4f4f4)); g.fillRect (juce::Rectangle<float> (kbX, y0, kbW, y1 - y0)); }
                 if (isBlack (m))
                 {
-                    g.setColour (m == refNote ? juce::Colour (0xff2f9fd0) : juce::Colour (0xff232325));
+                    g.setColour (m == refNote ? juce::Colour (0xfff4f4f4) : juce::Colour (0xff111111));
                     g.fillRect (juce::Rectangle<float> (kbX, y0, kbW * 0.6f, y1 - y0).reduced (0.0f, 0.5f));
                     // el borde entre las dos blancas pasa por el medio de la negra
-                    g.setColour (juce::Colour (0x40000000));
+                    g.setColour (juce::Colour (0xff161616));
                     g.fillRect (juce::Rectangle<float> (kbX + kbW * 0.6f, std::round (yc) - 0.5f, kbW * 0.4f, 1.0f));
                 }
                 if (pc == 0 || pc == 5) // borde entre B|C y E|F (dos blancas juntas)
                 {
-                    g.setColour (juce::Colour (0x40000000));
+                    g.setColour (juce::Colour (0xff161616));
                     g.fillRect (juce::Rectangle<float> (kbX, std::round (y1) - 0.5f, kbW, 1.0f));
                 }
                 const float keyH = y1 - y0;
                 if ((pc == 0 || m == refNote) && keyH >= 5.0f)
                 {
-                    g.setColour (m == refNote ? (isBlack (m) ? juce::Colours::white : juce::Colour (0xff0b0c0e)) : juce::Colour (0xff2b2e33));
+                    g.setColour (m == refNote ? juce::Colour (0xff0b0c0e) : juce::Colour (0xff8a8a8a));
                     g.setFont (uiFont (juce::jlimit (8.5f, 11.0f, keyH * 0.8f), juce::Font::bold));
                     g.drawText (noteStr (m), juce::Rectangle<float> (kbX + 1.0f, yc - 7.0f, kbW - 3.0f, 14.0f),
                                 isBlack (m) ? juce::Justification::centredLeft : juce::Justification::centredRight);
@@ -776,7 +778,7 @@ private:
                 if (! started) { path.startNewSubPath (x, y); started = true; }
                 else path.lineTo (x, y);
             }
-            g.setColour (juce::Colour (0xff6fd6ff));
+            g.setColour (juce::Colour (0xfff4f4f4));
             g.strokePath (path, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             for (auto& p : pitchPts)
             {
@@ -899,11 +901,11 @@ private:
         const float mid = (float) r.getCentreY(), half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f);
         const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
         const float L = (float) (r.getX() + plotLeft()), W = (float) plotSpan(), c = seamCentreX();
-        g.setColour (juce::Colour (0xff1e1e20));
+        g.setColour (juce::Colour (0xff0b0b0b));
         g.fillRect (r);
-        g.setColour (juce::Colour (0xff28282a));
+        g.setColour (juce::Colour (0xff121212));
         g.fillRect (juce::Rectangle<float> (L, vTop, W, vBot - vTop));
-        g.setColour (juce::Colour (0xff3c3c40));
+        g.setColour (juce::Colour (0xff2a2a2a));
         g.drawHorizontalLine ((int) mid, L, L + W);
 
         const auto* buf = proc.get();
@@ -922,7 +924,7 @@ private:
             g.reduceClipRegion (juce::Rectangle<float> (L, az > 1.0f ? vTop : (float) r.getY(), W, az > 1.0f ? vBot - vTop : (float) r.getHeight()).getSmallestIntegerContainer());
             const long long v0 = (long long) std::floor (-(c - L) * spp) - 1, v1 = (long long) std::ceil ((L + W - c) * spp) + 1;
             // cada mitad de su color: lo que sale (Loop end) en el azul del Processed, lo que entra (Loop) en naranja
-            const juce::Colour colOut (0xff4fb3ff), colIn (0xffe0782f);
+            const juce::Colour colOut (0xff8a8a8a), colIn (0xfff4f4f4);
             auto inHalves = [&] (auto&& draw) {
                 for (int side = 0; side < 2; ++side)
                 {
@@ -996,8 +998,8 @@ private:
             g.setFont (tabFont());
             g.drawText (t, rr, juce::Justification::centred);
         };
-        box ("Loop end", true, juce::Colour (0xff4fb3ff));
-        box ("Loop", false, juce::Colour (0xffe0782f));
+        box ("LOOP END", true, juce::Colour (0xff8a8a8a));
+        box ("LOOP", false, juce::Colour (0xfff4f4f4));
     }
 
     size_t endOrLen() const { return (endSample > 0 && endSample < (size_t) totalLen()) ? endSample : (size_t) totalLen(); }
@@ -1027,11 +1029,11 @@ private:
     // id: 1 Skip, 2 End, 3 inicio del loop, 4 fin del loop, 5 crossfade, 6 Start, 7 fade in, 8 fade out
     static constexpr float kTabBoxH = 16.0f; // el alto de la caja (dentro del lugar de kTabH)
     static constexpr float kTabH = 18.0f; // la mitad de abajo de los 40 libres (menos 1 de aire con la línea y 1 con el título)
-    static juce::Font tabFont() { return uiFont (11.0f); }
+    static juce::Font tabFont() { return labelUiFont (8.5f); }
     static juce::String tabText (int id)
     {
-        switch (id) { case 1: return "Skip"; case 2: return "End"; case 3: return "Loop"; case 4: return "Loop end";
-                      case 5: return "Xfade"; case 6: return "Start"; case 7: return "Fade in"; case 8: return "Fade out"; }
+        switch (id) { case 1: return "SKIP"; case 2: return "END"; case 3: return "LOOP"; case 4: return "LOOP END";
+                      case 5: return "XFADE"; case 6: return "START"; case 7: return "FADE IN"; case 8: return "FADE OUT"; }
         return {};
     }
     juce::Rectangle<float> tabRect (int id) const
@@ -1094,7 +1096,7 @@ private:
             if (rr.isEmpty()) continue;
             const bool loopTab = id >= 3 && id <= 5 && id != 5;
             const bool hot = isDraggingTab (id) || rr.expanded (2.0f).contains (hoverPoint);
-            const juce::Colour base = loopTab ? juce::Colour (0xffe0782f) : juce::Colour (0xffd9dee5);
+            const juce::Colour base = loopTab ? juce::Colour (0xfff4f4f4) : juce::Colour (0xff9a9a9a);
             g.setColour (hot ? base.brighter (0.25f) : base.withAlpha (0.92f));
             g.fillRect (rr);
             g.setColour (juce::Colour (0xff15181c));
@@ -1335,7 +1337,7 @@ private:
         g.reduceClipRegion (r); // que un archivo que pasa de 0 dBFS no invada el otro carril
         if (pass == 0)
         {
-            g.setColour (juce::Colour (0xff1e1e20)); // alrededor de las ondas: negro (como la barra de la izquierda)
+            g.setColour (juce::Colour (0xff0b0b0b)); // alrededor de las ondas: negro (como la barra de la izquierda)
             g.fillRect (r);
         }
         const float mid = (float) r.getCentreY(), half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f); // la onda en el medio (185) y 40 libres arriba y abajo
@@ -1343,7 +1345,7 @@ private:
         const float vTop = (float) (int) (mid - half), vBot = (float) (int) (mid + half) + 1.0f;
         if (pass == 0) // la franja de la onda (185, entre los 40 de la izquierda y el teclado), apenas más clara
         {
-            g.setColour (juce::Colour (0xff28282a));
+            g.setColour (juce::Colour (0xff121212));
             g.fillRect (juce::Rectangle<float> ((float) (r.getX() + plotLeft()), vTop, (float) plotSpan(), vBot - vTop));
         }
 
@@ -1352,7 +1354,7 @@ private:
         else
         {
             // sólo la línea del centro (-inf dB)
-            g.setColour (juce::Colour (0xff3c3c40));
+            g.setColour (juce::Colour (0xff2a2a2a));
             g.drawHorizontalLine ((int) mid, (float) r.getX(), (float) r.getRight());
         }
 
@@ -1368,7 +1370,7 @@ private:
             // (los fades van del color que les toca: azul, o gris claro si caen en lo salteado)
             darkBefore = xOf (startSample);
         }
-        const juce::Colour kDark (0xff3c4048), kLight (0xff8f98a6);
+        const juce::Colour kDark (0xff3a3a3a), kLight (0xff8a8a8a);
 
         // greyBefore: hasta esta x (el Skip) las columnas van en gris; así se arma la onda una sola vez
         auto drawWave = [&] (juce::Colour waveColour, float greyBefore = -1.0e9f)
@@ -1484,7 +1486,7 @@ private:
                 // (en 0, sobre el borde del marco: no se dibuja, salvo mientras se arrastra)
                 if (rawX >= (float) r.getX() - 1.0f && lx <= (float) r.getRight() && (skipLineSample() > 0.0 || draggingSkip))
                 {
-                    g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingSkip ? 1.0f : 0.85f));
+                    g.setColour (juce::Colour (0xffb4b4b4).withAlpha (draggingSkip ? 1.0f : 0.85f));
                     const float dashes[] = { 4.0f, 3.0f };
                     g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, vTop, std::round (lx) + 0.5f, vBot), dashes, 2, draggingSkip ? 1.5f : 1.0f);
                 }
@@ -1493,7 +1495,7 @@ private:
             if (hasStartLine() && startLineVisible() && (showSkipLine || startSample > 0)) // (en Original sólo si se movió: si no, sería el borde)
             {
                 const float sx = (float) r.getX() + startLineX();
-                g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingStart ? 1.0f : 0.9f));
+                g.setColour (juce::Colour (0xffb4b4b4).withAlpha (draggingStart ? 1.0f : 0.9f));
                 g.drawLine (juce::Line<float> (std::round (sx) + 0.5f, vTop, std::round (sx) + 0.5f, vBot), draggingStart ? 1.5f : 1.0f); // entera
             }
             // los fades: sólo adentro del gráfico (con zoom, lo que cae afuera no se dibuja en el margen)
@@ -1540,7 +1542,7 @@ private:
                 const float px0 = (float) (r.getX() + plotLeft());
                 if (sx > px0)
                 {
-                    g.setColour (juce::Colour (0xcc1c1c1e));
+                    g.setColour (juce::Colour (0xcc0b0b0b));
                     g.fillRect (juce::Rectangle<float> (px0, vTop, sx - px0, vBot - vTop));
                 }
             }
@@ -1551,7 +1553,7 @@ private:
                 const float px1 = (float) (r.getX() + plotWidth());
                 if (ex < px1)
                 {   // sólo sobre la franja de la onda (alrededor todo negro; el teclado no se oscurece)
-                    g.setColour (juce::Colour (0xcc1c1c1e));
+                    g.setColour (juce::Colour (0xcc0b0b0b));
                     const float x0 = juce::jmax ((float) (r.getX() + plotLeft()), ex);
                     g.fillRect (juce::Rectangle<float> (x0, vTop, px1 - x0, vBot - vTop));
                 }
@@ -1568,7 +1570,7 @@ private:
                 const float a0 = juce::jmax (pl, x0), a1 = juce::jmin (pr, x1);
                 if (a1 > a0)
                 {
-                    g.setColour (juce::Colour (movingLoop ? 0x48e0782f : 0x2ae0782f));
+                    g.setColour (juce::Colour (movingLoop ? 0x1cffffff : 0x10ffffff));
                     g.fillRect (juce::Rectangle<float> (a0, vTop, a1 - a0, vBot - vTop)); // (sólo entre las líneas de 0 dB)
                 }
                 const float dashes[] = { 4.0f, 3.0f };
@@ -1577,7 +1579,7 @@ private:
                     const float lx = k == 0 ? x0 : x1;
                     if (lx < (float) r.getX() - 1.0f || lx > (float) r.getRight() + 1.0f) continue;
                     const bool grabbed = draggingLoop == 3 + k;
-                    g.setColour (juce::Colour (0xffe0782f).withAlpha (grabbed ? 1.0f : 0.9f));
+                    g.setColour (juce::Colour (0xfff4f4f4).withAlpha (grabbed ? 1.0f : 0.9f));
                     g.drawDashedLine (juce::Line<float> (std::round (lx) + 0.5f, vTop, std::round (lx) + 0.5f, vBot), dashes, 2, grabbed ? 1.5f : 1.0f);
                 }
                 // crossfade (como en el Quick Sampler): lo que entra, antes del inicio, sube; lo que sale,
@@ -1618,7 +1620,7 @@ private:
             {
                 const float ex = (float) r.getX() + endLineX();
                 {
-                    g.setColour (juce::Colour (0xffaeb4bc).withAlpha (draggingEnd ? 1.0f : 0.9f));
+                    g.setColour (juce::Colour (0xffb4b4b4).withAlpha (draggingEnd ? 1.0f : 0.9f));
                     g.drawLine (juce::Line<float> (std::round (ex) + 0.5f, vTop, std::round (ex) + 0.5f, vBot), draggingEnd ? 1.5f : 1.0f); // entera
                 }
             }
@@ -1635,25 +1637,26 @@ private:
         }
 
         if (pass == 0) return;
-        g.setColour (active ? juce::Colours::white : juce::Colour (0xff8a919c));
-        g.setFont (uiFont (13.0f, active ? juce::Font::bold : juce::Font::plain));
+        g.setColour (active ? juce::Colours::white : juce::Colour (0xff6c6c6c));
+        g.setFont (labelUiFont (9.5f, active ? juce::Font::bold : juce::Font::plain));
         // Processed: el título en la mitad de arriba de los 40 libres (la de abajo es de las pestañas);
         // Original: en la de abajo (la de arriba no se ve)
         // a 5 del borde izquierdo (lo mismo que hay arriba hasta las mayúsculas), medido a la letra
         const float titleY = (float) r.getY() + (r.getY() == topLaneRect().getY() ? (float) kHiddenPad : 0.0f) + 1.0f;
-        g.drawText (title + (active ? "  (playing)" : ""), juce::Rectangle<float> ((float) r.getX() + (float) plotLeft() + 5.0f - leftBearing (g.getCurrentFont(), title), titleY, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
+        const juce::String shownTitle = "// " + title.toUpperCase() + (active ? juce::String::fromUTF8 ("  \xc2\xb7  PLAYING") : juce::String());
+        g.drawText (shownTitle, juce::Rectangle<float> ((float) r.getX() + (float) plotLeft() + 5.0f - leftBearing (g.getCurrentFont(), "/"), titleY, (float) r.getWidth() - 16.0f, 18.0f), // 18, con 1 de aire arriba y abajo
                     juce::Justification::centredLeft);
         if (! showSkipLine && pitchInfo.isNotEmpty()) // el Original: el pitch medido, debajo de la onda (mismo tamaño que el título)
         {
             // los dos renglones por columnas, con lugar fijo para cada valor: quedan alineados entre sí
             // y no se mueven cuando cambian los números
-            g.setFont (uiFont (13.0f));
+            g.setFont (uiFont (10.0f));
             const auto f = g.getCurrentFont();
             auto wOf = [&] (const juce::String& t) { return juce::GlyphArrangement::getStringWidth (f, t); };
             const juce::StringArray a1 = juce::StringArray::fromTokens (pitchInfo, "\t", {}),
                                     a2 = juce::StringArray::fromTokens (pitchInfo2, "\t", {});
             // el ancho de cada columna: el más ancho de los dos renglones, y nunca menos que un valor "grande"
-            const juce::String tmpl[] = { "Pitch (sustain)", "G#8", juce::String::fromUTF8 ("−99.9 cents"), "9999.999 Hz", juce::String::fromUTF8 ("tuned −1200.0 cents"), juce::String::fromUTF8 ("drift −99.9 cents") };
+            const juce::String tmpl[] = { "PITCH (SUSTAIN)", "G#8", juce::String::fromUTF8 ("−99.9 CENTS"), "9999.999 HZ", juce::String::fromUTF8 ("TUNED −1200.0 CENTS"), juce::String::fromUTF8 ("DRIFT −99.9 CENTS") };
             float colW[6];
             for (int k = 0; k < 6; ++k)
                 colW[k] = juce::jmax (wOf (tmpl[k]), wOf (a1[k]), wOf (a2[k]));
@@ -1686,10 +1689,10 @@ private:
         juce::Graphics g (cache);
         g.addTransform (juce::AffineTransform::scale (cacheScale)); // se dibuja en coordenadas normales
 
-        g.fillAll (juce::Colour (0xff1e1e20));
+        g.fillAll (juce::Colour (0xff0b0b0b));
         if (totalLen() == 0)
         {
-            g.setColour (juce::Colour (0xff8a919c));
+            g.setColour (juce::Colour (0xff6c6c6c));
             g.setFont (uiFont (16.0f));
             g.drawText (juce::String::fromUTF8 ("Drop your 808s here (WAV / AIFF)  ·  or File ▸ Open… (⌘O)"), getLocalBounds(), juce::Justification::centred);
             return;
@@ -1699,10 +1702,10 @@ private:
         auto r = getLocalBounds();
         auto top = r.removeFromTop (h / 2).withTrimmedBottom (1);
         const bool hasPitch = pitchPts.size() >= 2;
-        drawLane (g, origToDraw(), top, juce::Colour (0xff8f98a6), "Original", ! playingProc, 0, false,
+        drawLane (g, origToDraw(), top, juce::Colour (0xff8a8a8a), "Original", ! playingProc, 0, false,
                   hasPitch ? std::function<void()> ([&] { drawPitchCurve (g, top, 0); }) : std::function<void()>());
         drawPitchCurve (g, top, 1);
-        drawLane (g, procToDraw(), r.withTrimmedTop (1), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
+        drawLane (g, procToDraw(), r.withTrimmedTop (1), juce::Colour (0xffbdbdbd), "Processed", playingProc, skipEnd, hasSkipLine());
         drawKeyboardStrip (g);
     }
     juce::Rectangle<int> topLaneRect() const { return getLocalBounds().removeFromTop (getHeight() / 2).withTrimmedBottom (1); }
@@ -1714,9 +1717,9 @@ private:
         juce::Graphics g (cache);
         g.addTransform (juce::AffineTransform::scale (cacheScale));
         g.reduceClipRegion (procLaneRect());
-        g.fillAll (juce::Colour (0xff1e1e20));
+        g.fillAll (juce::Colour (0xff0b0b0b));
         const bool playingProc = isPlayingProcessed ? isPlayingProcessed() : true;
-        drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xff4fb3ff), "Processed", playingProc, skipEnd, hasSkipLine());
+        drawLane (g, procToDraw(), procLaneRect(), juce::Colour (0xffbdbdbd), "Processed", playingProc, skipEnd, hasSkipLine());
         drawKeyboardStrip (g);
     }
     void drawKeyboardStrip (juce::Graphics& g)
@@ -1725,14 +1728,14 @@ private:
         for (auto lane : { topLaneRect(), procLaneRect() })
         {
             const auto pad = lane.withWidth (plotLeft());
-            g.setColour (juce::Colour (0xff1e1e20));
+            g.setColour (juce::Colour (0xff0b0b0b));
             g.fillRect (pad); // (todo negro: sin rayita de borde)
         }
         auto r = procLaneRect();
         if (plotWidth() < getWidth()) // debajo del teclado: vacío, así las dos ondas terminan en la misma línea
         {
             const auto strip = r.withTrimmedLeft (plotWidth());
-            g.setColour (juce::Colour (0xff1e1e20));
+            g.setColour (juce::Colour (0xff0b0b0b));
             g.fillRect (strip);
         }
     }
