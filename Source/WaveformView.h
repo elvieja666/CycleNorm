@@ -892,7 +892,18 @@ private:
             juce::Graphics::ScopedSaveState clip (g);
             g.reduceClipRegion (juce::Rectangle<float> (L, az > 1.0f ? vTop : (float) r.getY(), W, az > 1.0f ? vBot - vTop : (float) r.getHeight()).getSmallestIntegerContainer());
             const long long v0 = (long long) std::floor (-(c - L) * spp) - 1, v1 = (long long) std::ceil ((L + W - c) * spp) + 1;
-            g.setColour (juce::Colour (0xff4fb3ff));
+            // cada mitad de su color: lo que sale (Loop end) en el azul del Processed, lo que entra (Loop) en naranja
+            const juce::Colour colOut (0xff4fb3ff), colIn (0xffe0782f);
+            auto inHalves = [&] (auto&& draw) {
+                for (int side = 0; side < 2; ++side)
+                {
+                    juce::Graphics::ScopedSaveState ss (g);
+                    const float x0 = side == 0 ? L : c, x1 = side == 0 ? c : L + W;
+                    g.reduceClipRegion (juce::Rectangle<float> (x0, (float) r.getY(), x1 - x0, (float) r.getHeight()).getSmallestIntegerContainer());
+                    g.setColour (side == 0 ? colOut : colIn);
+                    draw();
+                }
+            };
             if (spp < 1.0)
             {
                 juce::Path p, dots;
@@ -905,8 +916,7 @@ private:
                     if (! started) { p.startNewSubPath (px, py); started = true; } else p.lineTo (px, py);
                     dots.addEllipse (px - 1.8f, py - 1.8f, 3.6f, 3.6f);
                 }
-                g.strokePath (p, juce::PathStrokeType (1.3f));
-                if (sampleDotsVisible()) g.fillPath (dots);
+                inHalves ([&] { g.strokePath (p, juce::PathStrokeType (1.3f)); if (sampleDotsVisible()) g.fillPath (dots); });
             }
             else
             {
@@ -929,15 +939,16 @@ private:
                     const float y0 = yOf (hi), y1 = yOf (lo);
                     peaks.addWithoutMerging ({ L + (float) x, y0, 1.0f, juce::jmax (1.0f, y1 - y0) });
                 }
-                g.fillRectList (peaks);
+                inHalves ([&] { g.fillRectList (peaks); });
             }
         }
         // la unión, y qué es cada mitad
         g.setColour (juce::Colours::white.withAlpha (0.85f));
         g.fillRect (juce::Rectangle<float> (std::round (c), vTop, 1.0f, vBot - vTop));
         g.setFont (uiFont (11.0f));
-        g.setColour (juce::Colour (0xff8a919c));
+        g.setColour (juce::Colour (0xff4fb3ff));
         g.drawText ("Loop end", juce::Rectangle<float> (c - 106.0f, vTop - 19.0f, 100.0f, 16.0f), juce::Justification::centredRight);
+        g.setColour (juce::Colour (0xffe0782f));
         g.drawText ("Loop", juce::Rectangle<float> (c + 6.0f, vTop - 19.0f, 100.0f, 16.0f), juce::Justification::centredLeft);
     }
 
