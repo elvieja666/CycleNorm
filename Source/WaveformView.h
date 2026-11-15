@@ -945,11 +945,18 @@ private:
         // la unión, y qué es cada mitad
         g.setColour (juce::Colours::white.withAlpha (0.85f));
         g.fillRect (juce::Rectangle<float> (std::round (c), vTop, 1.0f, vBot - vTop));
-        g.setFont (uiFont (11.0f));
-        g.setColour (juce::Colour (0xff4fb3ff));
-        g.drawText ("Loop end", juce::Rectangle<float> (c - 106.0f, vTop - 19.0f, 100.0f, 16.0f), juce::Justification::centredRight);
-        g.setColour (juce::Colour (0xffe0782f));
-        g.drawText ("Loop", juce::Rectangle<float> (c + 6.0f, vTop - 19.0f, 100.0f, 16.0f), juce::Justification::centredLeft);
+        // qué es cada mitad: cajitas como las pestañas (arriba de la franja, a 1 de la unión), del color de su mitad
+        auto box = [&] (const juce::String& t, bool left, juce::Colour col) {
+            const float w = juce::GlyphArrangement::getStringWidth (tabFont(), t) + 12.0f, lx = std::round (c);
+            const auto rr = juce::Rectangle<float> (left ? lx - 1.0f - w : lx + 2.0f, vTop - 1.0f - kTabH + (kTabH - kTabBoxH) * 0.5f, w, kTabBoxH);
+            g.setColour (col.withAlpha (0.92f));
+            g.fillRect (rr);
+            g.setColour (juce::Colour (0xff15181c));
+            g.setFont (tabFont());
+            g.drawText (t, rr, juce::Justification::centred);
+        };
+        box ("Loop end", true, juce::Colour (0xff4fb3ff));
+        box ("Loop", false, juce::Colour (0xffe0782f));
     }
 
     size_t endOrLen() const { return (endSample > 0 && endSample < (size_t) totalLen()) ? endSample : (size_t) totalLen(); }
