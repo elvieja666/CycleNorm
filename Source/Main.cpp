@@ -1546,7 +1546,9 @@ private:
         const auto& B = it.analysis.bounds;
         const size_t j = nearestBound (B, it.loopEnd);
         const size_t from = B[j - (size_t) n];
-        return it.loopEnd > from ? it.loopEnd - from : 0;
+        // (nunca más largo que el loop ni que lo de antes: el fundido acompaña a la línea de Loop, también
+        // con el loop movido de muestra en muestra)
+        return it.loopEnd > from ? juce::jmin (it.loopEnd - from, it.loopEnd - it.loopStart, it.loopStart) : 0;
     }
     void updateXfadeView()
     {
