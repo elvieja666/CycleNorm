@@ -1511,11 +1511,6 @@ private:
         // crossfade del loop (metido en el audio, así suena igual al tocarlo que en el sampler)
         if (it.hasLoop() && it.loopEnd <= (size_t) out->getNumSamples())
         {
-            // la calidad mide los puntos de loop (lo mismo que mide la búsqueda), antes del crossfade
-            cyclenorm::AudioView v;
-            for (int ch = 0; ch < out->getNumChannels(); ++ch) v.ch.push_back (out->getReadPointer (ch));
-            v.n = (size_t) out->getNumSamples();
-            it.loopQuality = cyclenorm::loopQuality (it.analysis, v, it.loopStart, it.loopEnd);
             // el crossfade cambia la onda: sólo con Loop prendido (apagado, se escucha y se ve sin él;
             // al exportar se aplica igual, ver writeItem)
             const size_t xfLen = loopButton.getToggleState() ? xfadeSamples (it) : 0;
@@ -1525,6 +1520,11 @@ private:
                 for (int ch = 0; ch < out->getNumChannels(); ++ch) chs.push_back (out->getWritePointer (ch));
                 cyclenorm::applyLoopCrossfade (chs, it.loopStart, it.loopEnd, xfLen);
             }
+            // la calidad mide el loop como suena: con el crossfade puesto (así cambia al mover el Xfade)
+            cyclenorm::AudioView v;
+            for (int ch = 0; ch < out->getNumChannels(); ++ch) v.ch.push_back (out->getReadPointer (ch));
+            v.n = (size_t) out->getNumSamples();
+            it.loopQuality = cyclenorm::loopQuality (it.analysis, v, it.loopStart, it.loopEnd);
         }
         it.processed = out;
         it.outPeak = peak;
