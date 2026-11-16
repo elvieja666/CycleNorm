@@ -1690,7 +1690,7 @@ private:
             const juce::StringArray a1 = juce::StringArray::fromTokens (pitchInfo, "\t", {}),
                                     a2 = juce::StringArray::fromTokens (pitchInfo2, "\t", {});
             // el ancho de cada columna: el más ancho de los dos renglones, y nunca menos que un valor "grande"
-            const juce::String tmpl[] = { "PITCH (SUSTAIN)", "G#8", juce::String::fromUTF8 ("−99.9 CENTS"), "9999.999 HZ", juce::String::fromUTF8 ("TUNED −1200.0 CENTS"), juce::String::fromUTF8 ("DRIFT −99.9 CENTS") };
+            const juce::String tmpl[] = { "PITCH (SUSTAIN)", "G#8", juce::String::fromUTF8 ("−99.9 \xc2\xb1" "9.9 CENTS"), "9999.999 HZ", juce::String::fromUTF8 ("TUNED −1200.0 CENTS"), juce::String::fromUTF8 ("DRIFT −99.9 CENTS") };
             float colW[6];
             for (int k = 0; k < 6; ++k)
                 colW[k] = juce::jmax (wOf (tmpl[k]), wOf (a1[k]), wOf (a2[k]));

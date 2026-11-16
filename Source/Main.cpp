@@ -2163,20 +2163,10 @@ private:
         if (bf.size() < 3) return pts;
         float maxAbs = 0;
         for (int ch = 0; ch < src.getNumChannels(); ++ch) maxAbs = juce::jmax (maxAbs, src.getMagnitude (ch, 0, src.getNumSamples()));
+        // la nota onda por onda, medida con la correlación (no con los cruces: con chorus o unísono se corren)
         std::vector<double> hz;
-        for (size_t k = 0; k + 1 < bf.size(); ++k) hz.push_back (it.sampleRate / juce::jmax (1.0, bf[k + 1] - bf[k]));
-        {   // cada punto: la mediana de 5 ondas (con chorus o unísono los cruces se corren de a poco y la
-            // curva salta de onda en onda aunque la nota esté quieta; un glide de verdad no cambia)
-            std::vector<double> sm (hz.size());
-            for (size_t k = 0; k < hz.size(); ++k)
-            {
-                std::vector<double> w;
-                for (size_t q = (k >= 2 ? k - 2 : 0); q <= juce::jmin (hz.size() - 1, k + 2); ++q) w.push_back (hz[q]);
-                std::nth_element (w.begin(), w.begin() + (long) w.size() / 2, w.end());
-                sm[k] = w[w.size() / 2];
-            }
-            hz.swap (sm);
-        }
+        for (const auto& q : cyclenorm::pitchTrack (it.analysis)) hz.push_back (q.second);
+        if (hz.size() + 1 != bf.size()) return pts;
         for (size_t k = 0; k < hz.size(); ++k)
         {
             std::vector<double> nb;
@@ -2243,7 +2233,10 @@ private:
             auto sgn = [] (double v, int dec) { return (v >= 0 ? juce::String ("+") : juce::String (u8 ("−"))) + juce::String (std::abs (v), dec); };
             const double cents = (p.midi - std::round (p.midi)) * 100.0;
             const double tuned = it.tuneSemis + previewSemis;
-            return label + "\t" + juce::String (cyclenorm::noteName (p.midi)) + "\t" + sgn (cents, 1) + " CENTS"
+            // qué tan segura es la medida (sólo la del sustain: la del loop la marca el largo del loop)
+            const juce::String unc = (! inLoop && p.uncCents >= 0.0)
+                ? juce::String::fromUTF8 (" \xc2\xb1") + juce::String (juce::jlimit (0.1, 99.9, p.uncCents), 1) : juce::String();
+            return label + "\t" + juce::String (cyclenorm::noteName (p.midi)) + "\t" + sgn (cents, 1) + unc + " CENTS"
                  + "\t" + juce::String (p.hz, 3) + " HZ" + "\tTUNED " + sgn (tuned * 100.0, 1) + " CENTS"
                  + "\tDRIFT " + (p.cycles >= 4 ? sgn (p.driftCents, 1) + " CENTS" : juce::String ("--"));
         };
