@@ -2165,6 +2165,18 @@ private:
         for (int ch = 0; ch < src.getNumChannels(); ++ch) maxAbs = juce::jmax (maxAbs, src.getMagnitude (ch, 0, src.getNumSamples()));
         std::vector<double> hz;
         for (size_t k = 0; k + 1 < bf.size(); ++k) hz.push_back (it.sampleRate / juce::jmax (1.0, bf[k + 1] - bf[k]));
+        {   // cada punto: la mediana de 5 ondas (con chorus o unísono los cruces se corren de a poco y la
+            // curva salta de onda en onda aunque la nota esté quieta; un glide de verdad no cambia)
+            std::vector<double> sm (hz.size());
+            for (size_t k = 0; k < hz.size(); ++k)
+            {
+                std::vector<double> w;
+                for (size_t q = (k >= 2 ? k - 2 : 0); q <= juce::jmin (hz.size() - 1, k + 2); ++q) w.push_back (hz[q]);
+                std::nth_element (w.begin(), w.begin() + (long) w.size() / 2, w.end());
+                sm[k] = w[w.size() / 2];
+            }
+            hz.swap (sm);
+        }
         for (size_t k = 0; k < hz.size(); ++k)
         {
             std::vector<double> nb;
@@ -2174,7 +2186,13 @@ private:
             const int s0 = (int) bf[k], s1 = juce::jmin ((int) bf[k + 1] + 1, src.getNumSamples());
             float pk = 0;
             for (int ch = 0; ch < src.getNumChannels(); ++ch) pk = juce::jmax (pk, src.getMagnitude (ch, s0, juce::jmax (1, s1 - s0)));
-            if (pk < maxAbs * 0.003f) continue; // casi silencio (-50 dB)
+            if (pk < maxAbs * 0.03f) continue; // la cola, más de 30 dB abajo (como la medida del sustain)
+            {   // y que coincida con la nota que marca la otra medida (la de todo el sonido, no los cruces): si se
+                // aparta más de un 10 %, son cruces corridos (el arranque de un chorus, un rulo), no la nota
+                const auto& f0 = it.analysis.f0;
+                const size_t mid = (size_t) (0.5 * (bf[k] + bf[k + 1]));
+                if (mid < f0.size() && f0[mid] > 0.0f && std::abs (hz[k] - (double) f0[mid]) > 0.10 * (double) f0[mid]) continue;
+            }
             pts.push_back ({ 0.5 * (bf[k] + bf[k + 1]), hz[k] });
         }
         // la cola: desde el final hacia atrás, fuera los puntos que se alejan más de un 3 % de la

@@ -45,6 +45,7 @@ struct Analysis
     std::vector<float>  halfPeaks;  // pico de cada semiciclo: halfBounds[k] .. halfBounds[k+1]
     std::vector<float>  f0;         // la nota (fundamental, Hz) en cada muestra (estimación, para detectar)
     std::vector<double> boundsFrac; // inicio exacto de cada onda (bounds[k]), entre muestras: donde el audio vale 0
+    std::vector<float>  low;        // el audio sin DC y sin agudos (hasta 1 kHz): para afinar la medida del pitch
     float preRollPeak = 0.0f;   // pico antes del primer cruce
     float tailPeak    = 0.0f;   // pico después del último cruce
 
@@ -267,6 +268,12 @@ inline Analysis analyse (const Channels& in, double sampleRate)
     // fundamental y reciben la misma ganancia, en vez de normalizarse como si fueran semiciclos.
     a.f0 = trackF0 (det, sampleRate);
     const std::vector<double> det250 = det; // la versión abierta (hasta 250 Hz), para los ataques
+    {   // para afinar el pitch: sin DC y hasta 1 kHz (con los armónicos: con chorus o unísono, la
+        // fundamental sola se corre; el sonido entero marca la nota que se escucha)
+        std::vector<double> lo1k = hp;
+        Biquad::lowpass (sampleRate, std::min (1000.0, sampleRate * 0.4)).runZeroPhase (lo1k);
+        a.low.assign (lo1k.begin(), lo1k.end());
+    }
     if (! a.f0.empty() && a.f0[0] > 0.0f)
     {
         std::vector<double> cuts;
@@ -820,6 +827,50 @@ struct PitchInfo
     size_t zoneStart = 0;     // dónde empieza la zona estable (muestra)
 };
 
+// Afina la medida (hz0, de los cruces) con la correlación del audio contra sí mismo corrido 1 a 4
+// ondas: los cruces de un sonido con chorus, unísono o mucho armónico se corren de a poco
+// (el promedio de las ondas queda unos cents corrido); la correlación de toda la zona no.
+// Si no hay correlación clara (glide, ruido) o da muy distinto (más de 30 cents), queda hz0.
+inline double refinePitch (const Analysis& a, size_t from, size_t to, double hz0)
+{
+    const auto& x = a.low;
+    if (hz0 <= 0 || x.empty() || a.sampleRate <= 0) return hz0;
+    to = std::min (to, x.size());
+    const size_t maxLen = (size_t) (a.sampleRate * 1.5); // (más de 1,5 s no hace falta)
+    if (to > from + maxLen) to = from + maxLen;
+    if (to <= from) return hz0;
+    const size_t len = to - from;
+    const double P0 = a.sampleRate / hz0;
+    double wSum = 0, hzSum = 0;
+    for (int k = 1; k <= 4; ++k)
+    {
+        const double L0 = P0 * k;
+        if (L0 * 2.0 > (double) len) break; // (que se comparen al menos tantas muestras como el corrimiento)
+        const long lo = (long) std::floor (L0 * 0.985), hi = (long) std::ceil (L0 * 1.015);
+        auto nc = [&] (long L) {
+            double ab = 0, aa = 0, bb = 0;
+            for (size_t i = from; i + (size_t) L < to; ++i)
+            {
+                const double u = x[i], v = x[i + (size_t) L];
+                ab += u * v; aa += u * u; bb += v * v;
+            }
+            return aa > 0 && bb > 0 ? ab / std::sqrt (aa * bb) : 0.0;
+        };
+        std::vector<double> c ((size_t) (hi - lo + 1));
+        for (long L = lo; L <= hi; ++L) c[(size_t) (L - lo)] = nc (L);
+        size_t bi = 0;
+        for (size_t i = 1; i < c.size(); ++i) if (c[i] > c[bi]) bi = i;
+        if (bi == 0 || bi + 1 >= c.size() || c[bi] < 0.5) continue; // (sin un máximo claro adentro del rango)
+        const double den = c[bi - 1] - 2.0 * c[bi] + c[bi + 1];
+        const double L = (double) lo + (double) bi + (std::abs (den) > 1e-12 ? 0.5 * (c[bi - 1] - c[bi + 1]) / den : 0.0);
+        hzSum += c[bi] * (a.sampleRate * k / L);
+        wSum += c[bi];
+    }
+    if (wSum <= 0) return hz0;
+    const double hz = hzSum / wSum;
+    return std::abs (1200.0 * std::log2 (hz / hz0)) <= 30.0 ? hz : hz0;
+}
+
 inline PitchInfo measurePitch (const Analysis& a, size_t from, size_t to)
 {
     PitchInfo p;
@@ -841,6 +892,7 @@ inline PitchInfo measurePitch (const Analysis& a, size_t from, size_t to)
     double sum = 0;
     for (double v : ok) sum += v;
     p.hz = a.sampleRate * (double) ok.size() / sum; // = promedio de los períodos (muy preciso)
+    p.hz = refinePitch (a, from, to, p.hz);
     p.midi = 69.0 + 12.0 * std::log2 (p.hz / 440.0);
     p.cycles = (int) ok.size();
     p.valid = true;
@@ -879,7 +931,7 @@ inline PitchInfo measureSustainPitch (const Analysis& a, size_t from, size_t to)
     std::vector<char> ok (idx.size(), 1);
     for (size_t i = 0; i < idx.size(); ++i)
     {
-        if (idx[i] < a.peaks.size() && a.peaks[idx[i]] < gpk * 0.003f) ok[i] = 0;
+        if (idx[i] < a.peaks.size() && a.peaks[idx[i]] < gpk * 0.03f) ok[i] = 0; // (más de 30 dB abajo del pico: la cola o el ruido del final, no la nota)
         double nb = 0; int cnt = 0;
         if (i > 0) { nb += m[i - 1]; ++cnt; }
         if (i + 1 < idx.size()) { nb += m[i + 1]; ++cnt; }
@@ -928,10 +980,14 @@ inline PitchInfo measureSustainPitch (const Analysis& a, size_t from, size_t to)
     PitchInfo p;
     double sum = 0; for (double x : per) sum += x;
     p.hz = a.sampleRate * (double) per.size() / sum;
+    p.zoneStart = (size_t) bf[idx[v[(size_t) k0]]];
+    {   // afinado en la zona estable (hasta la última onda que cuenta)
+        const size_t zEnd = (size_t) bf[std::min (bf.size() - 1, idx[v[N - 1]] + 1)];
+        p.hz = refinePitch (a, p.zoneStart, zEnd, p.hz);
+    }
     p.midi = 69.0 + 12.0 * std::log2 (p.hz / 440.0);
     p.cycles = (int) per.size();
     p.valid = p.sustain = true;
-    p.zoneStart = (size_t) bf[idx[v[(size_t) k0]]];
     if (per.size() >= 8)
     {
         const size_t q = per.size() / 4;
