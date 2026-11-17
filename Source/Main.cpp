@@ -555,9 +555,10 @@ public:
         seamButton.onClick = [this] { wave.setSeamMode (seamButton.getToggleState()); };
         addChildComponent (progressBar);
         progressBar.setTextToDisplay (" "); // el texto va en una etiqueta encima (el de la barra no se leía)
-        progressLabel.setColour (juce::Label::textColourId, Theme::inkStrong);
-        progressLabel.setFont (Theme::font (12.0f, 400));
-        progressLabel.setJustificationType (juce::Justification::centred);
+        progressLabel.setColour (juce::Label::textColourId, Theme::inkDim);
+        progressLabel.setFont (Theme::labelFont()); // buscando el loop: sólo el porcentaje (sin barra)
+        progressLabel.setJustificationType (juce::Justification::centredLeft);
+        progressLabel.setBorderSize ({});
         progressLabel.setInterceptsMouseClicks (false, false);
         addChildComponent (progressLabel);
         clearLoopButton.onClick = [this] { setLoopForCurrent (0, 0); };
@@ -1336,7 +1337,7 @@ private:
         if (loopJob != nullptr)
         {
             progressValue = loopJob->progress.load();
-            progressLabel.setText (u8 ("Finding the best loop (trying every pair)…  ") + juce::String ((int) std::round (progressValue * 100.0)) + " %",
+            progressLabel.setText (juce::String ((int) std::round (progressValue * 100.0)) + " %",
                                    juce::dontSendNotification);
             if (loopJob->finished.load()) loopSearchFinished();
         }
@@ -1719,7 +1720,6 @@ private:
         const auto from = cyclenorm::skipEndSample (it.analysis, readSettings());
         loopJob = std::make_unique<LoopSearchJob> (&it, copy, it.analysis, from, (size_t) it.lengthToWrite());
         progressValue = 0.0;
-        progressBar.setVisible (true);
         progressLabel.setVisible (true);
         progressLabel.toFront (false);
         info.setVisible (false);
@@ -2044,7 +2044,7 @@ private:
             info.setBounds (rest.withY ((int) std::round (kTitleBaseline - f.getAscent())).withHeight ((int) std::ceil (f.getHeight())));
         }
         progressBar.setBounds (rest.withSizeKeepingCentre (rest.getWidth() - 12, 18).withX (rest.getX()));
-        progressLabel.setBounds (progressBar.getBounds());
+        progressLabel.setBounds (info.getBounds()); // (donde va la info del loop, en el mismo renglón)
         repaint (titleArea);
     }
     void updateInfo()
