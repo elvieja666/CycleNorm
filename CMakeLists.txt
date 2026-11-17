@@ -18,6 +18,7 @@ juce_add_gui_app(Node
     COMPANY_NAME "DIY"
     BUNDLE_ID com.diy.node
     PRODUCT_NAME "Node"
+    ICON_BIG ${CMAKE_CURRENT_SOURCE_DIR}/Resources/Icon/icon.png
     DOCUMENT_EXTENSIONS wav aif aiff flac mp3 m4a caf
     VERSION ${PROJECT_VERSION})
 

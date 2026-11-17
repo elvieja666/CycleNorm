@@ -888,6 +888,7 @@ public:
         }
     }
 
+    static constexpr const char* kTitleText = "// NODE"; // (las dos barras, como los títulos de los visores y el ícono)
     void paint (juce::Graphics& g) override
     {
         // fondo claro con degradé, como UNISON
@@ -900,14 +901,15 @@ public:
         {
             const auto tf = Theme::titleFont (kTitleCap);
             juce::GlyphArrangement ga, first;
-            ga.addLineOfText (tf, "NODE", 0.0f, 0.0f);
+            ga.addLineOfText (tf, kTitleText, 0.0f, 0.0f);
             first.addLineOfText (tf, "T", 0.0f, 0.0f);
             juce::Path text, t;
             ga.createPath (text);
             first.createPath (t);
             const auto tb = t.getBounds();                       // la "T" marca el alto de las mayúsculas
             const float capTop = 10.0f; // las mayúsculas: de 10 a 25
-            g.fillPath (text, juce::AffineTransform::translation ((float) kMargin - tb.getX(), capTop - tb.getY()));
+            // lo dibujado empieza justo en el margen (la primera "/", no la caja de la letra)
+            g.fillPath (text, juce::AffineTransform::translation ((float) kMargin - text.getBounds().getX(), capTop - tb.getY()));
         }
         // la info del loop: "Loop 99.1 % · 60 cycles · crossfade Off", cada número en un lugar fijo
         if (loopInfoVals.size() == 3 && info.isVisible())
@@ -986,7 +988,7 @@ public:
         {
             // fila del título: NODE · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
-            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (kTitleCap), "NODE");
+            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (kTitleCap), kTitleText);
             t.removeFromLeft ((int) titleW + 22);
             titleRest = t; // el nombre, el pitch y la info del loop: se acomodan en layoutTitleRow (abajo)
         }
