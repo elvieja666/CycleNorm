@@ -198,16 +198,17 @@ public:
                 g.strokePath (w, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
                 g.fillRect (juce::Rectangle<float> (std::round (c.x) - 0.5f, c.y - s * 1.05f, 1.0f, s * 2.1f));
             }
-            else // loop de escucha: el "repeat" cuadrado de los DAW (dos flechas que dan la vuelta)
+            else // loop de escucha: una línea que va, da la vuelta y regresa (con su punta)
             {
-                const float u = s * 1.25f / 13.0f; // (dibujado en una grilla de 26 × 14, centrada)
+                const float u = s * 1.25f / 15.0f; // (dibujado en una grilla de 30 × 16, centrada)
                 auto P = [&] (float x, float y) { return juce::Point<float> (c.x + x * u, c.y + y * u); };
                 juce::Path p;
-                p.startNewSubPath (P (-13, 2)); p.lineTo (P (-13, -7)); p.lineTo (P (11, -7));   // arriba, hacia la derecha
-                p.startNewSubPath (P (7, -11)); p.lineTo (P (11, -7)); p.lineTo (P (7, -3));     // su punta
-                p.startNewSubPath (P (13, -2)); p.lineTo (P (13, 7)); p.lineTo (P (-11, 7));     // abajo, hacia la izquierda
-                p.startNewSubPath (P (-7, 3)); p.lineTo (P (-11, 7)); p.lineTo (P (-7, 11));     // su punta
-                g.strokePath (p, juce::PathStrokeType (1.4f, juce::PathStrokeType::mitered, juce::PathStrokeType::square));
+                p.startNewSubPath (P (-15, 6)); p.lineTo (P (9, 6));                          // va (abajo)
+                p.addCentredArc (c.x + 9 * u, c.y, 6 * u, 6 * u, 0.0f,
+                                 juce::MathConstants<float>::pi, 0.0f);                     // da la vuelta (a la derecha)
+                p.lineTo (P (-9, -6));                                                      // regresa (arriba)
+                p.startNewSubPath (P (-5, -10)); p.lineTo (P (-9, -6)); p.lineTo (P (-5, -2)); // su punta
+                g.strokePath (p, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             }
             return;
         }
