@@ -1,4 +1,4 @@
-// Toolie (antes Toolkit y CycleNorm): normaliza un 808 onda por onda (cada ciclo al mismo pico) y lo exporta.
+// Node (antes Toolie, Toolkit y CycleNorm): normaliza un 808 onda por onda (cada ciclo al mismo pico) y lo exporta.
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "CycleEngine.h"
 #include "LoopFinder.h"
@@ -514,7 +514,7 @@ public:
         formats.registerBasicFormats();
 
         juce::PropertiesFile::Options o;
-        o.applicationName = "Toolie";
+        o.applicationName = "Node";
         o.filenameSuffix = ".settings";
         o.osxLibrarySubFolder = "Application Support";
         {   // la app se llamaba CycleNorm: si hay ajustes con el nombre viejo y no con el nuevo, se pasan
@@ -915,7 +915,7 @@ public:
         {
             const auto tf = Theme::titleFont (kTitleCap);
             juce::GlyphArrangement ga, first;
-            ga.addLineOfText (tf, "TOOLIE", 0.0f, 0.0f);
+            ga.addLineOfText (tf, "NODE", 0.0f, 0.0f);
             first.addLineOfText (tf, "T", 0.0f, 0.0f);
             juce::Path text, t;
             ga.createPath (text);
@@ -999,9 +999,9 @@ public:
         titleArea = r.withHeight (40); // el título: mayúsculas de 13 a 27 (como UNISON); el nombre centrado en 20
         r.removeFromTop (33);          // los botones: lo visible de 35 a 60 (10 de aire arriba, hasta el título, y abajo, hasta el visor)
         {
-            // fila del título: TOOLIE · el 808 abierto · info del loop · pitch medido (a la derecha)
+            // fila del título: NODE · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
-            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (kTitleCap), "TOOLIE");
+            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (kTitleCap), "NODE");
             t.removeFromLeft ((int) titleW + 22);
             titleRest = t; // el nombre, el pitch y la info del loop: se acomodan en layoutTitleRow (abajo)
         }
@@ -1237,7 +1237,7 @@ private:
     juce::Rectangle<int> titleArea;
     juce::Rectangle<int> waveArea, fileName, titleRest;
     int pitchInfoX = 0, loopInfoX = 0;
-    // los textos de la fila del título, apoyados en el mismo renglón que TOOLIE: la base de las
+    // los textos de la fila del título, apoyados en el mismo renglón que NODE: la base de las
     // letras en y = 27, a 20 del borde de arriba (visible) de los botones
     static constexpr float kTitleBaseline = 25.0f;
     static juce::Rectangle<float> baselineRow (const juce::Font& f)
@@ -2453,7 +2453,7 @@ private:
         if (! juce::isPositiveAndBelow (current, (int) items.size())) return {};
         auto& it = *items[(size_t) current];
         // carpeta fija (no temporal): el DAW puede seguir leyendo el archivo después
-        auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Toolie");
+        auto dir = juce::File::getSpecialLocation (juce::File::userMusicDirectory).getChildFile ("Node");
         dir.createDirectory();
         auto dest = dir.getChildFile (defaultName (it)).getNonexistentSibling (false);
         juce::String err;
@@ -2586,7 +2586,7 @@ private:
 class CycleNormApp : public juce::JUCEApplication
 {
 public:
-    const juce::String getApplicationName() override { return "Toolie"; }
+    const juce::String getApplicationName() override { return "Node"; }
     const juce::String getApplicationVersion() override { return JUCE_APPLICATION_VERSION_STRING; }
     bool moreThanOneInstanceAllowed() override { return false; }
 
@@ -2617,7 +2617,7 @@ private:
     class MainWindow : public juce::DocumentWindow
     {
     public:
-        MainWindow() : DocumentWindow ("Toolie", kBg, DocumentWindow::allButtons)
+        MainWindow() : DocumentWindow ("Node", kBg, DocumentWindow::allButtons)
         {
             setUsingNativeTitleBar (true);
             content = new MainComponent();
