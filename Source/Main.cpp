@@ -200,7 +200,7 @@ public:
             }
             else // loop de escucha: una línea que va, da la vuelta y regresa (con su punta)
             {
-                const float u = s * 1.25f / 15.0f; // (dibujado en una grilla de 30 × 16, centrada)
+                const float u = s * 0.83f / 15.0f; // (grilla de 30 × 16, centrada: unas 3/5 partes del alto del botón de ancho, como en la referencia)
                 auto P = [&] (float x, float y) { return juce::Point<float> (c.x + x * u, c.y + y * u); };
                 juce::Path p;
                 p.startNewSubPath (P (-15, 6)); p.lineTo (P (9, 6));                          // va (abajo)
