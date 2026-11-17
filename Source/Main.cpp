@@ -198,16 +198,16 @@ public:
                 g.strokePath (w, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
                 g.fillRect (juce::Rectangle<float> (std::round (c.x) - 0.5f, c.y - s * 1.05f, 1.0f, s * 2.1f));
             }
-            else // loop de escucha: flecha en círculo
+            else // loop de escucha: el "repeat" cuadrado de los DAW (dos flechas que dan la vuelta)
             {
-                const float rr = s * 0.55f;
-                juce::Path arc;
-                arc.addCentredArc (c.x, c.y, rr, rr, 0.0f, 0.55f, juce::MathConstants<float>::twoPi - 0.25f, true);
-                g.strokePath (arc, juce::PathStrokeType (1.7f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-                const auto tip = c.getPointOnCircumference (rr, juce::MathConstants<float>::twoPi - 0.25f);
-                juce::Path head;
-                head.addTriangle (tip.x - 3.6f, tip.y - 3.4f, tip.x + 3.6f, tip.y - 0.4f, tip.x - 1.2f, tip.y + 3.4f);
-                g.fillPath (head);
+                const float u = s * 1.25f / 13.0f; // (dibujado en una grilla de 26 × 14, centrada)
+                auto P = [&] (float x, float y) { return juce::Point<float> (c.x + x * u, c.y + y * u); };
+                juce::Path p;
+                p.startNewSubPath (P (-13, 2)); p.lineTo (P (-13, -7)); p.lineTo (P (11, -7));   // arriba, hacia la derecha
+                p.startNewSubPath (P (7, -11)); p.lineTo (P (11, -7)); p.lineTo (P (7, -3));     // su punta
+                p.startNewSubPath (P (13, -2)); p.lineTo (P (13, 7)); p.lineTo (P (-11, 7));     // abajo, hacia la izquierda
+                p.startNewSubPath (P (-7, 3)); p.lineTo (P (-11, 7)); p.lineTo (P (-7, 11));     // su punta
+                g.strokePath (p, juce::PathStrokeType (1.4f, juce::PathStrokeType::mitered, juce::PathStrokeType::square));
             }
             return;
         }
