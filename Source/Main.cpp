@@ -183,7 +183,7 @@ public:
             }
             else if (icon == "stop")
             {
-                g.fillRect (juce::Rectangle<float> (s * 0.95f, s * 0.95f).withCentre (c));
+                g.fillRect (juce::Rectangle<float> (s * 1.08f, s * 1.08f).withCentre (c)); // (un 15-20 % más bajo que el triángulo del Play: se ven parejos)
             }
             else if (icon == "seam") // el empalme: una onda que se une en el medio, con la rayita de la unión
             {
