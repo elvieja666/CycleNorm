@@ -868,6 +868,34 @@ public:
     }
 
     //==========================================================================
+    // el nombre del archivo: clic = mostrarlo en el Finder
+    juce::Rectangle<int> fileNameHit() const
+    {
+        if (! juce::isPositiveAndBelow (current, (int) items.size()) || fileName.isEmpty()) return {};
+        const auto f = Theme::font (10.5f, 400, 0.04f);
+        const int w = juce::jmin (fileName.getWidth(), (int) std::ceil (juce::GlyphArrangement::getStringWidth (f, items[(size_t) current]->file.getFileName())));
+        const auto b = baselineRow (f);
+        return juce::Rectangle<int> (fileName.getX(), (int) b.getY() - 3, w, (int) b.getHeight() + 6);
+    }
+    bool fileNameHover = false;
+    void mouseMove (const juce::MouseEvent& e) override
+    {
+        const bool h = fileNameHit().contains (e.getPosition());
+        if (h != fileNameHover) { fileNameHover = h; setMouseCursor (h ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor); repaint (fileNameHit()); }
+    }
+    void mouseExit (const juce::MouseEvent&) override
+    {
+        if (fileNameHover) { fileNameHover = false; setMouseCursor (juce::MouseCursor::NormalCursor); repaint(); }
+    }
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (fileNameHit().contains (e.getPosition()))
+        {
+            const auto f = items[(size_t) current]->file;
+            if (f.existsAsFile()) f.revealToUser();
+        }
+    }
+
     void paint (juce::Graphics& g) override
     {
         // fondo claro con degradé, como UNISON
@@ -932,7 +960,7 @@ public:
         // el 808 abierto, al lado del título
         if (juce::isPositiveAndBelow (current, (int) items.size()))
         {
-            g.setColour (Theme::ink);
+            g.setColour (fileNameHover ? Theme::inkStrong : Theme::ink); // (clic: lo muestra en el Finder)
             const auto f = Theme::font (10.5f, 400, 0.04f);
             g.setFont (f);
             const auto b = baselineRow (f);
