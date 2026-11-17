@@ -1090,26 +1090,65 @@ private:
         if (rr.getRight() > (float) plotWidth()) rr.setX (xl);
         if (rr.getX() < 0.0f) rr.setX (xr);
         if (! avoid) return rr;
-        // Loop y Fade out comparten fila con Fade in: si se chocan, se corre la que está quieta.
-        // Arrastrando Fade out (o Loop), Fade in se corre a su izquierda; si no, la otra a la derecha de Fade in.
-        if (id == 7)
+        return tabLayout()[(size_t) id];
+    }
+    // Todas las pestañas acomodadas: en cada fila, si dos se pisan, se corren para que queden a 2 px una de
+    // otra, en el orden de sus líneas (de izquierda a derecha). La que se está arrastrando se queda pegada a
+    // su línea y se corren las otras. Si la fila se pasa del gráfico, se empuja todo para adentro.
+    std::array<juce::Rectangle<float>, 9> tabLayout() const
+    {
+        std::array<juce::Rectangle<float>, 9> out;
+        struct T { int id; juce::Rectangle<float> r; float anchor; int order; };
+        std::vector<T> all;
+        // (a igual línea, este orden: Start antes que End, Fade in, Loop, Fade out; Skip antes que Xfade)
+        const int orderOf[9] = { 0, 0, 1, 1, 0, 1, 0, 0, 2 };
+        for (int id = 1; id <= 8; ++id)
         {
-            for (int other : { 8, 3 })
+            const auto r = tabRect (id, false);
+            if (r.isEmpty()) continue;
+            // la línea de la pestaña: a la izquierda de la caja (va a la derecha) o a la derecha (va a la izquierda)
+            const bool right = (id == 6 || id == 7 || id == 1 || id == 3);
+            all.push_back ({ id, r, right ? r.getX() - 2.0f : r.getRight() + 1.0f, orderOf[id] });
+        }
+        std::vector<float> rows;
+        for (auto& t : all) if (std::find (rows.begin(), rows.end(), t.r.getY()) == rows.end()) rows.push_back (t.r.getY());
+        const float gap = 2.0f, left = (float) plotLeft(), right = (float) plotWidth();
+        for (float ry : rows)
+        {
+            std::vector<T> row;
+            for (auto& t : all) if (t.r.getY() == ry) row.push_back (t);
+            std::sort (row.begin(), row.end(), [] (const T& p, const T& q) {
+                return std::abs (p.anchor - q.anchor) > 0.5f ? p.anchor < q.anchor : p.order < q.order; });
+            int fixed = -1;
+            for (size_t i = 0; i < row.size(); ++i) if (isDraggingTab (row[i].id)) fixed = (int) i;
+            if (fixed >= 0)
             {
-                if (! ((other == 8 && draggingFadeOut) || (other == 3 && draggingLoop == 3))) continue;
-                const auto o = tabRect (other, false);
-                if (! o.isEmpty() && rr.getRight() > o.getX() - 2.0f && (other == 8 || rr.getX() < o.getRight() + 2.0f))
-                    rr.setX (o.getX() - 2.0f - rr.getWidth());
+                for (size_t i = (size_t) fixed + 1; i < row.size(); ++i) // las de la derecha: hacia la derecha
+                    row[i].r.setX (juce::jmax (row[i].r.getX(), row[i - 1].r.getRight() + gap));
+                for (int i = fixed - 1; i >= 0; --i)                       // las de la izquierda: hacia la izquierda
+                    row[(size_t) i].r.setX (juce::jmin (row[(size_t) i].r.getX(), row[(size_t) i + 1].r.getX() - gap - row[(size_t) i].r.getWidth()));
             }
+            else
+            {
+                for (size_t i = 1; i < row.size(); ++i)
+                    row[i].r.setX (juce::jmax (row[i].r.getX(), row[i - 1].r.getRight() + gap));
+            }
+            // que no se salgan del gráfico: si la última se pasa, todo para la izquierda; si la primera, a la derecha
+            if (! row.empty() && row.back().r.getRight() > right)
+            {
+                row.back().r.setX (right - row.back().r.getWidth());
+                for (int i = (int) row.size() - 2; i >= 0; --i)
+                    row[(size_t) i].r.setX (juce::jmin (row[(size_t) i].r.getX(), row[(size_t) i + 1].r.getX() - gap - row[(size_t) i].r.getWidth()));
+            }
+            if (! row.empty() && row.front().r.getX() < left)
+            {
+                row.front().r.setX (left);
+                for (size_t i = 1; i < row.size(); ++i)
+                    row[i].r.setX (juce::jmax (row[i].r.getX(), row[i - 1].r.getRight() + gap));
+            }
+            for (auto& t : row) out[(size_t) t.id] = t.r;
         }
-        if (id == 3 || id == 8)
-        {
-            const auto fi = tabRect (7);
-            // (Fade out va a la izquierda de su línea: si queda encima o del otro lado de Fade in, también se corre)
-            if (! fi.isEmpty() && rr.getX() < fi.getRight() + 2.0f && (id == 8 || rr.getRight() > fi.getX() - 2.0f))
-                rr.setX (fi.getRight() + 2.0f); // (siempre a 2 de Fade in, nunca encima)
-        }
-        return rr;
+        return out;
     }
     int tabAt (juce::Point<float> p) const
     {
