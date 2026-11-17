@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(Toolie VERSION 1.30.0)
+project(Toolie VERSION 1.31.0)
 
 set(CMAKE_CXX_STANDARD 17)
 if(APPLE)
