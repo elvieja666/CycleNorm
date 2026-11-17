@@ -70,7 +70,7 @@ public:
     // dónde se corta el final (la línea de Fin); el largo total = sin cortar
     void setEndSample (size_t sample) { if (sample != endSample) { endSample = sample; repaint(); } } // (lo de después de End se oscurece encima: no rehace la onda) // (las líneas y zonas se dibujan encima de la imagen: no hace falta rehacerla)
     // dónde empieza (la línea de Start); 0 = desde el principio del archivo
-    void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; dirty = true; repaint(); } }
+    void setStartSample (size_t sample) { if (sample != startSample) { startSample = sample; repaint(); } } // (lo de antes de Start se oscurece encima: no rehace la onda)
     // fade in desde Start: cuántos semiciclos dura (0 = sin fade)
     // muy de cerca: cada muestra a kSampleDotPx px o más (se ven los puntitos y todo va de muestra en muestra)
     static constexpr double kSampleDotPx = 6.0;
@@ -85,9 +85,9 @@ public:
         if (! getPitchReference || ! getPitchCents) return juce::jlimit (-kMaxTuneCents, kMaxTuneCents, cents);
         const double ref = getPitchReference();
         if (ref <= 1.0) return juce::jlimit (-600.0, 600.0, cents);
-        const double orig = ref - getPitchCents() / 100.0; // el pitch medido sin re-afinar
-        const double n0 = std::round (orig);
-        const double lo = std::round ((n0 - 6.0 - orig) * 1000.0) / 10.0, hi = std::round ((n0 + 6.0 - orig) * 1000.0) / 10.0;
+        const double untuned = ref - getPitchCents() / 100.0; // el pitch medido sin re-afinar
+        const double n0 = std::round (untuned);
+        const double lo = std::round ((n0 - 6.0 - untuned) * 1000.0) / 10.0, hi = std::round ((n0 + 6.0 - untuned) * 1000.0) / 10.0;
         return juce::jlimit (lo, hi, cents);
     }
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
@@ -827,7 +827,7 @@ private:
         if (sampleSnap() && onLoopDragged && moveOrigEnd > moveOrigStart) // con ⌘ (o muy de cerca): libre, de muestra en muestra
         {
             const double len = (double) (moveOrigEnd - moveOrigStart);
-            const double lo = (double) skipEnd, hi = (double) endOrLen() - len;
+            const double lo = (double) loopFloor(), hi = (double) endOrLen() - len;
             if (hi < lo) return;
             const double s0 = juce::jlimit (lo, hi, std::round ((double) moveOrigStart + (double) dx / plotSpan() * viewLen));
             const size_t a = (size_t) s0, b = a + (moveOrigEnd - moveOrigStart);
@@ -841,7 +841,7 @@ private:
         for (size_t k = 0; k + (size_t) moveCycles < loopBounds.size(); ++k)
         {
             const size_t s0 = loopBounds[k], s1 = loopBounds[k + (size_t) moveCycles];
-            if (s0 < skipEnd || s1 > endOrLen()) continue;
+            if (s0 < loopFloor() || s1 > endOrLen()) continue;
             const double d = std::abs ((double) s0 - target);
             if (d < bestD) { bestD = d; best = k; }
         }
@@ -883,7 +883,7 @@ private:
     {
         if (sampleSnap()) // muy de cerca: de muestra en muestra (no de onda en onda)
         {
-            const double lo = isStart ? (double) skipEnd : (double) loopStart + 2.0;
+            const double lo = isStart ? (double) loopFloor() : (double) loopStart + 2.0;
             const double hi = isStart ? (double) loopEnd - 2.0 : (double) endOrLen();
             if (hi >= lo)
             {
@@ -895,7 +895,7 @@ private:
         size_t best = isStart ? loopStart : loopEnd; double bestD = 1e300;
         for (size_t v : loopBounds)
         {
-            if (isStart && (v < skipEnd || v >= loopEnd)) continue;      // el inicio: después de Skip y antes del fin
+            if (isStart && (v < loopFloor() || v >= loopEnd)) continue;  // el inicio: después de Skip y de Start, y antes del fin
             if (! isStart && (v <= loopStart || v > endOrLen())) continue; // el fin: después del inicio y antes de Fin
             const double d = std::abs ((double) v - target);
             if (d < bestD) { bestD = d; best = v; }
@@ -1114,13 +1114,14 @@ private:
             const bool right = (id == 6 || id == 7 || id == 1 || id == 3);
             all.push_back ({ id, r, right ? r.getX() - 2.0f : r.getRight() + 1.0f, orderOf[id] });
         }
-        std::vector<float> rows;
-        for (auto& t : all) if (std::find (rows.begin(), rows.end(), t.r.getY()) == rows.end()) rows.push_back (t.r.getY());
+        auto rowOf = [] (const T& t) { return juce::roundToInt (t.r.getY()); };
+        std::vector<int> rowsI;
+        for (auto& t : all) if (std::find (rowsI.begin(), rowsI.end(), rowOf (t)) == rowsI.end()) rowsI.push_back (rowOf (t));
         const float gap = 2.0f, left = (float) plotLeft(), right = (float) plotWidth();
-        for (float ry : rows)
+        for (int ry : rowsI)
         {
             std::vector<T> row;
-            for (auto& t : all) if (t.r.getY() == ry) row.push_back (t);
+            for (auto& t : all) if (rowOf (t) == ry) row.push_back (t);
             std::sort (row.begin(), row.end(), [] (const T& p, const T& q) {
                 return std::abs (p.anchor - q.anchor) > 0.5f ? p.anchor < q.anchor : p.order < q.order; });
             // nunca se corre ninguna para la izquierda (más allá de su línea): la que viene de la derecha
@@ -1275,6 +1276,9 @@ private:
 
     // La línea de Skip está donde empieza el semiciclo número Skip. Con Skip en 0, bien a la izquierda.
     double skipLineSample() const { return (double) skipEnd; }
+    // lo más a la izquierda que puede empezar el loop: después de Skip (donde empieza a normalizar) y de Start
+    // (el archivo exportado empieza en Start: un loop antes quedaría con los puntos afuera)
+    size_t loopFloor() const { return std::max (skipEnd, startSample); }
     bool hasSkipLine() const { return totalLen() > 0 && ! bounds.empty() && onSkipDragged != nullptr; }
     void dragSkipTo (float x)
     {
@@ -1435,13 +1439,7 @@ private:
         // el fondo siempre igual: lo único que cambia es el color de la onda. Gris oscuro lo de antes
         // de Start, gris claro lo que saltea Skip, y el color del carril el resto (después de End: su
         // color, oscurecido encima)
-        auto xOf = [&] (size_t smp) { return (float) r.getX() + (float) sampleToX ((double) smp); };
-        float darkBefore = -1.0e9f; // (después de End: su color, oscurecido encima)
-        if (totalLen() > 0)
-        {
-            // (los fades van del color que les toca: azul, o gris claro si caen en lo salteado)
-            darkBefore = xOf (startSample);
-        }
+        const float darkBefore = -1.0e9f; // (antes de Start y después de End: oscurecido encima, en los dos carriles)
         const juce::Colour kDark (0xff3a3a3a), kLight (0xff8a8a8a);
 
         // greyBefore: hasta esta x (el Skip) las columnas van en gris; así se arma la onda una sola vez
@@ -1607,8 +1605,8 @@ private:
                 }
             }
             }
-            // en Original, lo de antes de Start también oscurecido (en Processed ya va en gris oscuro)
-            if (! showSkipLine && startSample > 0)
+            // lo de antes de Start: oscurecido encima (en los dos carriles; así mover Start no rehace la onda)
+            if (startSample > 0)
             {
                 const float sx = juce::jmin ((float) (r.getX() + plotWidth()), (float) r.getX() + (float) sampleToX ((double) startSample));
                 const float px0 = (float) (r.getX() + plotLeft());

@@ -11,7 +11,6 @@
 namespace
 {
 // colores: los de UNISON (Theme.h)
-const juce::Colour kAccent = Theme::accent;
 const juce::Colour kBg = Theme::topLight;
 
 //==============================================================================
@@ -317,18 +316,6 @@ public:
         l->setColour (juce::Label::outlineColourId, juce::Colours::transparentBlack);
         return l;
     }
-
-    void drawProgressBar (juce::Graphics& g, juce::ProgressBar&, int w, int h, double progress, const juce::String&) override
-    {
-        const auto r = juce::Rectangle<float> (0.0f, 0.0f, (float) w, (float) h);
-        Theme::drawWell (g, r, pillCorner (r.getHeight()));
-        if (progress > 0.0)
-        {
-            const auto f = r.withWidth (juce::jmax (r.getHeight(), r.getWidth() * (float) juce::jlimit (0.0, 1.0, progress)));
-            g.setColour (Theme::accent.withAlpha (0.85f));
-            g.fillRoundedRectangle (f, pillCorner (r.getHeight()));
-        }
-    }
 };
 juce::String u8 (const char* s) { return juce::String::fromUTF8 (s); }
 
@@ -559,8 +546,6 @@ public:
         seamButton.setClickingTogglesState (true);
         seamButton.setTooltip ("Loop seam: loop end and loop start side by side");
         seamButton.onClick = [this] { wave.setSeamMode (seamButton.getToggleState()); };
-        addChildComponent (progressBar);
-        progressBar.setTextToDisplay (" "); // el texto va en una etiqueta encima (el de la barra no se leía)
         progressLabel.setColour (juce::Label::textColourId, Theme::inkDim);
         progressLabel.setFont (Theme::labelFont()); // buscando el loop: sólo el porcentaje (sin barra)
         progressLabel.setJustificationType (juce::Justification::centredLeft);
@@ -1199,7 +1184,6 @@ private:
                      findLoopButton, otherLoopButton, clearLoopButton,
                      seamButton; // el empalme del loop (Loop end | Loop), en el visor Processed
     double progressValue = 0.0;
-    juce::ProgressBar progressBar { progressValue };
     juce::Label progressLabel;
     std::unique_ptr<LoopSearchJob> loopJob;
     juce::ComboBox formatBox;
@@ -1362,7 +1346,7 @@ private:
             runProcessTimed();
             list.repaint();
         }
-        if (pitchDirty && juce::Time::getMillisecondCounter() - pitchChangedMs > 80)
+        if (pitchDirty && ! wave.isDraggingPitch() && ! pendingRetune && juce::Time::getMillisecondCounter() - pitchChangedMs > 80) // (arrastrando la línea del pitch, la vista previa manda)
         {
             pitchDirty = false;
             if (juce::isPositiveAndBelow (current, (int) items.size())) updatePitch (*items[(size_t) current]);
@@ -1730,7 +1714,7 @@ private:
         auto copy = std::make_shared<juce::AudioBuffer<float>> (*it.processed);
         it.loopStart = saved.first; it.loopEnd = saved.second;
         processItem (it);
-        const auto from = cyclenorm::skipEndSample (it.analysis, readSettings());
+        const auto from = juce::jmax (cyclenorm::skipEndSample (it.analysis, readSettings()), it.startSample); // (después de Skip y de Start)
         loopJob = std::make_unique<LoopSearchJob> (&it, copy, it.analysis, from, (size_t) it.lengthToWrite());
         progressValue = 0.0;
         progressLabel.setVisible (true);
@@ -1751,7 +1735,6 @@ private:
 
     void endLoopSearchUi()
     {
-        progressBar.setVisible (false);
         progressLabel.setVisible (false);
         info.setVisible (true);
         findLoopButton.setButtonText ("Find loop");
@@ -2056,7 +2039,6 @@ private:
             const auto f = info.getFont();
             info.setBounds (rest.withY ((int) std::round (kTitleBaseline - f.getAscent())).withHeight ((int) std::ceil (f.getHeight())));
         }
-        progressBar.setBounds (rest.withSizeKeepingCentre (rest.getWidth() - 12, 18).withX (rest.getX()));
         progressLabel.setBounds (info.getBounds()); // (donde va la info del loop, en el mismo renglón)
         repaint (titleArea);
     }

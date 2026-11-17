@@ -8,33 +8,22 @@
 // ---------------------------------------------------------------------------
 namespace Theme
 {
-    // Parte de arriba (clara)
-    const juce::Colour topLight   { 0xff101010 };     // degradé de arriba...
-    const juce::Colour topDark    { 0xff101010 };     // ...hacia abajo
+    // Monocromo: negro, grises y blanco
+    const juce::Colour topLight   { 0xff101010 };     // el fondo de la ventana
     const juce::Colour ink        { 0xffc8c8c8 };     // texto principal
-    const juce::Colour inkStrong  { 0xffececec };     // números grandes
-    const juce::Colour inkDim     { 0xff6c6c6c };     // títulos chicos
-    const juce::Colour inkFaint   { 0xff464646 };     // ayudas
-    const juce::Colour pill       { 0xff1a1a1a };     // pastillas (menú, Link ID, ms|Sync)
-    const juce::Colour well       { 0xff141414 };     // recuadros hundidos (números)
-    const juce::Colour raisedTop  { 0xff101010 };     // botones en relieve
-    const juce::Colour raisedBot  { 0xff1e1e1e };
-    const juce::Colour line       { 0xff3a3a3a };     // bordes finos (todo plano, como una herramienta)
-    const juce::Colour track      { 0xff2e2e2e };     // arco de fondo de la perilla
-    const juce::Colour accent     { 0xffececec };     // azul sobre fondo claro
-    const juce::Colour good       { 0xffececec };
-    const juce::Colour bad        { 0xffd04848 };
-    const juce::Colour warn       { 0xffe0782f };     // naranja: algo desactivado a propósito (bypass)
-    const juce::Colour preInk     { 0xff9c9ca0 };     // botón grande en PRE FX (gris)
-
-    // Osciloscopio (oscuro)
-    const juce::Colour darkBg     { 0xff0b0b0b };
-    const juce::Colour darkPanel  { 0xff121212 };
-    const juce::Colour chipLine   { 0xff2c3036 };
-    const juce::Colour chipText   { 0xff9a9fa6 };
-    const juce::Colour darkText   { 0xffd5d7da };
-    const juce::Colour darkDim    { 0xff7c8188 };
-    const juce::Colour accentBright { 0xffffffff };   // azul sobre fondo oscuro
+    const juce::Colour inkStrong  { 0xffececec };     // lo prendido (blanco)
+    const juce::Colour inkDim     { 0xff6c6c6c };     // etiquetas chicas
+    const juce::Colour inkFaint   { 0xff464646 };     // apagado
+    const juce::Colour pill       { 0xff1a1a1a };     // pastillas (menús)
+    const juce::Colour well       { 0xff141414 };     // recuadros hundidos
+    const juce::Colour raisedTop  { 0xff101010 };     // botones
+    const juce::Colour raisedBot  { 0xff1e1e1e };     // botón apretado
+    const juce::Colour line       { 0xff3a3a3a };     // bordes finos
+    const juce::Colour track      { 0xff2e2e2e };     // la línea de Ramp
+    const juce::Colour accent     { 0xffececec };     // (lo que antes era azul: ahora blanco)
+    const juce::Colour bad        { 0xffd04848 };     // error
+    const juce::Colour darkBg     { 0xff0b0b0b };     // el visor
+    const juce::Colour accentBright { 0xffffffff };
 
     // Letra JetBrains Mono
     inline juce::Typeface::Ptr typeface (int weight)
