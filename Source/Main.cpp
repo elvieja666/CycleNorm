@@ -1264,6 +1264,8 @@ private:
         }
     }
     bool noiseDirty = false;
+    bool pitchDirty = false;
+    juce::uint32 pitchChangedMs = 0;
     juce::uint32 noiseChangedMs = 0;
     double noisePct = -1.0; // el ruido que agregó el proceso (% de la energía, ponderada como el oído; -1 = nada abierto)
     std::vector<int> groupDividers; int groupDividersRight = 0, buttonRowY = 0, buttonRowH = 0;
@@ -1358,6 +1360,11 @@ private:
             lastProcessMs = juce::Time::getMillisecondCounter();
             runProcessTimed();
             list.repaint();
+        }
+        if (pitchDirty && juce::Time::getMillisecondCounter() - pitchChangedMs > 80)
+        {
+            pitchDirty = false;
+            if (juce::isPositiveAndBelow (current, (int) items.size())) updatePitch (*items[(size_t) current]);
         }
         // el ruido: se mide cuando se dejó de mover (120 ms sin cambios), así arrastrar Ramp no se traba
         if (noiseDirty && ! pendingReprocess && juce::Time::getMillisecondCounter() - noiseChangedMs > 120)
@@ -2062,7 +2069,9 @@ private:
             return;
         }
         auto& it = *items[(size_t) current];
-        updatePitch (it);
+        // el pitch: si la medida ya está hecha (o no cambió la zona), al toque; si hay que medir de nuevo
+        // (arrastrando Start, End o el loop), cuando se deja de mover (80 ms): así arrastrar no se traba
+        pitchDirty = true; pitchChangedMs = juce::Time::getMillisecondCounter();
         noiseDirty = true; noiseChangedMs = juce::Time::getMillisecondCounter(); // (se mide en el timer: no frena al arrastrar)
         const double peakDb = juce::Decibels::gainToDecibels (it.outPeak, -200.0f);
         juce::ignoreUnused (peakDb);

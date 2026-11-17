@@ -255,6 +255,8 @@ public:
     }
     void drawZoomBar (juce::Graphics& g)
     {
+        // (si lo que se redibuja no toca el renglón del zoom, ni se arma el texto: con el cursor andando es cada cuadro)
+        if (! g.clipRegionIntersects (topLaneRect().withTrimmedTop (kHiddenPad).withHeight (20).withX (0).withWidth (getWidth()))) return;
         showAllArea = {};
         if (totalLen() == 0) return;
         const auto b = visibleBounds().toFloat();
@@ -1081,7 +1083,9 @@ private:
         float x = (float) sampleToX (sample);
         if (x < (float) plotLeft() - 1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
         x = juce::jlimit ((float) plotLeft(), (float) plotWidth() - 2.0f, x); // (igual que las líneas: así queda el mismo aire a cada lado)
-        const float w = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
+        static float widths[9] = {}; // (el ancho de cada pestaña no cambia: se mide una sola vez)
+        if (widths[id] <= 0.0f) widths[id] = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
+        const float w = widths[id];
         // 1 px de aire con la línea vertical (que ocupa el píxel de x)
         const float lx = std::round (x), xr = lx + 2.0f, xl = lx - 1.0f - w;
         // la caja es de 16 de alto, centrada en el lugar de 18 (1 menos arriba y 1 menos abajo: el texto no se mueve)
@@ -1394,8 +1398,13 @@ private:
         if (x != lastPlayheadX)
         {
             playheadPx = px;
-            if (lastPlayheadX >= 0) repaint (lastPlayheadX - 3, 0, 8, getHeight());
-            if (x >= 0) repaint (x - 3, 0, 8, getHeight());
+            // (sólo las franjas de las ondas, donde va el cursor: así no se rehacen los textos de en medio)
+            auto strip = [this] (int cx) {
+                for (auto lr : { topLaneRect(), procLaneRect() })
+                    repaint (cx - 3, lr.getY() + 40, 8, lr.getHeight() - 80); // (la franja de 185)
+            };
+            if (lastPlayheadX >= 0) strip (lastPlayheadX);
+            if (x >= 0) strip (x);
             lastPlayheadX = x;
         }
     }
@@ -1710,6 +1719,8 @@ private:
         }
 
         if (pass == 0) return;
+        if (! g.clipRegionIntersects (r.withTrimmedTop (r.getY() == topLaneRect().getY() ? kHiddenPad : 0).withHeight (20))
+            && ! g.clipRegionIntersects (juce::Rectangle<int> (0, r.getBottom() - 40, getWidth(), 80))) return; // (ni el título ni los renglones del pitch)
         g.setColour (active ? juce::Colours::white : juce::Colour (0xff6c6c6c));
         g.setFont (labelUiFont (9.5f, active ? juce::Font::bold : juce::Font::plain));
         // Processed: el título en la mitad de arriba de los 40 libres (la de abajo es de las pestañas);
