@@ -377,6 +377,11 @@ struct Item
     cyclenorm::Analysis analysis;
     std::shared_ptr<juce::AudioBuffer<float>> loaded; // el archivo tal como se abrió (antes de Tune)
     cyclenorm::Analysis loadedAnalysis;
+    // medidas del pitch ya hechas (la correlación es cara: no se repite mientras no cambie nada)
+    struct PitchMemo { unsigned long long id; size_t from, to; bool sustain; cyclenorm::PitchInfo p; };
+    mutable std::vector<PitchMemo> pitchMemo;
+    mutable unsigned long long curveId = 0;
+    mutable std::vector<std::pair<double, double>> curveMemo;
     int tuneSt = 0;          // Transpose (semitonos) puesto a mano
     double tuneCents = 0.0;  // Fine (cents) puesto a mano
     double tuneSemis = 0.0;  // lo aplicado: semitonos + cents/100
@@ -2193,7 +2198,8 @@ private:
         for (int ch = 0; ch < src.getNumChannels(); ++ch) maxAbs = juce::jmax (maxAbs, src.getMagnitude (ch, 0, src.getNumSamples()));
         // la nota onda por onda, medida con la correlación (no con los cruces: con chorus o unísono se corren)
         std::vector<double> hz;
-        for (const auto& q : cyclenorm::pitchTrack (it.analysis)) hz.push_back (q.second);
+        if (it.curveId != it.analysis.id) { it.curveMemo = cyclenorm::pitchTrack (it.analysis); it.curveId = it.analysis.id; }
+        for (const auto& q : it.curveMemo) hz.push_back (q.second);
         if (hz.size() + 1 != bf.size()) return pts;
         for (size_t k = 0; k < hz.size(); ++k)
         {
@@ -2243,7 +2249,16 @@ private:
         const auto& a = hasLoaded ? it.loadedAnalysis : it.analysis;
         const double speed = hasLoaded ? std::pow (2.0, it.tuneSemis / 12.0) : 1.0;
         const size_t f = (size_t) std::llround ((double) from * speed), t = (size_t) std::llround ((double) to * speed);
-        auto p = sustain ? cyclenorm::measureSustainPitch (a, f, t) : cyclenorm::measurePitch (a, f, t);
+        cyclenorm::PitchInfo p;
+        bool found = false;
+        for (const auto& m : it.pitchMemo)
+            if (m.id == a.id && m.from == f && m.to == t && m.sustain == sustain) { p = m.p; found = true; break; }
+        if (! found)
+        {
+            p = sustain ? cyclenorm::measureSustainPitch (a, f, t) : cyclenorm::measurePitch (a, f, t);
+            it.pitchMemo.push_back ({ a.id, f, t, sustain, p });
+            if (it.pitchMemo.size() > 16) it.pitchMemo.erase (it.pitchMemo.begin()); // (las últimas 16)
+        }
         if (hasLoaded && p.valid) { p.midi += it.tuneSemis; p.hz *= speed; }
         return p;
     }

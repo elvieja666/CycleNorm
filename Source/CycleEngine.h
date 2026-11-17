@@ -7,6 +7,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -50,6 +51,7 @@ struct Analysis
     float tailPeak    = 0.0f;   // pico después del último cruce
 
     size_t numCycles() const { return peaks.size(); }
+    unsigned long long id = 0; // cada análisis nuevo tiene otro número (para guardar medidas ya hechas)
 };
 
 namespace detail
@@ -232,8 +234,10 @@ inline std::vector<long> consistentPicks (const std::vector<size_t>& ref, const 
 
 inline Analysis analyse (const Channels& in, double sampleRate)
 {
+    static std::atomic<unsigned long long> nextId { 1 };
     using namespace detail;
     Analysis a;
+    a.id = nextId++;
     a.sampleRate = sampleRate;
     a.numSamples = in.empty() ? 0 : in[0].size();
     const size_t n = a.numSamples;
@@ -837,10 +841,12 @@ struct PitchInfo
 inline double lagCorrelation (const Analysis& a, size_t from, size_t to, long L)
 {
     double ab = 0, aa = 0, bb = 0;
+    // (de a varias muestras: el audio va hasta 1 kHz, con ~4 puntos por milisegundo alcanza y es mucho más rápido)
+    const size_t step = (size_t) std::max (1.0, std::floor (a.sampleRate / 4000.0));
     for (const auto& x : a.lows)
     {
         const size_t end = std::min (to, x.size());
-        for (size_t i = from; i + (size_t) L < end; ++i)
+        for (size_t i = from; i + (size_t) L < end; i += step)
         {
             const double u = x[i], v = x[i + (size_t) L];
             ab += u * v; aa += u * u; bb += v * v;
