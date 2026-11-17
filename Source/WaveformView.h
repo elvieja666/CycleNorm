@@ -1096,9 +1096,9 @@ private:
         if (! avoid) return rr;
         return tabLayout()[(size_t) id];
     }
-    // Todas las pestañas acomodadas: en cada fila, si dos se pisan, se corren para que queden a 2 px una de
-    // otra, en el orden de sus líneas (de izquierda a derecha). La que se está arrastrando se queda pegada a
-    // su línea y se corren las otras. Si la fila se pasa del gráfico, se empuja todo para adentro.
+    // Todas las pestañas acomodadas: en cada fila, si dos se pisan, la de la derecha se corre a la derecha
+    // (a 2 px de la otra), aunque sea la que se está arrastrando: las de la izquierda no se mueven.
+    // Si la fila se pasa del gráfico, se empuja todo para adentro.
     std::array<juce::Rectangle<float>, 9> tabLayout() const
     {
         std::array<juce::Rectangle<float>, 9> out;
@@ -1123,20 +1123,10 @@ private:
             for (auto& t : all) if (t.r.getY() == ry) row.push_back (t);
             std::sort (row.begin(), row.end(), [] (const T& p, const T& q) {
                 return std::abs (p.anchor - q.anchor) > 0.5f ? p.anchor < q.anchor : p.order < q.order; });
-            int fixed = -1;
-            for (size_t i = 0; i < row.size(); ++i) if (isDraggingTab (row[i].id)) fixed = (int) i;
-            if (fixed >= 0)
-            {
-                for (size_t i = (size_t) fixed + 1; i < row.size(); ++i) // las de la derecha: hacia la derecha
-                    row[i].r.setX (juce::jmax (row[i].r.getX(), row[i - 1].r.getRight() + gap));
-                for (int i = fixed - 1; i >= 0; --i)                       // las de la izquierda: hacia la izquierda
-                    row[(size_t) i].r.setX (juce::jmin (row[(size_t) i].r.getX(), row[(size_t) i + 1].r.getX() - gap - row[(size_t) i].r.getWidth()));
-            }
-            else
-            {
-                for (size_t i = 1; i < row.size(); ++i)
-                    row[i].r.setX (juce::jmax (row[i].r.getX(), row[i - 1].r.getRight() + gap));
-            }
+            // nunca se corre ninguna para la izquierda (más allá de su línea): la que viene de la derecha
+            // se queda pegada a la de su izquierda, aunque su línea siga de largo
+            for (size_t i = 1; i < row.size(); ++i)
+                row[i].r.setX (juce::jmax (row[i].r.getX(), row[i - 1].r.getRight() + gap));
             // que no se salgan del gráfico: si la última se pasa, todo para la izquierda; si la primera, a la derecha
             if (! row.empty() && row.back().r.getRight() > right)
             {
