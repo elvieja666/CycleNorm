@@ -9,14 +9,14 @@
 namespace Theme
 {
     // Monocromo: negro, grises y blanco
-    const juce::Colour topLight   { 0xff101010 };     // el fondo de la ventana
+    const juce::Colour topLight   { 0xff141414 };     // el fondo de la ventana
     const juce::Colour ink        { 0xffc8c8c8 };     // texto principal
     const juce::Colour inkStrong  { 0xffececec };     // lo prendido (blanco)
     const juce::Colour inkDim     { 0xff6c6c6c };     // etiquetas chicas
     const juce::Colour inkFaint   { 0xff464646 };     // apagado
     const juce::Colour pill       { 0xff1a1a1a };     // pastillas (menús)
     const juce::Colour well       { 0xff141414 };     // recuadros hundidos
-    const juce::Colour raisedTop  { 0xff101010 };     // botones
+    const juce::Colour raisedTop  { 0xff141414 };     // botones
     const juce::Colour raisedBot  { 0xff1e1e1e };     // botón apretado
     const juce::Colour line       { 0xff3a3a3a };     // bordes finos
     const juce::Colour track      { 0xff2e2e2e };     // la línea de Ramp
