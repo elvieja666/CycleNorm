@@ -109,6 +109,7 @@ public:
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
     double fadeInCurve = 0.0, fadeOutCurve = 0.0;
     int curveDrag = 0;           // arrastrando la curva: 1 = fade in, 2 = fade out
+    int hoverCurve = 0;          // el mouse encima de una rampa (su circulito se pone blanco)
     float curveDownY = 0.0f; double curveDownVal = 0.0;
     float zoomDotAlignX = -1.0f; // dónde va el centro del último punto del renglón del zoom (o -1: pegado a la derecha)
     // vista del empalme del loop (como Kontakt), en el visor Processed: a la izquierda lo que termina en
@@ -358,6 +359,7 @@ public:
         const int oldTab = tabAt (hoverPoint);
         hoverPoint = e.position;
         if (tabAt (hoverPoint) != oldTab) repaint(); // la pestaña bajo el mouse se ilumina
+        if (const int hc = seamActive() ? 0 : nearFadeRamp (hoverPoint); hc != hoverCurve) { hoverCurve = hc; repaint(); } // (el circulito)
         if (wasHot != showAllArea.contains (hoverPoint)) repaint (showAllArea.getSmallestIntegerContainer().expanded (2));
         if (showAllArea.contains (e.position)) setMouseCursor (juce::MouseCursor::PointingHandCursor);
         else if (seamActive() && e.position.y >= (float) procLaneRect().getY() && e.position.x < (float) plotWidth()) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
@@ -370,6 +372,7 @@ public:
     void mouseExit (const juce::MouseEvent&) override
     {
         if (showAllArea.contains (hoverPoint)) repaint (showAllArea.getSmallestIntegerContainer().expanded (2));
+        if (hoverCurve != 0) { hoverCurve = 0; repaint(); }
         hoverPoint = { -1.0f, -1.0f };
     }
     void mouseDown (const juce::MouseEvent& e) override
@@ -1090,6 +1093,19 @@ private:
     static constexpr float kTabH = 18.0f; // la mitad de abajo de los 40 libres (menos 1 de aire con la línea y 1 con el título)
     static juce::Font tabFont() { return labelUiFont (8.5f); }
     // la rampa de un fade, con su curva: de abajo (silencio) a arriba (0 dB), o al revés para el fade out
+    // el circulito del medio de la rampa (de donde se agarra para curvarla): en la mitad del tiempo del fade
+    static juce::Point<float> fadeKnob (float x0, float x1, float top, float bot, double c, bool)
+    {
+        return { 0.5f * (x0 + x1), bot - (bot - top) * (float) fadeShape (0.5, c) };
+    }
+    void drawFadeKnob (juce::Graphics& g, juce::Point<float> p, bool active) const
+    {
+        const auto r = juce::Rectangle<float> (7.0f, 7.0f).withCentre (p);
+        g.setColour (active ? juce::Colours::white : juce::Colour (0xff121212));
+        g.fillEllipse (r);
+        g.setColour (juce::Colours::white.withAlpha (active ? 1.0f : 0.8f));
+        g.drawEllipse (r, 1.2f);
+    }
     static juce::Path fadePath (float x0, float x1, float top, float bot, double c, bool out)
     {
         juce::Path p;
@@ -1115,6 +1131,7 @@ private:
             if (x1 - x0 < 12.0f || pos.x < x0 + 5.0f || pos.x > x1 - 5.0f) return false;
             const double t = (pos.x - x0) / (x1 - x0);
             const float y = bot - (bot - top) * (float) fadeShape (out ? 1.0 - t : t, c);
+            if (fadeKnob (x0, x1, top, bot, c, out).getDistanceFrom (pos) <= 7.0f) return true; // (el circulito)
             return std::abs (pos.y - y) <= 6.0f;
         };
         if (hasFadeHandle() && test (startSample, fadeEndSample(), fadeInCurve, false)) return 1;
@@ -1660,6 +1677,7 @@ private:
                 {
                     g.setColour (juce::Colours::white.withAlpha (curveDrag == 1 ? 0.9f : 0.55f));
                     g.strokePath (fadePath (x0, x1, top, bot, fadeInCurve, false), juce::PathStrokeType (curveDrag == 1 ? 1.5f : 1.0f));
+                    if (x1 - x0 >= 12.0f) drawFadeKnob (g, fadeKnob (x0, x1, top, bot, fadeInCurve, false), curveDrag == 1 || hoverCurve == 1);
                     // hasta dónde llega el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (std::round (x1) + 0.5f, vTop, std::round (x1) + 0.5f, vBot, 1.0f);
@@ -1676,6 +1694,7 @@ private:
                 {
                     g.setColour (juce::Colours::white.withAlpha (curveDrag == 2 ? 0.9f : 0.55f));
                     g.strokePath (fadePath (x0, x1, top, bot, fadeOutCurve, true), juce::PathStrokeType (curveDrag == 2 ? 1.5f : 1.0f));
+                    if (x1 - x0 >= 12.0f) drawFadeKnob (g, fadeKnob (x0, x1, top, bot, fadeOutCurve, true), curveDrag == 2 || hoverCurve == 2);
                     // desde dónde arranca el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (std::round (x0) + 0.5f, vTop, std::round (x0) + 0.5f, vBot, 1.0f);
