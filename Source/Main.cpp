@@ -906,7 +906,7 @@ public:
     static juce::Path titlePath (const juce::Font& tf)
     {
         auto pathOf = [&] (const juce::String& t) { juce::GlyphArrangement ga; ga.addLineOfText (tf, t, 0.0f, 0.0f); juce::Path p; ga.createPath (p); return p; };
-        auto slashes = pathOf ("//"), name = pathOf ("NODE");
+        auto slashes = pathOf ("//"), name = pathOf ("node"); // (en minúscula)
         const auto nb = name.getBounds();                       // las mayúsculas marcan el alto
         const auto sb = slashes.getBounds();
         const float k = nb.getHeight() / juce::jmax (1.0f, sb.getHeight());
