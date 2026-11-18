@@ -888,7 +888,23 @@ public:
         }
     }
 
-    static constexpr const char* kTitleText = "// NODE"; // (las dos barras, como los títulos de los visores y el ícono)
+    // el título: "//" + NODE. Las barras, del alto de las mayúsculas (la letra las hace más altas que
+    // NODE, por arriba y por abajo) y a ~2/3 de ese alto de la N; todo empieza justo en el margen
+    static juce::Path titlePath (const juce::Font& tf)
+    {
+        auto pathOf = [&] (const juce::String& t) { juce::GlyphArrangement ga; ga.addLineOfText (tf, t, 0.0f, 0.0f); juce::Path p; ga.createPath (p); return p; };
+        auto slashes = pathOf ("//"), name = pathOf ("NODE");
+        const auto nb = name.getBounds();                       // las mayúsculas marcan el alto
+        const auto sb = slashes.getBounds();
+        const float k = nb.getHeight() / juce::jmax (1.0f, sb.getHeight());
+        slashes.applyTransform (juce::AffineTransform::translation (-sb.getX(), -sb.getY()).scaled (k)
+                                    .translated ((float) kMargin, 10.0f));  // las mayúsculas: de 10 a 25
+        const float gap = nb.getHeight() * 0.65f;
+        name.applyTransform (juce::AffineTransform::translation (-nb.getX(), -nb.getY())
+                                 .translated (slashes.getBounds().getRight() + gap, 10.0f));
+        slashes.addPath (name);
+        return slashes;
+    }
     void paint (juce::Graphics& g) override
     {
         // fondo claro con degradé, como UNISON
@@ -899,17 +915,7 @@ public:
         // misma distancia del borde de arriba que de la píldora de abajo en UNISON (que está en y = 40))
         g.setColour (Theme::inkStrong);
         {
-            const auto tf = Theme::titleFont (kTitleCap);
-            juce::GlyphArrangement ga, first;
-            ga.addLineOfText (tf, kTitleText, 0.0f, 0.0f);
-            first.addLineOfText (tf, "T", 0.0f, 0.0f);
-            juce::Path text, t;
-            ga.createPath (text);
-            first.createPath (t);
-            const auto tb = t.getBounds();                       // la "T" marca el alto de las mayúsculas
-            const float capTop = 10.0f; // las mayúsculas: de 10 a 25
-            // lo dibujado empieza justo en el margen (la primera "/", no la caja de la letra)
-            g.fillPath (text, juce::AffineTransform::translation ((float) kMargin - text.getBounds().getX(), capTop - tb.getY()));
+            g.fillPath (titlePath (Theme::titleFont (kTitleCap)));
         }
         // la info del loop: "Loop 99.1 % · 60 cycles · crossfade Off", cada número en un lugar fijo
         if (loopInfoVals.size() == 3 && info.isVisible())
@@ -988,7 +994,7 @@ public:
         {
             // fila del título: NODE · el 808 abierto · info del loop · pitch medido (a la derecha)
             auto t = titleArea;
-            const float titleW = juce::GlyphArrangement::getStringWidth (Theme::titleFont (kTitleCap), kTitleText);
+            const float titleW = titlePath (Theme::titleFont (kTitleCap)).getBounds().getRight() - (float) kMargin;
             t.removeFromLeft ((int) titleW + 22);
             titleRest = t; // el nombre, el pitch y la info del loop: se acomodan en layoutTitleRow (abajo)
         }
