@@ -113,6 +113,7 @@ public:
     double fadeInCurve = 0.0, fadeOutCurve = 0.0;
     int curveDrag = 0;           // arrastrando la curva: 1 = fade in, 2 = fade out
     int hoverCurve = 0;          // el mouse encima de una rampa (su circulito se pone blanco)
+    float grabDX = 0.0f;         // arrastrando una pestaña: cuánto está el mouse corrido de su línea
     float curveDownY = 0.0f; double curveDownVal = 0.0;
     float zoomDotAlignX = -1.0f; // dónde va el centro del último punto del renglón del zoom (o -1: pegado a la derecha)
     // vista del empalme del loop (como Kontakt), en el visor Processed: a la izquierda lo que termina en
@@ -418,18 +419,27 @@ public:
                 return;
             }
         const int line = whichLine (e.position);
+        // de dónde se agarró la pestaña, respecto de su línea: si la pestaña estaba corrida (pegada a otra),
+        // la línea no salta hasta el mouse, se mueve lo mismo que el mouse
+        grabDX = 0.0f;
+        if (line != 0)
+        {
+            const auto nr = tabRect (line, false);
+            const bool boxRight = (line == 6 || line == 7 || line == 1 || line == 3);
+            if (! nr.isEmpty()) grabDX = e.position.x - (boxRight ? nr.getX() - 2.0f : nr.getRight() + 1.0f);
+        }
         if (line == 8) // la manija del fade out (⌥ + clic: sin fade)
         {
             if (e.mods.isAltDown()) { if (onFadeOutDragged) onFadeOutDragged (0); return; }
             draggingFadeOut = true;
-            dragFadeOutTo (e.position.x);
+            dragFadeOutTo (e.position.x - grabDX);
             return;
         }
         if (line == 7) // la manija del fade in (⌥ + clic: sin fade)
         {
             if (e.mods.isAltDown()) { if (onFadeDragged) onFadeDragged (0); return; }
             draggingFade = true;
-            dragFadeTo (e.position.x);
+            dragFadeTo (e.position.x - grabDX);
             return;
         }
         // sobre la línea celeste: arrastrando arriba/abajo se cambia el Pitch
@@ -495,10 +505,10 @@ public:
         draggingEnd = line == 2;
         draggingStart = line == 6;
         draggingLoop = (line >= 3 && line <= 5) ? line : 0;
-        if (draggingStart) { dragStartTo (e.position.x); return; }
-        if (draggingSkip) { dragSkipTo (e.position.x); return; }
-        if (draggingEnd) { dragEndTo (e.position.x); return; }
-        if (draggingLoop) { dragLoopTo (e.position.x); return; }
+        if (draggingStart) { dragStartTo (e.position.x - grabDX); return; }
+        if (draggingSkip) { dragSkipTo (e.position.x - grabDX); return; }
+        if (draggingEnd) { dragEndTo (e.position.x - grabDX); return; }
+        if (draggingLoop) { dragLoopTo (e.position.x - grabDX); return; }
         if (totalLen() > 0 && onSeek) onSeek (juce::jlimit ((double) startSample, (double) endOrLen(), xToSample (e.position.x)) / sr);
     }
     void mouseDrag (const juce::MouseEvent& e) override
@@ -531,12 +541,12 @@ public:
             if (movingLoop) moveLoopBy (e.position.x - moveDownX);
             return;
         }
-        if (draggingFade) { dragFadeTo (e.position.x); return; }
-        if (draggingFadeOut) { dragFadeOutTo (e.position.x); return; }
-        if (draggingStart) { dragStartTo (e.position.x); return; }
-        if (draggingSkip) { dragSkipTo (e.position.x); return; }
-        if (draggingEnd) { dragEndTo (e.position.x); return; }
-        if (draggingLoop) { dragLoopTo (e.position.x); return; }
+        if (draggingFade) { dragFadeTo (e.position.x - grabDX); return; }
+        if (draggingFadeOut) { dragFadeOutTo (e.position.x - grabDX); return; }
+        if (draggingStart) { dragStartTo (e.position.x - grabDX); return; }
+        if (draggingSkip) { dragSkipTo (e.position.x - grabDX); return; }
+        if (draggingEnd) { dragEndTo (e.position.x - grabDX); return; }
+        if (draggingLoop) { dragLoopTo (e.position.x - grabDX); return; }
         mouseDown (e);
     }
     void mouseUp (const juce::MouseEvent& e) override
