@@ -1634,6 +1634,7 @@ private:
         Item d;
         d.original = it.loaded; d.analysis = it.loadedAnalysis; d.sampleRate = it.sampleRate;
         d.fadeHalves = it.fadeHalves; d.fadeOutHalves = it.fadeOutHalves; d.xfadeCycles = it.xfadeCycles;
+        d.fadeInCurve = it.fadeInCurve; d.fadeOutCurve = it.fadeOutCurve; // (la curva de los fades, también en lo que se dibuja)
         // las posiciones, llevadas por tiempo (el afinado es el cargado estirado) y pegadas al cruce
         // más cercano. (No por número de semiciclo: el ruido antes del 808 tiene cruces que cambian
         // al re-afinar, y el fade o el Skip quedaban corridos en el dibujo.)
