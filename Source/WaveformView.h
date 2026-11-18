@@ -1333,6 +1333,14 @@ private:
             const double d = std::abs ((double) v - target);
             if (d < bestD) { bestD = d; best = k; }
         }
+        // hasta el principio de todo (Start, o donde termina el fade in), aunque ahí no haya un cruce por
+        // cero: el sample puede no arrancar en 0 y el primer cruce queda unas muestras más adelante
+        if (lower < end && std::find (bounds.begin(), bounds.end(), lower) == bounds.end()
+            && std::abs ((double) lower - target) < bestD && onFadeOutStartSample)
+        {
+            onFadeOutStartSample (std::max<size_t> (lower, 1)); // (0 quiere decir "sin fade": desde la muestra 1 suena igual)
+            return;
+        }
         if (onFadeOutDragged) onFadeOutDragged (best);
     }
     // la línea de Start: como la de Fin, salta de semiciclo en semiciclo (corta en un cruce por cero)
