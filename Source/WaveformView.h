@@ -34,9 +34,12 @@ public:
     // c < 0: hundida (sube lento / baja rápido), 0: lineal. (lo mismo se usa para sonar, exportar y dibujar)
     static double fadeShape (double t, double c)
     {
+        // curva exponencial: (1 - e^(-a·t)) / (1 - e^(-a)). A diferencia de una potencia (t^x), la
+        // pendiente nunca se hace infinita en las puntas: no "cae de golpe" al final (ni hace click)
         t = juce::jlimit (0.0, 1.0, t);
-        if (std::abs (c) < 1e-9) return t;
-        return std::pow (t, std::pow (5.0, -juce::jlimit (-1.0, 1.0, c)));
+        const double k = 5.0 * juce::jlimit (-1.0, 1.0, c);
+        if (std::abs (k) < 1e-6) return t;
+        return (1.0 - std::exp (-k * t)) / (1.0 - std::exp (-k));
     }
     void setFadeCurves (double in, double out)
     {
