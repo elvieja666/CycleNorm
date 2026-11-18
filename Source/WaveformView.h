@@ -1103,11 +1103,9 @@ private:
     }
     void drawFadeKnob (juce::Graphics& g, juce::Point<float> p, bool active) const
     {
-        const auto r = juce::Rectangle<float> (7.0f, 7.0f).withCentre (p);
-        g.setColour (active ? juce::Colours::white : juce::Colour (0xff121212));
-        g.fillEllipse (r);
-        g.setColour (juce::Colours::white.withAlpha (active ? 1.0f : 0.8f));
-        g.drawEllipse (r, 1.2f);
+        // el cuadradito lleno, como el de la barra de Ramp (encima del mouse o arrastrando: blanco puro)
+        g.setColour (active ? juce::Colours::white : juce::Colour (0xffececec));
+        g.fillRect (juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ std::round (p.x), std::round (p.y) }));
     }
     // (sólo el tramo que se ve, con un punto cada 2 px: con mucho zoom la rampa entera mide millones de
     // píxeles y una línea con puntas tan lejos a veces no se dibuja; y así la curva no se ve en tramos rectos)
