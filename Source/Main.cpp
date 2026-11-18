@@ -384,6 +384,7 @@ struct Item
     int xfadeCycles = 0; // crossfade del loop, en ondas enteras (0 = Off; como máximo, las ondas del loop)
     // muy de cerca se mueven de muestra en muestra: si no son 0, mandan sobre los semiciclos / ondas
     size_t fadeInEndS = 0, fadeOutStartS = 0, xfadeLenS = 0;
+    double fadeInCurve = 0.0, fadeOutCurve = 0.0; // la curva de los fades: -1 (hundida) .. 0 (lineal) .. +1 (abombada)
     std::vector<cyclenorm::LoopResult> loopCands; // los mejores loops que encontró la búsqueda
     int loopCandIdx = -1;                        // cuál de ellos está puesto (-1 = uno movido a mano)
     int optionIdx = 0;                           // la última Option elegida (aunque después se mueva a mano)
@@ -747,6 +748,18 @@ public:
             settingsChanged();
         };
         wave.onLoopDragged = [this] (size_t s0, size_t s1) { setLoopForCurrent (s0, s1); };
+        // la curva de un fade (arrastrando su rampa para arriba o para abajo; ⌥ + clic: lineal)
+        wave.onFadeCurveChanged = [this] (bool fadeOut, double c)
+        {
+            if (! juce::isPositiveAndBelow (current, (int) items.size())) return;
+            auto& it = *items[(size_t) current];
+            auto& v = fadeOut ? it.fadeOutCurve : it.fadeInCurve;
+            c = juce::jlimit (-1.0, 1.0, std::round (c * 100.0) / 100.0); // (de a 1 %)
+            if (std::abs (c - v) < 1e-9) return;
+            v = c;
+            wave.setFadeCurves (it.fadeInCurve, it.fadeOutCurve);
+            settingsChanged();
+        };
         // la manija del crossfade: la muestra donde empieza el fundido -> ondas enteras hasta el fin del loop
         wave.onXfadeDragged = [this] (size_t xfStart)
         {
@@ -1210,13 +1223,15 @@ private:
         double amount = 0, ramp = 0, pitch = 0;
         int skip = 0, xfade = 0, candIdx = -1, optionIdx = 0, fade = 0, fadeOut = 0;
         size_t endS = 0, startS = 0, l0 = 0, l1 = 0, fadeInS = 0, fadeOutS = 0, xfadeS = 0, skipS = 0;
+        double fadeInC = 0, fadeOutC = 0;
         std::vector<cyclenorm::LoopResult> cands;
         bool same (const EditState& o) const
         {
             return item == o.item && std::abs (amount - o.amount) < 1e-9 && std::abs (ramp - o.ramp) < 1e-9 && std::abs (pitch - o.pitch) < 1e-9
                 && skip == o.skip && xfade == o.xfade && candIdx == o.candIdx && optionIdx == o.optionIdx && endS == o.endS && startS == o.startS && fade == o.fade && fadeOut == o.fadeOut
                 && l0 == o.l0 && l1 == o.l1 && cands.size() == o.cands.size()
-                && fadeInS == o.fadeInS && fadeOutS == o.fadeOutS && xfadeS == o.xfadeS && skipS == o.skipS;
+                && fadeInS == o.fadeInS && fadeOutS == o.fadeOutS && xfadeS == o.xfadeS && skipS == o.skipS
+                && std::abs (fadeInC - o.fadeInC) < 1e-9 && std::abs (fadeOutC - o.fadeOutC) < 1e-9;
         }
     };
     std::vector<EditState> undoStack, redoStack;
@@ -1554,7 +1569,7 @@ private:
             }
             peak = juce::jmax (peak, pk);
         }
-        // fade in: desde Start, lineal, hasta n semiciclos después (siempre termina en un cruce)
+        // fade in: desde Start, con su curva (lineal si no se tocó), hasta n semiciclos después (siempre termina en un cruce)
         if (it.fadeHalves > 0 || it.fadeInEndS > it.startSample)
         {
             const size_t limit = loopActive (it) ? it.loopStart : (size_t) it.lengthToWrite();
@@ -1567,7 +1582,7 @@ private:
                     auto* d = out->getWritePointer (ch);
                     const double len = (double) (f1 - f0);
                     for (size_t i = f0; i < f1 && i < (size_t) out->getNumSamples(); ++i)
-                        d[i] *= (float) ((double) (i - f0) / len);
+                        d[i] *= (float) WaveformView::fadeShape ((double) (i - f0) / len, it.fadeInCurve);
                 }
         }
         // fade out: hasta End, lineal, desde n semiciclos antes (con loop no: se corta en el fin del loop)
@@ -1586,7 +1601,7 @@ private:
                     auto* d = out->getWritePointer (ch);
                     const double len = (double) (f1 - f0);
                     for (size_t i = f0; i < f1 && i < (size_t) out->getNumSamples(); ++i)
-                        d[i] *= (float) ((double) (f1 - i) / len);
+                        d[i] *= (float) WaveformView::fadeShape ((double) (f1 - i) / len, it.fadeOutCurve);
                 }
         }
         // crossfade del loop (metido en el audio, así suena igual al tocarlo que en el sampler)
@@ -1823,6 +1838,7 @@ private:
             st.endS = it.endSample; st.startS = it.startSample; st.fade = it.fadeHalves; st.fadeOut = it.fadeOutHalves; st.l0 = it.loopStart; st.l1 = it.loopEnd;
             st.xfade = it.xfadeCycles; st.cands = it.loopCands; st.candIdx = it.loopCandIdx; st.optionIdx = it.optionIdx;
             st.fadeInS = it.fadeInEndS; st.fadeOutS = it.fadeOutStartS; st.xfadeS = it.xfadeLenS;
+            st.fadeInC = it.fadeInCurve; st.fadeOutC = it.fadeOutCurve;
         }
         return st;
     }
@@ -1885,12 +1901,15 @@ private:
             it.endSample = st.endS; it.startSample = st.startS; it.fadeHalves = st.fade; it.fadeOutHalves = st.fadeOut; it.loopStart = st.l0; it.loopEnd = st.l1;
             it.xfadeCycles = st.xfade; it.loopCands = st.cands; it.loopCandIdx = st.candIdx; it.optionIdx = st.optionIdx;
             it.fadeInEndS = st.fadeInS; it.fadeOutStartS = st.fadeOutS; it.xfadeLenS = st.xfadeS;
+            it.fadeInCurve = st.fadeInC; it.fadeOutCurve = st.fadeOutC;
+            wave.setFadeCurves (it.fadeInCurve, it.fadeOutCurve);
             source.setEndSample ((juce::int64) it.endSample);
             source.setStartSample ((juce::int64) it.startSample);
             wave.setStartSample (it.startSample);
             wave.setFadeHalves (it.fadeHalves);
             wave.setFadeOutHalves (it.fadeOutHalves);
             wave.setFadeInEndSample (it.fadeInEndS); wave.setFadeOutStartSample (it.fadeOutStartS);
+        wave.setFadeCurves (it.fadeInCurve, it.fadeOutCurve);
             updateXfadeView();
             source.setLoopRegion ((juce::int64) it.loopStart, (juce::int64) it.loopEnd);
             wave.setEndSample (it.endSample);

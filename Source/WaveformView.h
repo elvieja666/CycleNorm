@@ -1,6 +1,7 @@
 // Visor: arriba el original, abajo el procesado, con las ondas detectadas marcadas.
 // Rueda / dos dedos vertical = zoom, horizontal = desplazar, doble clic = ver todo, clic = mover el cursor.
 #pragma once
+#include <map>
 #include <juce_gui_basics/juce_gui_basics.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <functional>
@@ -27,6 +28,21 @@ public:
     std::function<void (size_t, size_t)> onLoopDragged; // arrastrando una punta del loop: nuevo inicio y fin
     std::function<void (size_t)> onXfadeDragged;  // arrastrando la manija del crossfade: dónde empieza el fundido
     std::function<void (int)> onAltReset;         // ⌥ + clic sobre End (2), Loop (3), Loop end (4) o Xfade (5)
+    std::function<void (bool, double)> onFadeCurveChanged; // la curva de un fade (false: in, true: out), -1..+1
+
+    // la forma de los fades: t (0..1, lineal) -> ganancia. c > 0: abombada (sube rápido / tarda en bajar),
+    // c < 0: hundida (sube lento / baja rápido), 0: lineal. (lo mismo se usa para sonar, exportar y dibujar)
+    static double fadeShape (double t, double c)
+    {
+        t = juce::jlimit (0.0, 1.0, t);
+        if (std::abs (c) < 1e-9) return t;
+        return std::pow (t, std::pow (5.0, -juce::jlimit (-1.0, 1.0, c)));
+    }
+    void setFadeCurves (double in, double out)
+    {
+        if (std::abs (in - fadeInCurve) < 1e-9 && std::abs (out - fadeOutCurve) < 1e-9) return;
+        fadeInCurve = in; fadeOutCurve = out; repaint();
+    }
     int maxSkip = 64;
     std::function<bool()> isPlayingProcessed;     // para resaltar el carril que suena
 
@@ -91,6 +107,9 @@ public:
         return juce::jlimit (lo, hi, cents);
     }
     bool freeDrag = false; // ⌘ + arrastrar: sin cruces por cero
+    double fadeInCurve = 0.0, fadeOutCurve = 0.0;
+    int curveDrag = 0;           // arrastrando la curva: 1 = fade in, 2 = fade out
+    float curveDownY = 0.0f; double curveDownVal = 0.0;
     float zoomDotAlignX = -1.0f; // dónde va el centro del último punto del renglón del zoom (o -1: pegado a la derecha)
     // vista del empalme del loop (como Kontakt), en el visor Processed: a la izquierda lo que termina en
     // Loop end, a la derecha lo que arranca en Loop, pegados en el medio
@@ -343,6 +362,7 @@ public:
         if (showAllArea.contains (e.position)) setMouseCursor (juce::MouseCursor::PointingHandCursor);
         else if (seamActive() && e.position.y >= (float) procLaneRect().getY() && e.position.x < (float) plotWidth()) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         else if (whichLine (e.position) != 0) setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+        else if (! seamActive() && nearFadeRamp (e.position) != 0) setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         else if (nearPitchCurve (e.position) || pitchTagArea.expanded (2.0f).contains (e.position)) setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
         else if (insideLoop (e.position)) setMouseCursor (juce::MouseCursor::DraggingHandCursor);
         else setMouseCursor (juce::MouseCursor::NormalCursor);
@@ -383,6 +403,14 @@ public:
             seamRef = (double) (left ? loopEnd : loopStart);
             return;
         }
+        if (! seamActive())
+            if (const int f = nearFadeRamp (e.position); f != 0 && whichLine (e.position) == 0)
+            {   // la rampa de un fade: arrastrando para arriba / abajo se curva (⌥ + clic: lineal)
+                if (e.mods.isAltDown()) { if (onFadeCurveChanged) onFadeCurveChanged (f == 2, 0.0); return; }
+                curveDrag = f; curveDownY = e.position.y; curveDownVal = f == 1 ? fadeInCurve : fadeOutCurve;
+                repaint();
+                return;
+            }
         const int line = whichLine (e.position);
         if (line == 8) // la manija del fade out (⌥ + clic: sin fade)
         {
@@ -471,6 +499,14 @@ public:
     {
         freeDrag = e.mods.isCommandDown(); // (se puede apretar o soltar ⌘ en el medio del arrastre)
         if (showAllClicked) return;
+        if (curveDrag != 0)
+        {   // para arriba: abombada; para abajo: hundida. Toda la vuelta en media franja (con Shift, 5 veces más fino)
+            const auto r = procLaneRect();
+            const float half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f);
+            const double d = (double) (curveDownY - e.position.y) / half * (e.mods.isShiftDown() ? 0.2 : 1.0);
+            if (onFadeCurveChanged) onFadeCurveChanged (curveDrag == 2, juce::jlimit (-1.0, 1.0, curveDownVal + d));
+            return;
+        }
         if (seamDrag != 0)
         {
             const double spp = viewLen / juce::jmax (1, plotSpan());
@@ -508,6 +544,7 @@ public:
         pitchDragArmed = pitchDragging = false;
         pendingLoopMove = movingLoop = false;
         seamDrag = 0;
+        if (curveDrag != 0) { curveDrag = 0; repaint(); }
         draggingSkip = draggingEnd = draggingStart = draggingFade = draggingFadeOut = false;
         draggingLoop = 0;
         dirty = true; repaint();
@@ -1052,8 +1089,46 @@ private:
     static constexpr float kTabBoxH = 16.0f; // el alto de la caja (dentro del lugar de kTabH)
     static constexpr float kTabH = 18.0f; // la mitad de abajo de los 40 libres (menos 1 de aire con la línea y 1 con el título)
     static juce::Font tabFont() { return labelUiFont (8.5f); }
-    static juce::String tabText (int id)
+    // la rampa de un fade, con su curva: de abajo (silencio) a arriba (0 dB), o al revés para el fade out
+    static juce::Path fadePath (float x0, float x1, float top, float bot, double c, bool out)
     {
+        juce::Path p;
+        const int n = juce::jlimit (2, 96, (int) std::abs (x1 - x0) / 3 + 2);
+        for (int k = 0; k <= n; ++k)
+        {
+            const double t = (double) k / n;
+            const double gn = fadeShape (out ? 1.0 - t : t, c);
+            const float x = x0 + (x1 - x0) * (float) t, y = bot - (bot - top) * (float) gn;
+            if (k == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
+        }
+        return p;
+    }
+    // ¿el mouse está sobre la rampa de un fade (no en sus puntas)? 1 = fade in, 2 = fade out, 0 = no
+    int nearFadeRamp (juce::Point<float> pos) const
+    {
+        const auto r = procLaneRect();
+        if (pos.y < (float) r.getY() || pos.y > (float) r.getBottom()) return 0;
+        const float mid = (float) r.getCentreY(), half = juce::jmax (10.0f, (r.getHeight() - 80.0f) * 0.5f);
+        const float top = (float) (int) (mid - half), bot = (float) (int) (mid + half);
+        auto test = [&] (size_t a, size_t b, double c, bool out) {
+            const float x0 = (float) r.getX() + (float) sampleToX ((double) a), x1 = (float) r.getX() + (float) sampleToX ((double) b);
+            if (x1 - x0 < 12.0f || pos.x < x0 + 5.0f || pos.x > x1 - 5.0f) return false;
+            const double t = (pos.x - x0) / (x1 - x0);
+            const float y = bot - (bot - top) * (float) fadeShape (out ? 1.0 - t : t, c);
+            return std::abs (pos.y - y) <= 6.0f;
+        };
+        if (hasFadeHandle() && test (startSample, fadeEndSample(), fadeInCurve, false)) return 1;
+        if (hasFadeOutHandle() && test (fadeOutStartSample(), endOrLen(), fadeOutCurve, true)) return 2;
+        return 0;
+    }
+    juce::String tabText (int id) const
+    {
+        // los fades con curva: el valor al lado del nombre (FADE IN +40)
+        if ((id == 7 || id == 8) && std::abs (id == 7 ? fadeInCurve : fadeOutCurve) >= 0.005)
+        {
+            const int v = juce::roundToInt ((id == 7 ? fadeInCurve : fadeOutCurve) * 100.0);
+            return juce::String (id == 7 ? "FADE IN " : "FADE OUT ") + (v > 0 ? "+" : "") + juce::String (v);
+        }
         switch (id) { case 1: return "SKIP"; case 2: return "END"; case 3: return "LOOP"; case 4: return "LOOP END";
                       case 5: return "XFADE"; case 6: return "START"; case 7: return "FADE IN"; case 8: return "FADE OUT"; }
         return {};
@@ -1083,9 +1158,11 @@ private:
         float x = (float) sampleToX (sample);
         if (x < (float) plotLeft() - 1.0f || x > (float) plotWidth() + 1.0f) return {}; // fuera de la vista (con zoom)
         x = juce::jlimit ((float) plotLeft(), (float) plotWidth() - 2.0f, x); // (igual que las líneas: así queda el mismo aire a cada lado)
-        static float widths[9] = {}; // (el ancho de cada pestaña no cambia: se mide una sola vez)
-        if (widths[id] <= 0.0f) widths[id] = juce::GlyphArrangement::getStringWidth (tabFont(), tabText (id)) + 12.0f;
-        const float w = widths[id];
+        static std::map<juce::String, float> widths; // (el ancho de cada texto se mide una sola vez)
+        const auto txt = tabText (id);
+        auto wi = widths.find (txt);
+        if (wi == widths.end()) wi = widths.emplace (txt, juce::GlyphArrangement::getStringWidth (tabFont(), txt) + 12.0f).first;
+        const float w = wi->second;
         // 1 px de aire con la línea vertical (que ocupa el píxel de x)
         const float lx = std::round (x), xr = lx + 2.0f, xl = lx - 1.0f - w;
         // la caja es de 16 de alto, centrada en el lugar de 18 (1 menos arriba y 1 menos abajo: el texto no se mueve)
@@ -1581,8 +1658,8 @@ private:
                 const float top = (float) (int) (mid - half), bot = (float) (int) (mid + half); // de la línea de 0 dB de abajo a la de arriba
                 if (fe > startSample && x1 > (float) r.getX() && x0 < (float) r.getRight())
                 {
-                    g.setColour (juce::Colours::white.withAlpha (0.55f));
-                    g.drawLine (x0, bot, x1, top, 1.0f);
+                    g.setColour (juce::Colours::white.withAlpha (curveDrag == 1 ? 0.9f : 0.55f));
+                    g.strokePath (fadePath (x0, x1, top, bot, fadeInCurve, false), juce::PathStrokeType (curveDrag == 1 ? 1.5f : 1.0f));
                     // hasta dónde llega el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (std::round (x1) + 0.5f, vTop, std::round (x1) + 0.5f, vBot, 1.0f);
@@ -1597,8 +1674,8 @@ private:
                 const float top = (float) (int) (mid - half), bot = (float) (int) (mid + half); // de la línea de 0 dB de arriba a la de abajo
                 if (fe > fs && x1 > (float) r.getX() && x0 < (float) r.getRight())
                 {
-                    g.setColour (juce::Colours::white.withAlpha (0.55f));
-                    g.drawLine (x0, top, x1, bot, 1.0f);
+                    g.setColour (juce::Colours::white.withAlpha (curveDrag == 2 ? 0.9f : 0.55f));
+                    g.strokePath (fadePath (x0, x1, top, bot, fadeOutCurve, true), juce::PathStrokeType (curveDrag == 2 ? 1.5f : 1.0f));
                     // desde dónde arranca el fade: una línea vertical
                     g.setColour (juce::Colours::white.withAlpha (0.45f));
                     g.drawLine (std::round (x0) + 0.5f, vTop, std::round (x0) + 0.5f, vBot, 1.0f);
