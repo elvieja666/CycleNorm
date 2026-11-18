@@ -424,9 +424,8 @@ public:
         grabDX = 0.0f;
         if (line != 0)
         {
-            const auto nr = tabRect (line, false);
-            const bool boxRight = (line == 6 || line == 7 || line == 1 || line == 3);
-            if (! nr.isEmpty()) grabDX = e.position.x - (boxRight ? nr.getX() - 2.0f : nr.getRight() + 1.0f);
+            // (la x de la línea misma, no de la caja: la caja puede estar dada vuelta contra un borde)
+            if (const float lx = tabLineX (line); lx > -1.0e8f) grabDX = e.position.x - lx;
         }
         if (line == 8) // la manija del fade out (⌥ + clic: sin fade)
         {
@@ -1168,6 +1167,24 @@ private:
         switch (id) { case 1: return "SKIP"; case 2: return "END"; case 3: return "LOOP"; case 4: return "LOOP END";
                       case 5: return "XFADE"; case 6: return "START"; case 7: return "FADE IN"; case 8: return "FADE OUT"; }
         return {};
+    }
+    // la x (en pantalla) de la línea de una pestaña, o -1e9 si no está
+    float tabLineX (int id) const
+    {
+        double sample = 0;
+        switch (id)
+        {
+            case 6: if (! hasStartLine()) return -1.0e9f; sample = (double) startSample; break;
+            case 2: if (! hasEndLine()) return -1.0e9f; sample = (double) endOrLen(); break;
+            case 7: if (! hasFadeHandle()) return -1.0e9f; sample = (double) fadeEndSample(); break;
+            case 8: if (! hasFadeOutHandle()) return -1.0e9f; sample = (double) fadeOutStartSample(); break;
+            case 1: if (! hasSkipLine()) return -1.0e9f; sample = skipLineSample(); break;
+            case 5: if (! hasLoop()) return -1.0e9f; sample = (double) (loopEnd - std::min (xfadeLen, loopEnd)); break;
+            case 3: if (! hasLoop()) return -1.0e9f; sample = (double) loopStart; break;
+            case 4: if (! hasLoop()) return -1.0e9f; sample = (double) loopEnd; break;
+            default: return -1.0e9f;
+        }
+        return std::round (juce::jlimit ((float) plotLeft(), (float) plotWidth() - 2.0f, (float) sampleToX (sample)));
     }
     juce::Rectangle<float> tabRect (int id, bool avoid = true) const
     {
