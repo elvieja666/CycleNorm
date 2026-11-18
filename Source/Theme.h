@@ -43,7 +43,7 @@ namespace Theme
     }
 
     // Letra del título: la misma Inter del resto (en semibold)
-    inline juce::Typeface::Ptr titleTypeface() { return typeface (400); } // (como el resto: regular, no negrita)
+    inline juce::Typeface::Ptr titleTypeface() { return typeface (300); } // (Light: un poco más fino que el resto)
 
     // La letra del título con mayúsculas de capHeight px (se mide la "B": cada sistema
     // calcula el alto de la letra un poco distinto).
