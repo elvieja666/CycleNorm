@@ -1106,15 +1106,23 @@ private:
         g.setColour (juce::Colours::white.withAlpha (active ? 1.0f : 0.8f));
         g.drawEllipse (r, 1.2f);
     }
-    static juce::Path fadePath (float x0, float x1, float top, float bot, double c, bool out)
+    // (sólo el tramo que se ve, con un punto cada 2 px: con mucho zoom la rampa entera mide millones de
+    // píxeles y una línea con puntas tan lejos a veces no se dibuja; y así la curva no se ve en tramos rectos)
+    juce::Path fadePath (float x0, float x1, float top, float bot, double c, bool out) const
     {
         juce::Path p;
-        const int n = juce::jlimit (2, 96, (int) std::abs (x1 - x0) / 3 + 2);
+        if (x1 - x0 < 0.5f) return p;
+        const float visL = (float) plotLeft() - 2.0f, visR = (float) plotWidth() + 2.0f;
+        const double tA = juce::jlimit (0.0, 1.0, (double) (visL - x0) / (double) (x1 - x0));
+        const double tB = juce::jlimit (0.0, 1.0, (double) (visR - x0) / (double) (x1 - x0));
+        if (tB <= tA) return p;
+        const double w = (tB - tA) * (double) (x1 - x0);
+        const int n = juce::jlimit (2, 600, (int) (w / 2.0) + 2);
         for (int k = 0; k <= n; ++k)
         {
-            const double t = (double) k / n;
+            const double t = tA + (tB - tA) * (double) k / n;
             const double gn = fadeShape (out ? 1.0 - t : t, c);
-            const float x = x0 + (x1 - x0) * (float) t, y = bot - (bot - top) * (float) gn;
+            const float x = (float) ((double) x0 + (double) (x1 - x0) * t), y = bot - (bot - top) * (float) gn;
             if (k == 0) p.startNewSubPath (x, y); else p.lineTo (x, y);
         }
         return p;
